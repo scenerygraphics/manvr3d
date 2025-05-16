@@ -65,8 +65,6 @@ class SphereLinkNodes(
     var linkForwardRange: Int
     var linkBackwardRange: Int
 
-//    var lastCreatedSpot: Spot? = null
-
     init {
         events = sv.scijavaContext?.getService(EventService::class.java)
         numTimePoints = mastodonData.maxTimepoint
@@ -179,6 +177,7 @@ class SphereLinkNodes(
         logger.debug("we have ${spots.size()} spots in this Mastodon time point.")
         bridge.bdvNotifier?.lockUpdates = true
         val vertexRef = mastodonData.model.graph.vertexRef()
+        mastodonData.model.graph.lock.readLock().lock()
         for (spot in spots) {
             vertexRef.refTo(spot)
             // reuse a spot instance from the pool if the pool is large enough
@@ -212,7 +211,6 @@ class SphereLinkNodes(
                 // scale = axisLengths * sphereScaleFactor * 0.5f
                 // rotation = eigenvectors.toQuaternion()
             }
-
 //            inst.drawEigenVectors(eigenvectors, axisLengths)
 
             inst.setColorFromSpot(vertexRef, colorizer)
@@ -224,6 +222,7 @@ class SphereLinkNodes(
             index++
         }
         bridge.bdvNotifier?.lockUpdates = false
+        mastodonData.model.graph.lock.readLock().unlock()
         // turn all leftover spots from the pool invisible
         var i = index
         while (i < spotPool.size) {
@@ -368,6 +367,19 @@ class SphereLinkNodes(
         }
     }
 
+    /** Takes a tag set name and a tag name and tries to apply it to all spots.
+     * Returns false if either name can't be found. */
+    fun applyTagToAllSpots(tagSetName: String, tagName: String): Boolean {
+        val tsModel = mastodonData.model.tagSetModel
+        val ts = tsModel.tagSetStructure.tagSets.find { it.name == tagSetName } ?: return false
+        val tag = ts.tags?.find { it.label() == tagName } ?: return false
+        val spots = mastodonData.model.graph.vertices()
+        spots.forEach { s ->
+            tsModel.vertexTags.set(s, tag)
+        }
+        return true
+    }
+
     /** Tries to find a spot in the current time point for the given [instance].
      * It does that by filtering through the names of the spots.
      * @return either a [Spot] or null. */
@@ -470,10 +482,10 @@ class SphereLinkNodes(
                 mastodonData.focusModel.focusVertex(spot)
                 mastodonData.highlightModel.highlightVertex(spot)
                 mastodonData.selectionModel.setSelected(spot, true)
-                bridge.selectedSpotInstance = findInstanceFromSpot(spot)
+                findInstanceFromSpot(spot)?.let { bridge.selectedSpotInstances.add(it) }
                 logger.info("Selected spot $spot")
             } else {
-                bridge.selectedSpotInstance = null
+                bridge.selectedSpotInstances.clear()
             }
         } else {
             logger.warn("Couldn't find a closest spot! Maybe there are none in the dataset?")
@@ -483,7 +495,7 @@ class SphereLinkNodes(
     }
 
     /** Deletes the currently selected Spots from the graph. */
-    val deleteSelectedSpot: (() -> Unit) = {
+    val deleteSelectedSpots: (() -> Unit) = {
         logger.info("Called deleteSelectedSpot, trying to delete spot now...")
         mastodonData.selectionModel.selectedVertices.forEach {
             mastodonData.model.graph.remove(it)
@@ -582,9 +594,9 @@ class SphereLinkNodes(
     /** Called when a spot's radius is changed in the sciview window. This changes both the actual spot radius in BDV
      * and its apparent scale in sciview.
      * Setting the [direction] to true means to scale up, false means scale down. */
-    fun changeSpotRadius(instance: InstancedNode.Instance?, direction: Boolean) {
+    fun changeSpotRadius(instances: List<InstancedNode.Instance>, direction: Boolean) {
         val factor = if (direction) 1.1 else 0.9
-        instance?.let {
+        instances.forEach {
             val spot = findSpotFromInstance(it)
             val covArray = Array(3) { DoubleArray(3) }
             spot?.getCovariance(covArray)
@@ -706,7 +718,6 @@ class SphereLinkNodes(
         val mainLink = mainLinkInstance ?: throw IllegalStateException("InstancedLink is null, instance was not initialized.")
 
         currentColorMode = colorMode
-        spots = mastodonData.model.spatioTemporalIndex.getSpatialIndex(0)
         numTimePoints = mastodonData.maxTimepoint
         val graph = mastodonData.model.graph
         val from = graph.vertexRef()
@@ -872,11 +883,17 @@ class SphereLinkNodes(
     /** Lambda that is passed to sciview to send individual spots from sciview to Mastodon
      * or delete them if a spot is already selected, as we use the same VR button for creation and deletion.
      * Takes the timepoint and the sciview position.  */
-    val addOrRemoveSpot: (tp: Int, sciviewPos: Vector3f) -> Unit = { tp, sciviewPos ->
+    val addOrRemoveSpot: (tp: Int, sciviewPos: Vector3f, deleteBranch: Boolean) -> Unit = { tp, sciviewPos, deleteBranch ->
         // Check if a spot is selected, and perform deletion if true
         if (!mastodonData.selectionModel.selectedVertices.isEmpty()) {
-            deleteSelectedSpot.invoke()
-            mastodonData.model.graph.notifyGraphChanged()
+            if (!deleteBranch) {
+                deleteSelectedSpots.invoke()
+                mastodonData.model.graph.notifyGraphChanged()
+            } else {
+                logger.info("Trying to delete the whole branch...")
+//                mastodonData.model.branchGraph.vertexRef()
+//                mastodonData.model.branchGraph.getBranchVertex(mastodonData.selectionModel.selectedVertices.first(), branch)
+            }
         } else {
             val pos = bridge.sciviewToMastodonCoords(sciviewPos)
             val bb = bridge.volumeNode.boundingBox
