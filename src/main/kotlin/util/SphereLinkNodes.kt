@@ -177,7 +177,7 @@ class SphereLinkNodes(
         logger.debug("we have ${spots.size()} spots in this Mastodon time point.")
         bridge.bdvNotifier?.lockUpdates = true
         val vertexRef = mastodonData.model.graph.vertexRef()
-        mastodonData.model.graph.lock.readLock().lock()
+//        mastodonData.model.graph.lock.readLock().lock()
         for (spot in spots) {
             vertexRef.refTo(spot)
             // reuse a spot instance from the pool if the pool is large enough
@@ -222,7 +222,7 @@ class SphereLinkNodes(
             index++
         }
         bridge.bdvNotifier?.lockUpdates = false
-        mastodonData.model.graph.lock.readLock().unlock()
+//        mastodonData.model.graph.lock.readLock().unlock()
         // turn all leftover spots from the pool invisible
         var i = index
         while (i < spotPool.size) {
@@ -619,7 +619,6 @@ class SphereLinkNodes(
             findInstanceFromLink(edge)?.let {
                 sourceRef.refTo(edge.source)
                 targetRef.refTo(edge.target)
-                logger.info("updating edge $edge")
                 setLinkTransform(sourceRef, targetRef, it)
             }
         }
@@ -882,19 +881,29 @@ class SphereLinkNodes(
 
     /** Lambda that is passed to sciview to send individual spots from sciview to Mastodon
      * or delete them if a spot is already selected, as we use the same VR button for creation and deletion.
-     * Takes the timepoint and the sciview position.  */
+     * Takes the timepoint and the sciview position and a flag that determines whether to delete the whole branch.  */
     val addOrRemoveSpot: (tp: Int, sciviewPos: Vector3f, deleteBranch: Boolean) -> Unit = { tp, sciviewPos, deleteBranch ->
         // Check if a spot is selected, and perform deletion if true
-        if (!mastodonData.selectionModel.selectedVertices.isEmpty()) {
+        val selected = mastodonData.selectionModel.selectedVertices
+        if (!selected.isEmpty()) {
             if (!deleteBranch) {
                 deleteSelectedSpots.invoke()
                 mastodonData.model.graph.notifyGraphChanged()
             } else {
                 logger.info("Trying to delete the whole branch...")
-//                mastodonData.model.branchGraph.vertexRef()
-//                mastodonData.model.branchGraph.getBranchVertex(mastodonData.selectionModel.selectedVertices.first(), branch)
+                val spotList = mutableListOf<Spot>()
+                // Perform a recursive forward and backward search for each selected spot
+                // This deletes all branches connected to the selected spot(s)
+                selected.forEach {
+                    spotList.addAll(selectBranch(it))
+                }
+                spotList.forEach {
+                    mastodonData.model.graph.remove(it)
+                }
+
             }
         } else {
+            // If no spot is selected, add a new one
             val pos = bridge.sciviewToMastodonCoords(sciviewPos)
             val bb = bridge.volumeNode.boundingBox
             if (bb != null) {
@@ -910,6 +919,30 @@ class SphereLinkNodes(
                 }
             }
         }
+    }
+
+    fun selectBranch(spot: Spot): List<Spot> {
+        val spotList = mutableListOf<Spot>()
+        val spotRef = mastodonData.model.graph.vertexRef()
+        spotRef.refTo(spot)
+
+        fun forwardSearch(s: Spot) {
+            s.outgoingEdges().forEach {
+                spotList.add(it.target)
+                forwardSearch(it.target)
+            }
+        }
+
+        fun backwardSearch(s: Spot) {
+            s.incomingEdges().forEach {
+                spotList.add(it.source)
+                backwardSearch(it.source)
+            }
+        }
+
+        forwardSearch(spotRef)
+        backwardSearch(spotRef)
+        return spotList
     }
 
     data class LinkPreview( val instance: InstancedNode.Instance, val from: Vector3f, val to: Vector3f , val tp: Int)
