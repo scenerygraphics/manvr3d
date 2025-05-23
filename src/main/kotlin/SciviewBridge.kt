@@ -26,11 +26,11 @@ import net.imglib2.view.Views
 import org.elephant.actions.NearestNeighborLinkingAction
 import org.elephant.actions.PredictSpotsAction
 import org.elephant.actions.TrainDetectionAction
+import org.elephant.setting.main.ElephantMainSettingsManager
 import org.joml.Matrix4f
 import org.joml.Quaternionf
 import org.joml.Vector3f
 import org.mastodon.adapter.TimepointModelAdapter
-import org.mastodon.app.MastodonAppModel
 import org.mastodon.mamut.model.Link
 import org.mastodon.mamut.model.Spot
 import org.mastodon.mamut.views.bdv.MamutViewBdv
@@ -47,7 +47,9 @@ import sc.iview.commands.demo.advanced.CellTrackingBase
 import sc.iview.commands.demo.advanced.EyeTracking
 import sc.iview.commands.demo.advanced.TimepointObserver
 import util.SphereLinkNodes
-import java.awt.event.ActionEvent
+import java.util.concurrent.Executors
+import java.util.concurrent.LinkedBlockingQueue
+import java.util.concurrent.TimeUnit
 import javax.swing.Action
 import javax.swing.JFrame
 import javax.swing.JPanel
@@ -96,8 +98,13 @@ class SciviewBridge: TimepointObserver {
     val sphereLinkNodes: SphereLinkNodes
     //sink scene graph structuring nodes
     val axesParent: Node?
-//    val sphereParent: Group
-//    val linkParent: Group
+
+    // Worker queue for async 3D updating
+    private val updateQueue = LinkedBlockingQueue<() -> Unit>()
+    private val workerExecutor = Executors.newSingleThreadExecutor { thread ->
+        Thread(thread, "SphereLinkUpdateWorker").apply { isDaemon = true }
+    }
+
     var volumeNode: Volume
     val volumeTPWidget = TextBoard()
     var spimSource: Source<out Any>
@@ -106,14 +113,15 @@ class SciviewBridge: TimepointObserver {
     var isVolumeAutoAdjust = false
     val sceneScale: Float = 10f
     // keep track of the currently selected spot globally so that edit behaviors can access it
-    var selectedSpotInstance: InstancedNode.Instance? = null
+    var selectedSpotInstances = mutableListOf<InstancedNode.Instance>()
     // the event watcher for BDV, needed here for the lock handling to prevent BDV from
     // triggering the event watcher while a spot is edited in Sciview
     var bdvNotifier: BdvNotifier? = null
     var moveSpotInSciview: (Spot?) -> Unit?
     var associatedUI: SciviewBridgeUIMig? = null
     var uiFrame: JFrame? = null
-    var isVRactive = false
+    private var isRunning = true
+    private var isVRactive = false
 
     var VRTracking: CellTrackingBase? = null
     private var adjacentEdges: MutableList<Link> = ArrayList()
@@ -124,7 +132,7 @@ class SciviewBridge: TimepointObserver {
 
     private val pluginActions: Actions
     private val predictSpotsAction: Action
-    private val predictSpotsCallback: (() -> Unit)
+    private val predictSpotsCallback: ((all: Boolean) -> Unit)
     private val trainSpotsAction: Action
     private val trainsSpotsCallback: (() -> Unit)
 //    private val trainFlowAction: Action
@@ -166,14 +174,13 @@ class SciviewBridge: TimepointObserver {
 
         //add "root" with data axes
         axesParent = constructDataAxes()
-        sciviewWin.addNode(axesParent)
+        sciviewWin.addNode(axesParent, activePublish = false)
 
         //get necessary metadata - from image data
         this.sourceID = sourceID
         this.sourceResLevel = sourceResLevel
         sac = mastodon.sharedBdvData.sources[this.sourceID]
         spimSource = sac.spimSource
-
         // number of pixels for each dimension at the highest res level
         val volumeDims = spimSource.getSource(0, 0).dimensionsAsLongArray()    // TODO rename to something more meaningful
         // number of pixels for each dimension of the volume at current res level
@@ -212,23 +219,11 @@ class SciviewBridge: TimepointObserver {
 
         centerCameraOnVolume()
 
-//        val tpWidgetPos = volumeNode.boundingBox?.max ?: Vector3f(0f)
-//        tpWidgetPos.mul(.5f, 1.2f, 0.5f)
-
-//        volumeTPWidget.text = volumeNode.currentTimepoint.toString()
-//        volumeTPWidget.name = "Volume Timepoint Widget"
-//        volumeTPWidget.spatial {
-//            scale = Vector3f(10f, 10f, -10f)
-//            position = Vector3f(0f)
-//        }
-//
-//        sciviewWin.addNode(volumeTPWidget, activePublish = false, parent = volumeNode)
-
         logger.info("volume node scale is ${volumeNode.spatialOrNull()?.scale}")
 
         logger.info("volume size is ${volumeNode.boundingBox!!.max - volumeNode.boundingBox!!.min}")
         //add the sciview-side displaying handler for the spots
-        sphereLinkNodes = SphereLinkNodes(sciviewWin, this, mastodon, volumeNode, volumeNode)
+        sphereLinkNodes = SphereLinkNodes(sciviewWin, this, updateQueue, mastodon, volumeNode, volumeNode)
 
         sphereLinkNodes.showInstancedSpots(0, noTSColorizer)
         sphereLinkNodes.showInstancedLinks(SphereLinkNodes.ColorMode.LUT, colorizer = noTSColorizer)
@@ -237,7 +232,8 @@ class SciviewBridge: TimepointObserver {
         // when a vertex position change occurs on the BDV side
         moveSpotInSciview = { spot: Spot? ->
             spot?.let {
-                selectedSpotInstance = sphereLinkNodes.findInstanceFromSpot(spot)
+                selectedSpotInstances.clear()
+                sphereLinkNodes.findInstanceFromSpot(spot)?.let { selectedSpotInstances.add(it) }
                 sphereLinkNodes.moveAndScaleSpotInSciview(spot) }
         }
 
@@ -247,15 +243,18 @@ class SciviewBridge: TimepointObserver {
         moveInstanceVRInit = fun (pos: Vector3f) {
 
             if (mastodon.selectionModel.selectedVertices == null) {
-                selectedSpotInstance = null
+                selectedSpotInstances.clear()
                 return
             } else {
-                selectedSpotInstance?.let { inst ->
+                selectedSpotInstances.forEach { inst ->
                     logger.debug("selected spot instance is $inst")
+                    if (inst == null) {
+                        return@forEach
+                    }
                     val spot = sphereLinkNodes.findSpotFromInstance(inst)
                     val selectedTP = spot?.timepoint ?: -1
                     if (selectedTP != volumeNode.currentTimepoint) {
-                        selectedSpotInstance = null
+                        selectedSpotInstances.clear()
                         logger.warn("Tried to move a spot that was outside the current timepoint. Aborting.")
                         return
                     } else {
@@ -273,7 +272,7 @@ class SciviewBridge: TimepointObserver {
         }
 
         moveInstanceVRDrag = fun (pos: Vector3f) {
-            selectedSpotInstance?.let {
+            selectedSpotInstances.forEach {
                 val newPos = sciviewToMastodonCoords(pos)
                 val movement = newPos - currentControllerPos
                 it.spatial {
@@ -292,21 +291,33 @@ class SciviewBridge: TimepointObserver {
             adjacentEdges.clear()
         }
 
-//        resetControllerTrack = {
-//            sphereLinkNodes.lastCreatedSpot = null
-//        }
-
         pluginActions = mastodon.plugins.pluginActions
 
         predictSpotsAction = pluginActions.actionMap.get("[elephant] predict spots")
-        predictSpotsCallback = {
+        predictSpotsCallback = { predictAll ->
             predictSpotsAction?.let {
+                // Limitation of Elephant: we can only predict X number of frames in the past
+                // So we have to temporarily move to the last TP and set the time range to the size of all TPs
+                val settings = ElephantMainSettingsManager.getInstance().forwardDefaultStyle
+                settings.timeRange = if (predictAll) volumeNode.timepointCount else 1
+                logger.info("Elephant settings.timeRange was set to ${settings.timeRange}.")
                 val start = TimeSource.Monotonic.markNow()
                 logger.info("Predicting spots for this timepoint...")
+                val currentTP = detachedDPP_showsLastTimepoint.timepoint
+                val groupHandle = mastodon.groupManager.createGroupHandle()
+                groupHandle.groupId = 0
+                val tpAdapter = TimepointModelAdapter(groupHandle.getModel(mastodon.TIMEPOINT))
+
+                if (predictAll) {
+                    tpAdapter.timepoint = volumeNode.timepointCount
+                }
                 (it as PredictSpotsAction).run()
+                logger.info("Predicting spots took ${start.elapsedNow()} ms")
+                if (predictAll) {
+                    tpAdapter.timepoint = currentTP
+                }
                 sphereLinkNodes.showInstancedSpots(detachedDPP_showsLastTimepoint.timepoint,
                     detachedDPP_showsLastTimepoint.colorizer)
-                logger.info("Predicting spots took ${start.elapsedNow()} ms")
                 sciviewWin.camera?.showMessage("Prediction took ${start.elapsedNow()} ms", 2f, 0.2f, centered = true)
             }
         }
@@ -333,15 +344,10 @@ class SciviewBridge: TimepointObserver {
 
         stageSpotsCallback = {
             logger.info("Adding all spots to the true positive tag set...")
-            val tsModel = mastodon.model.tagSetModel
-            val detectionTS = tsModel.tagSetStructure.tagSets.find { it.name == "Detection" }
-            val tpTag = detectionTS?.tags?.find { it.label() == "tp" }
-            if (tpTag == null) {
-                logger.warn("Could not find true positive tag set in Detection! Please ensure the tag set and tag exist.")
+            val tagResult = sphereLinkNodes.applyTagToAllSpots("Detection", "tp")
+            if (!tagResult) {
+                logger.warn("Could not find tag or tag set! Please ensure both exist.")
             } else {
-                sphereLinkNodes.spots.forEach { s ->
-                    tsModel.vertexTags.set(s, tpTag)
-                }
                 sphereLinkNodes.showInstancedSpots(
                     detachedDPP_showsLastTimepoint.timepoint,
                     detachedDPP_showsLastTimepoint.colorizer)
@@ -351,10 +357,31 @@ class SciviewBridge: TimepointObserver {
         openSyncedBDV()
 
         registerKeyboardHandlers()
+
+        startWorker()
     }
 
     val eventService: EventService?
         get() = sciviewWin.scijavaContext?.getService(EventService::class.java)
+
+    /** Launches a worker thread that sequentially executes queued spot and link updates from [SphereLinkNodes]. */
+    private fun startWorker() {
+        workerExecutor.submit {
+            while (isRunning && !Thread.currentThread().isInterrupted) {
+                try {
+                    // Timeout instead of blocking to allow for shutdown
+                    val task = updateQueue.poll(1, TimeUnit.SECONDS)
+                    task?.invoke()
+                } catch (e: InterruptedException) {
+                    Thread.currentThread().interrupt()
+                    logger.warn("Interrupted while waiting for update task to finish!")
+                    break
+                } catch (e: Exception) {
+                    logger.error("Error while waiting for update task to finish: ", e)
+                }
+            }
+        }
+    }
 
     /** Centers the camera on the volume and adjusts its distance to fully fit the volume into the camera's FOV. */
     private fun centerCameraOnVolume() {
@@ -375,7 +402,7 @@ class SciviewBridge: TimepointObserver {
     }
 
     fun close() {
-        detachControllingUI()
+        stopAndDetachUI()
         deregisterKeyboardHandlers()
         logger.info("Mastodon-sciview Bridge closing procedure: UI and keyboard handlers are removed now")
         sciviewWin.setActiveNode(axesParent)
@@ -716,9 +743,9 @@ class SciviewBridge: TimepointObserver {
             BehaviourTriple(desc_NEXT_TP, key_NEXT_TP, { _, _ -> detachedDPP_withOwnTime.nextTimepoint()
                 updateSciviewContent(detachedDPP_withOwnTime) }),
             BehaviourTriple("Scale Instance Up", "ctrl E",
-                {_, _ -> sphereLinkNodes.changeSpotRadius(selectedSpotInstance, true)}),
+                {_, _ -> sphereLinkNodes.changeSpotRadius(selectedSpotInstances, true)}),
             BehaviourTriple("Scale Instance Down", "ctrl Q",
-                {_, _ -> sphereLinkNodes.changeSpotRadius(selectedSpotInstance, false)}),
+                {_, _ -> sphereLinkNodes.changeSpotRadius(selectedSpotInstances, false)}),
         )
 
         behaviourCollection.forEach {
@@ -734,19 +761,18 @@ class SciviewBridge: TimepointObserver {
             ignoredObjects = listOf(Volume::class.java, RAIVolume::class.java, BufferedVolume::class.java), action = { result, _, _ ->
                 if (result.matches.isNotEmpty()) {
                     // Try to cast the result to an instance, or clear the existing selection if it fails
-                    selectedSpotInstance = result.matches.first().node as? InstancedNode.Instance
-                    if (selectedSpotInstance != null) {
-                        logger.debug("selected instance {}", selectedSpotInstance)
-                        selectedSpotInstance?.let { s ->
-                            sphereLinkNodes.selectSpot2D(s)
-                            sphereLinkNodes.showInstancedSpots(
-                                detachedDPP_showsLastTimepoint.timepoint,
-                                detachedDPP_showsLastTimepoint.colorizer
-                            )
-                        }
-                    } else {
-                        sphereLinkNodes.clearSpotSelection()
+                    selectedSpotInstances.add(result.matches.first().node as InstancedNode.Instance)
+                    logger.debug("selected instance {}", selectedSpotInstances)
+                    selectedSpotInstances.forEach { s ->
+                        sphereLinkNodes.selectSpot2D(s)
+                        sphereLinkNodes.showInstancedSpots(
+                            detachedDPP_showsLastTimepoint.timepoint,
+                            detachedDPP_showsLastTimepoint.colorizer
+                        )
                     }
+                } else {
+                    sphereLinkNodes.clearSpotSelection()
+                    selectedSpotInstances.clear()
                 }
             }
         )
@@ -776,10 +802,10 @@ class SciviewBridge: TimepointObserver {
             cam?.let { cam ->
                 val (rayStart, rayDir) = cam.screenPointToRay(x, y)
                 rayDir.normalize()
-                if (selectedSpotInstance != null) {
-                    distance = cam.spatial().position.distance(selectedSpotInstance?.spatial()?.position)
+                if (selectedSpotInstances.isNotEmpty()) {
+                    distance = cam.spatial().position.distance(selectedSpotInstances.first().spatial().position)
                     currentHit = rayStart + rayDir * distance
-                    val spot = sphereLinkNodes.findSpotFromInstance(selectedSpotInstance!!)
+                    val spot = sphereLinkNodes.findSpotFromInstance(selectedSpotInstances.first())
                     mastodon.model.graph.vertexRef().refTo(spot).incomingEdges()?.forEach {
                         edges.add(it)
                     }
@@ -795,22 +821,25 @@ class SciviewBridge: TimepointObserver {
                 return
 
             cam?.let { cam ->
-                selectedSpotInstance?.let {
-                    val (rayStart, rayDir) = cam.screenPointToRay(x, y)
-                    rayDir.normalize()
-                    val newHit = rayStart + rayDir * distance
-                    val movement = newHit - currentHit
-                    movement.y *= -1f
-                    it.ifSpatial {
-                        // Rotation around camera's center
-                        val newPos = position + movement / worldScale() / volumeNode.spatial().scale / 1.7f
-                        selectedSpotInstance?.spatialOrNull()?.position = newPos
-                        currentHit = newHit
+                if (selectedSpotInstances.isNotEmpty()) {
+                    selectedSpotInstances.first().let {
+                        val (rayStart, rayDir) = cam.screenPointToRay(x, y)
+                        rayDir.normalize()
+                        val newHit = rayStart + rayDir * distance
+                        val movement = newHit - currentHit
+                        movement.y *= -1f
+                        it.ifSpatial {
+                            // Rotation around camera's center
+                            val newPos = position + movement / worldScale() / volumeNode.spatial().scale / 1.7f
+                            it.spatialOrNull()?.position = newPos
+                            currentHit = newHit
+                        }
+                        sphereLinkNodes.moveSpotInBDV(it, movement)
+                        sphereLinkNodes.updateLinkTransforms(edges)
+                        sphereLinkNodes.links.values
                     }
-                    sphereLinkNodes.moveSpotInBDV(selectedSpotInstance!!, movement)
-                    sphereLinkNodes.updateLinkTransforms(edges)
-                    sphereLinkNodes.links.values
                 }
+
             }
         }
 
@@ -840,16 +869,14 @@ class SciviewBridge: TimepointObserver {
             VRTracking?.trackCreationCallback = sphereLinkNodes.addTrackToMastodon
             VRTracking?.spotCreateDeleteCallback = sphereLinkNodes.addOrRemoveSpot
             VRTracking?.spotSelectionCallback = sphereLinkNodes.selectClosestSpotVR
-//            VRTracking.spotDeletionCallback = sphereLinkNodes.deleteSelectedSpot
             VRTracking?.spotMoveInitCallback = moveInstanceVRInit
             VRTracking?.spotMoveDragCallback = moveInstanceVRDrag
             VRTracking?.spotMoveEndCallback = moveInstanceVREnd
             VRTracking?.spotLinkCallback = sphereLinkNodes.mergeSelectedToClosestSpot
             VRTracking?.singleLinkTrackedCallback = sphereLinkNodes.addTrackedPoint
             VRTracking?.toggleTrackingPreviewCallback = sphereLinkNodes.toggleLinkPreviews
-//            VRTracking.resetTrackingCallback = resetControllerTrack
             VRTracking?.rebuildGeometryCallback = {
-                logger.debug("Called rebuildGeometryCallback")
+                logger.info("Called rebuildGeometryCallback")
                 sphereLinkNodes.showInstancedSpots(
                     detachedDPP_showsLastTimepoint.timepoint,
                     detachedDPP_showsLastTimepoint.colorizer
@@ -939,7 +966,21 @@ class SciviewBridge: TimepointObserver {
         }
     }
 
-    fun detachControllingUI() {
+    fun stopAndDetachUI() {
+        isRunning = false
+        workerExecutor.shutdownNow()
+        logger.info("Stopped bridge worker queue.")
+        try {
+            // Wait for graceful termination
+            if (!workerExecutor.awaitTermination(5, TimeUnit.SECONDS)) {
+                logger.error("Worker thread did not terminate gracefully")
+            }
+        } catch (e: InterruptedException) {
+            Thread.currentThread().interrupt()
+        }
+        updateQueue.clear()
+        sciviewWin.mainWindow.close()
+        logger.info("Closed sciview main window.")
         if (associatedUI != null) {
             associatedUI?.deactivateAndForget()
             associatedUI = null

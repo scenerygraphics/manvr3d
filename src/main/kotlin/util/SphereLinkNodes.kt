@@ -33,13 +33,24 @@ import spim.fiji.spimdata.interestpoints.InterestPoint
 import java.awt.Color
 import java.util.*
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.LinkedBlockingQueue
 import kotlin.collections.ArrayList
 import kotlin.math.sqrt
 import kotlin.time.TimeSource
 
+/** Class that constructs 3D representations of spots and links/tracks in sciview from data provided by Mastodon
+ * in the form of instanced geometry. Spots are represented as spheres, and track segments (links) are represented as cylinders.
+ * It handles initialization, updates and actions like addition, deletion and movement of spots.
+ * @param sv The sciview instance to use.
+ * @param bridge And instance of the mastodon-sciview bridge.
+ * @param updateQueue Queue that executues scene updates sequentially in its own thread.
+ * @param mastodonData Instance of the Mastodon ProjectModel
+ * @param sphereParentNode Parent node for the instanced spheres
+ * @param linkParentNode Parent node for the instanced links */
 class SphereLinkNodes(
     val sv: SciView,
     val bridge: SciviewBridge,
+    val updateQueue: LinkedBlockingQueue<() -> Unit>,
     val mastodonData: ProjectModel,
     val sphereParentNode: Node,
     val linkParentNode: Node
@@ -130,106 +141,115 @@ class SphereLinkNodes(
         timepoint: Int,
         colorizer: GraphColorGenerator<Spot, Link>
     ) {
-        logger.debug("Called showInstancedSpots")
-        val tStart = TimeSource.Monotonic.markNow()
-        // only create and add the main instance once during initialization
-        if (mainSpotInstance == null) {
-            sphere.setMaterial(ShaderMaterial.fromFiles("DeferredInstancedColor.vert", "DeferredInstancedColor.frag")) {
-                diffuse = Vector3f(1.0f, 1.0f, 1.0f)
-                ambient = Vector3f(1.0f, 1.0f, 1.0f)
-                specular = Vector3f(.0f, 1.0f, 1.0f)
-                metallic = 0.0f
-                roughness = 1.0f
+        updateQueue.offer {
+            logger.debug("Called showInstancedSpots")
+            val tStart = TimeSource.Monotonic.markNow()
+            // only create and add the main instance once during initialization
+            if (mainSpotInstance == null) {
+                sphere.setMaterial(
+                    ShaderMaterial.fromFiles(
+                        "DeferredInstancedColor.vert",
+                        "DeferredInstancedColor.frag"
+                    )
+                ) {
+                    diffuse = Vector3f(1.0f, 1.0f, 1.0f)
+                    ambient = Vector3f(1.0f, 1.0f, 1.0f)
+                    specular = Vector3f(.0f, 1.0f, 1.0f)
+                    metallic = 0.0f
+                    roughness = 1.0f
+                }
+
+                val mainSpot = InstancedNode(sphere)
+                mainSpot.name = "SpotInstance"
+                // Instanced properties should be aligned to 4*32bit boundaries, hence the use of Vector4f instead of Vector3f here
+                mainSpot.instancedProperties["Color"] = { Vector4f(1f) }
+                var inst: InstancedNode.Instance
+                val maxSpotCount =
+                    mastodonData.model.spatioTemporalIndex.getSpatialIndex(mastodonData.maxTimepoint).size()
+                // initialize the whole pool with instances once
+                for (i in 0..<(maxSpotCount * 1.2).toInt()) {
+                    inst = mainSpot.addInstance()
+                    inst.parent = sphereParentNode
+                    spotPool.add(inst)
+                }
+
+                sv.addNode(mainSpot, parent = sphereParentNode)
+                mainSpotInstance = mainSpot
             }
 
-            val mainSpot = InstancedNode(sphere)
-            mainSpot.name = "SpotInstance"
-            // Instanced properties should be aligned to 4*32bit boundaries, hence the use of Vector4f instead of Vector3f here
-            mainSpot.instancedProperties["Color"] = { Vector4f(1f) }
+            // ensure that mainSpotInstance is not null and properly initialized
+            val mainSpot =
+                mainSpotInstance ?: throw IllegalStateException("InstancedSpot is null, instance was not initialized.")
+
+            if (spotRef == null) spotRef = mastodonData.model.graph.vertexRef()
+            val focusedSpotRef = mastodonData.focusModel.getFocusedVertex(spotRef)
+            spots = mastodonData.model.spatioTemporalIndex.getSpatialIndex(timepoint)
+            sv.blockOnNewNodes = false
+
+            val spotPosition = FloatArray(3)
+            val covArray = Array(3) { DoubleArray(3) }
+            var covariance: Array2DRowRealMatrix
             var inst: InstancedNode.Instance
-            val maxSpotCount = mastodonData.model.spatioTemporalIndex.getSpatialIndex(mastodonData.maxTimepoint).size()
-            // initialize the whole pool with instances once
-            for (i in 0..< (maxSpotCount * 1.2).toInt() ) {
-                inst = mainSpot.addInstance()
-                inst.parent = sphereParentNode
-                spotPool.add(inst)
-            }
+            var axisLengths: Vector3f
 
-            sv.addNode(mainSpot, parent = sphereParentNode)
-            mainSpotInstance = mainSpot
+            var index = 0
+            logger.debug("we have ${spots.size()} spots in this Mastodon time point.")
+            bridge.bdvNotifier?.lockUpdates = true
+            val vertexRef = mastodonData.model.graph.vertexRef()
+            //        mastodonData.model.graph.lock.readLock().lock()
+            for (spot in spots) {
+                vertexRef.refTo(spot)
+                // reuse a spot instance from the pool if the pool is large enough
+                if (index < spotPool.size) {
+                    inst = spotPool[index]
+                    inst.visible = true
+                }
+                // otherwise create a new instance and add it to the pool
+                else {
+                    inst = mainSpot.addInstance()
+                    inst.parent = sphereParentNode
+                    spotPool.add(inst)
+                }
+                inst.name = "spot_${vertexRef.internalPoolIndex}"
+                // get spot covariance and calculate the scaling and rotation from it
+                vertexRef.localize(spotPosition)
+                spot.getCovariance(covArray)
+                //            covariance = Array2DRowRealMatrix(covArray)
+                //            val (eigenvalues, eigenvectors) = computeEigen(covariance)
+
+                //            val avgScale = eigenvalues.average()
+                //            axisLengths = computeSemiAxes(eigenvalues)
+
+                if (vertexRef.internalPoolIndex % 10 == 0) {
+                    logger.debug("Spot ${vertexRef.internalPoolIndex} has radius ${sqrt(vertexRef.boundingSphereRadiusSquared)}")
+                }
+                inst.spatial {
+                    position = Vector3f(spotPosition)
+                    scale = Vector3f(sphereScaleFactor * sqrt(spot.boundingSphereRadiusSquared.toFloat()) / 10f)
+                    // TODO add ellipsoid scale & rotation to instances
+                    // scale = axisLengths * sphereScaleFactor * 0.5f
+                    // rotation = eigenvectors.toQuaternion()
+                }
+                //            inst.drawEigenVectors(eigenvectors, axisLengths)
+
+                inst.setColorFromSpot(vertexRef, colorizer)
+                // highlight the spot currently selected in BDV
+                if (focusedSpotRef != null && focusedSpotRef.internalPoolIndex == vertexRef.internalPoolIndex) {
+                    inst.instancedProperties["Color"] = { Vector4f(1f, 0.25f, 0.25f, 1f) }
+                }
+
+                index++
+            }
+            bridge.bdvNotifier?.lockUpdates = false
+            //        mastodonData.model.graph.lock.readLock().unlock()
+            // turn all leftover spots from the pool invisible
+            var i = index
+            while (i < spotPool.size) {
+                spotPool[i++].visible = false
+            }
+            val tElapsed = TimeSource.Monotonic.markNow() - tStart
+            logger.info("Spot updates took $tElapsed")
         }
-
-        // ensure that mainSpotInstance is not null and properly initialized
-        val mainSpot = mainSpotInstance ?: throw IllegalStateException("InstancedSpot is null, instance was not initialized.")
-
-        if (spotRef == null) spotRef = mastodonData.model.graph.vertexRef()
-        val focusedSpotRef = mastodonData.focusModel.getFocusedVertex(spotRef)
-        spots = mastodonData.model.spatioTemporalIndex.getSpatialIndex(timepoint)
-        sv.blockOnNewNodes = false
-
-        val spotPosition = FloatArray(3)
-        val covArray = Array(3) { DoubleArray(3) }
-        var covariance: Array2DRowRealMatrix
-        var inst: InstancedNode.Instance
-        var axisLengths: Vector3f
-
-        var index = 0
-        logger.debug("we have ${spots.size()} spots in this Mastodon time point.")
-        bridge.bdvNotifier?.lockUpdates = true
-        val vertexRef = mastodonData.model.graph.vertexRef()
-//        mastodonData.model.graph.lock.readLock().lock()
-        for (spot in spots) {
-            vertexRef.refTo(spot)
-            // reuse a spot instance from the pool if the pool is large enough
-            if (index < spotPool.size) {
-                inst = spotPool[index]
-                inst.visible = true
-            }
-            // otherwise create a new instance and add it to the pool
-            else {
-                inst = mainSpot.addInstance()
-                inst.parent = sphereParentNode
-                spotPool.add(inst)
-            }
-            inst.name = "spot_${vertexRef.internalPoolIndex}"
-            // get spot covariance and calculate the scaling and rotation from it
-            vertexRef.localize(spotPosition)
-            spot.getCovariance(covArray)
-//            covariance = Array2DRowRealMatrix(covArray)
-//            val (eigenvalues, eigenvectors) = computeEigen(covariance)
-
-//            val avgScale = eigenvalues.average()
-//            axisLengths = computeSemiAxes(eigenvalues)
-
-            if (vertexRef.internalPoolIndex % 10 == 0) {
-                logger.debug("Spot ${vertexRef.internalPoolIndex} has radius ${sqrt(vertexRef.boundingSphereRadiusSquared)}")
-            }
-            inst.spatial {
-                position = Vector3f(spotPosition)
-                scale = Vector3f(sphereScaleFactor *  sqrt(spot.boundingSphereRadiusSquared.toFloat()) / 10f)
-                // TODO add ellipsoid scale & rotation to instances
-                // scale = axisLengths * sphereScaleFactor * 0.5f
-                // rotation = eigenvectors.toQuaternion()
-            }
-//            inst.drawEigenVectors(eigenvectors, axisLengths)
-
-            inst.setColorFromSpot(vertexRef, colorizer)
-            // highlight the spot currently selected in BDV
-            if (focusedSpotRef != null && focusedSpotRef.internalPoolIndex == vertexRef.internalPoolIndex) {
-                inst.instancedProperties["Color"] = { Vector4f(1f, 0.25f, 0.25f, 1f) }
-            }
-
-            index++
-        }
-        bridge.bdvNotifier?.lockUpdates = false
-//        mastodonData.model.graph.lock.readLock().unlock()
-        // turn all leftover spots from the pool invisible
-        var i = index
-        while (i < spotPool.size) {
-            spotPool[i++].visible = false
-        }
-        val tElapsed = TimeSource.Monotonic.markNow() - tStart
-        logger.info("Spot updates took $tElapsed")
     }
 
     private fun computeEigen(covariance: Array2DRowRealMatrix): Pair<DoubleArray, RealMatrix> {
@@ -688,92 +708,95 @@ class SphereLinkNodes(
         colorMode: ColorMode,
         colorizer: GraphColorGenerator<Spot, Link>
     ) {
-        val tStart = TimeSource.Monotonic.markNow()
+        updateQueue.offer {
+            val tStart = TimeSource.Monotonic.markNow()
 
-        links.clear()
-        if (mainLinkInstance == null) {
-            cylinder.setMaterial(
-                ShaderMaterial.fromFiles("DeferredInstancedColor.vert", "DeferredInstancedColor.frag" )
-            ) {
-                diffuse = Vector3f(1.0f, 1.0f, 1.0f)
-                ambient = Vector3f(1.0f, 1.0f, 1.0f)
-                specular = Vector3f(.0f, 1.0f, 1.0f)
-                metallic = 0.0f
-                roughness = 1.0f
+            links.clear()
+            if (mainLinkInstance == null) {
+                cylinder.setMaterial(
+                    ShaderMaterial.fromFiles("DeferredInstancedColor.vert", "DeferredInstancedColor.frag" )
+                ) {
+                    diffuse = Vector3f(1.0f, 1.0f, 1.0f)
+                    ambient = Vector3f(1.0f, 1.0f, 1.0f)
+                    specular = Vector3f(.0f, 1.0f, 1.0f)
+                    metallic = 0.0f
+                    roughness = 1.0f
+                }
+                val mainLink = InstancedNode(cylinder)
+                mainLink.name = "LinkInstance"
+                mainLink.instancedProperties["Color"] = { Vector4f(1f) }
+
+                // initialize the whole pool with instances once
+                for (i in 0..<10000) {
+                    linkPool.add(mainLink.addInstance())
+                }
+                logger.debug("initialized mainLinkInstance")
+                sv.addNode(mainLink, parent = linkParentNode)
+                mainLinkInstance = mainLink
             }
-            val mainLink = InstancedNode(cylinder)
-            mainLink.name = "LinkInstance"
-            mainLink.instancedProperties["Color"] = { Vector4f(1f) }
 
-            // initialize the whole pool with instances once
-            for (i in 0..<10000) {
-                linkPool.add(mainLink.addInstance())
-            }
-            logger.debug("initialized mainLinkInstance")
-            sv.addNode(mainLink, parent = linkParentNode)
-            mainLinkInstance = mainLink
-        }
+            val mainLink = mainLinkInstance ?: throw IllegalStateException("InstancedLink is null, instance was not initialized.")
 
-        val mainLink = mainLinkInstance ?: throw IllegalStateException("InstancedLink is null, instance was not initialized.")
-
-        currentColorMode = colorMode
-        numTimePoints = mastodonData.maxTimepoint
-        val graph = mastodonData.model.graph
-        val from = graph.vertexRef()
-        val to = graph.vertexRef()
-        var inst: InstancedNode.Instance
-        var index = 0
-        val start = TimeSource.Monotonic.markNow()
-        // TODO use coroutines for this
-        logger.info("iterating over ${mastodonData.model.graph.edges().size} mastodon edges...")
-        graph.edges().forEach { edge ->
-            // reuse a link instance from the pool if the pool is large enough
-            if (index < linkPool.size) {
-                inst = linkPool[index]
-                inst.visible = true
-            }
-            // otherwise create a new instance and add it to the pool
-            else {
-                inst = mainLink.addInstance()
+            currentColorMode = colorMode
+            numTimePoints = mastodonData.maxTimepoint
+            val graph = mastodonData.model.graph
+            val from = graph.vertexRef()
+            val to = graph.vertexRef()
+            var inst: InstancedNode.Instance
+            var index = 0
+            val start = TimeSource.Monotonic.markNow()
+            // TODO use coroutines for this
+            logger.info("iterating over ${mastodonData.model.graph.edges().size} mastodon edges...")
+            graph.edges().forEach { edge ->
+                // reuse a link instance from the pool if the pool is large enough
+                if (index < linkPool.size) {
+                    inst = linkPool[index]
+                    inst.visible = true
+                }
+                // otherwise create a new instance and add it to the pool
+                else {
+                    inst = mainLink.addInstance()
 //                inst.addAttribute(Material::class.java, cylinder.material())
+                    inst.parent = linkParentNode
+                    linkPool.add(inst)
+                }
+
+                edge.getSource(from)
+                edge.getTarget(to)
+
+                setLinkTransform(from, to, inst)
+                inst.instancedProperties["Color"] = { Vector4f(1f, 1f, 1f, 1f) }
+                inst.name = "${edge.internalPoolIndex}"
                 inst.parent = linkParentNode
-                linkPool.add(inst)
+                // add a new key-value pair to the hash map
+                links[to.hashCode()] = LinkNode(inst, from, to, to.timepoint)
+
+                index++
             }
 
-            edge.getSource(from)
-            edge.getTarget(to)
+            // turn all leftover links from the pool invisible
+            var i = index
+            while (i < linkPool.size) {
+                linkPool[i++].visible = false
+            }
 
-            setLinkTransform(from, to, inst)
-            inst.instancedProperties["Color"] = { Vector4f(1f, 1f, 1f, 1f) }
-            inst.name = "${edge.internalPoolIndex}"
-            inst.parent = linkParentNode
-            // add a new key-value pair to the hash map
-            links[to.hashCode()] = LinkNode(inst, from, to, to.timepoint)
+            linkPreviewList.forEach { link ->
 
-            index++
+                setLinkTransform(link.from, link.to, link.instance)
+            }
+
+            logger.info("${links.size} links in the hashmap, ${linkPool.size} link instances in the pool. " +
+                    "Mastodon provides ${mastodonData.model.graph.edges().size} links.")
+            val end = TimeSource.Monotonic.markNow()
+
+            logger.info("Edge traversel took ${end - start}.")
+            // first update the link colors without providing a colorizer, because no BDV window has been opened yet
+            updateLinkColors(colorizer)
+
+            val tElapsed = TimeSource.Monotonic.markNow() - tStart
+            logger.info("Total link updates (with coloring) took $tElapsed")
+
         }
-
-        // turn all leftover links from the pool invisible
-        var i = index
-        while (i < linkPool.size) {
-            linkPool[i++].visible = false
-        }
-
-        linkPreviewList.forEach { link ->
-
-            setLinkTransform(link.from, link.to, link.instance)
-        }
-
-        logger.info("${links.size} links in the hashmap, ${linkPool.size} link instances in the pool. " +
-                "Mastodon provides ${mastodonData.model.graph.edges().size} links.")
-        val end = TimeSource.Monotonic.markNow()
-
-        logger.info("Edge traversel took ${end - start}.")
-        // first update the link colors without providing a colorizer, because no BDV window has been opened yet
-        updateLinkColors(colorizer)
-
-        val tElapsed = TimeSource.Monotonic.markNow() - tStart
-        logger.info("Total link updates (with coloring) took $tElapsed")
     }
 
     /** Takes a cylinder instance [inst] and two spots, [from] and [to], and positions the cylinder between them.
@@ -883,14 +906,15 @@ class SphereLinkNodes(
      * or delete them if a spot is already selected, as we use the same VR button for creation and deletion.
      * Takes the timepoint and the sciview position and a flag that determines whether to delete the whole branch.  */
     val addOrRemoveSpot: (tp: Int, sciviewPos: Vector3f, deleteBranch: Boolean) -> Unit = { tp, sciviewPos, deleteBranch ->
+        bridge.bdvNotifier?.lockUpdates = true
         // Check if a spot is selected, and perform deletion if true
         val selected = mastodonData.selectionModel.selectedVertices
         if (!selected.isEmpty()) {
             if (!deleteBranch) {
+                logger.info("Deleting spot...")
                 deleteSelectedSpots.invoke()
-                mastodonData.model.graph.notifyGraphChanged()
             } else {
-                logger.info("Trying to delete the whole branch...")
+                logger.info("Deleting the whole branch...")
                 val spotList = mutableListOf<Spot>()
                 // Perform a recursive forward and backward search for each selected spot
                 // This deletes all branches connected to the selected spot(s)
@@ -900,25 +924,25 @@ class SphereLinkNodes(
                 spotList.forEach {
                     mastodonData.model.graph.remove(it)
                 }
-
             }
+            mastodonData.model.graph.notifyGraphChanged()
         } else {
             // If no spot is selected, add a new one
             val pos = bridge.sciviewToMastodonCoords(sciviewPos)
             val bb = bridge.volumeNode.boundingBox
             if (bb != null) {
                 if (bb.isInside(pos)) {
-                    bridge.bdvNotifier?.lockUpdates = true
+
                     val v = mastodonData.model.graph.addVertex()
                     v.init(tp, pos.toDoubleArray(), 10.0)
                     logger.info("Added new spot with controller at position $pos.")
-                    bridge.bdvNotifier?.lockUpdates = false
                     logger.debug("we now have ${mastodonData.model.graph.vertices().size} spots in total")
                 } else {
                     logger.warn("Not adding new spot, $pos is outside the volume!")
                 }
             }
         }
+        bridge.bdvNotifier?.lockUpdates = false
     }
 
     fun selectBranch(spot: Spot): List<Spot> {
