@@ -30,8 +30,7 @@ class SciviewBridgeUIMig(controlledBridge: SciviewBridge, populateThisContainer:
     lateinit var lockGroupHandler: GroupLocksHandling
     lateinit var linkColorSelector: JComboBox<String>
     lateinit var volumeColorSelector: JComboBox<String>
-    lateinit var startVR: JButton
-    lateinit var stopVR: JButton
+    lateinit var toggleVR: JButton
     lateinit var eyeTrackingToggle: JCheckBox
 
     private fun populatePane() {
@@ -162,18 +161,24 @@ class SciviewBridgeUIMig(controlledBridge: SciviewBridge, populateThisContainer:
         windowPanel.add(visButtons, "span, growx")
 
         // Eye Tracking
-        startVR = JButton("Start VR").apply { addActionListener { bridge.launchVR(eyeTrackingToggle.isSelected) } }
-        stopVR = JButton("Stop VR").apply { addActionListener { bridge.stopVR() } }
+        toggleVR = JButton("Start VR").apply { addActionListener {
+            if (toggleVR.text == "Start VR") {
+                bridge.launchVR(eyeTrackingToggle.isSelected)
+                toggleVR.text = "Stop VR"
+            } else {
+                bridge.stopVR()
+                toggleVR.text = "Start VR"
+            }
+        } }
         eyeTrackingToggle = JCheckBox("Launch with Eye Tracking")
         eyeTrackingToggle.setSelected(true)
         windowPanel.add(JPanel(MigLayout("fillx, insets 0")).apply {
-            add(startVR, "growx")
-            add(stopVR, "growx")
+            add(toggleVR, "growx")
             add(eyeTrackingToggle, "dock east, gapleft 8px")
         }, "span, growx")
 
         // Close Button
-        val closeBtn = JButton("Close").apply { addActionListener { bridge.detachControllingUI() } }
+        val closeBtn = JButton("Close").apply { addActionListener { bridge.stopAndDetachUI() } }
         windowPanel.add(closeBtn, "span, right")
     }
 
