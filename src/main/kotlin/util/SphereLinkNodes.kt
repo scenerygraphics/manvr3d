@@ -76,6 +76,8 @@ class SphereLinkNodes(
     var linkForwardRange: Int
     var linkBackwardRange: Int
 
+    private var selectedColor = Vector4f(1f, 0.25f, 0.25f, 1f)
+
     init {
         events = sv.scijavaContext?.getService(EventService::class.java)
         numTimePoints = mastodonData.maxTimepoint
@@ -182,7 +184,7 @@ class SphereLinkNodes(
                 mainSpotInstance ?: throw IllegalStateException("InstancedSpot is null, instance was not initialized.")
 
             if (spotRef == null) spotRef = mastodonData.model.graph.vertexRef()
-            val focusedSpotRef = mastodonData.focusModel.getFocusedVertex(spotRef)
+            val selectedSpotRef = mastodonData.selectionModel.selectedVertices
             spots = mastodonData.model.spatioTemporalIndex.getSpatialIndex(timepoint)
             sv.blockOnNewNodes = false
 
@@ -196,7 +198,7 @@ class SphereLinkNodes(
             logger.debug("we have ${spots.size()} spots in this Mastodon time point.")
             bridge.bdvNotifier?.lockUpdates = true
             val vertexRef = mastodonData.model.graph.vertexRef()
-            //        mastodonData.model.graph.lock.readLock().lock()
+            mastodonData.model.graph.lock.readLock().lock()
             for (spot in spots) {
                 vertexRef.refTo(spot)
                 // reuse a spot instance from the pool if the pool is large enough
@@ -233,15 +235,15 @@ class SphereLinkNodes(
                 //            inst.drawEigenVectors(eigenvectors, axisLengths)
 
                 inst.setColorFromSpot(vertexRef, colorizer)
-                // highlight the spot currently selected in BDV
-                if (focusedSpotRef != null && focusedSpotRef.internalPoolIndex == vertexRef.internalPoolIndex) {
-                    inst.instancedProperties["Color"] = { Vector4f(1f, 0.25f, 0.25f, 1f) }
+                // highlight the spots currently selected in BDV
+                selectedSpotRef.find { it.internalPoolIndex == vertexRef.internalPoolIndex }?.let {
+                    inst.instancedProperties["Color"] = { selectedColor }
                 }
 
                 index++
             }
             bridge.bdvNotifier?.lockUpdates = false
-            //        mastodonData.model.graph.lock.readLock().unlock()
+            mastodonData.model.graph.lock.readLock().unlock()
             // turn all leftover spots from the pool invisible
             var i = index
             while (i < spotPool.size) {
@@ -439,7 +441,7 @@ class SphereLinkNodes(
         val selectedSpot = findSpotFromInstance(instance)
         selectedSpot?.let {
             // Remove previous selections first
-            clearSpotSelection()
+            clearSelection()
             mastodonData.focusModel.focusVertex(it)
             mastodonData.highlightModel.highlightVertex(it)
             mastodonData.selectionModel.setSelected(it, true)
@@ -496,17 +498,20 @@ class SphereLinkNodes(
             spot.localize(spotPos)
             val distance = Vector3f(spotPos).distance(localCursorPos)
             logger.debug("Distance to closest point: ${distance}")
-            clearSpotSelection()
+//            clearSpotSelection()
             isValidSelection = distance < sphereScaleFactor * sqrt(spot.boundingSphereRadiusSquared.toFloat()) / 10f * radius
             if (isValidSelection) {
-                mastodonData.focusModel.focusVertex(spot)
-                mastodonData.highlightModel.highlightVertex(spot)
+//                mastodonData.focusModel.focusVertex(spot)
+//                mastodonData.highlightModel.highlightVertex(spot)
                 mastodonData.selectionModel.setSelected(spot, true)
                 findInstanceFromSpot(spot)?.let { bridge.selectedSpotInstances.add(it) }
-                logger.info("Selected spot $spot")
+                logger.info("Selected spot $spot. SelectedSpotInstances is now ${bridge.selectedSpotInstances.size} big.")
+                repaintSelectedSpots()
             } else {
-                bridge.selectedSpotInstances.clear()
+                clearSelection()
+                mastodonData.model.graph.notifyGraphChanged()
             }
+
         } else {
             logger.warn("Couldn't find a closest spot! Maybe there are none in the dataset?")
         }
@@ -514,12 +519,21 @@ class SphereLinkNodes(
         Pair(spot, isValidSelection)
     }
 
+    private fun repaintSelectedSpots() {
+        bridge.selectedSpotInstances.forEach {
+            it.instancedProperties["Color"] = { selectedColor }
+        }
+    }
+
     /** Deletes the currently selected Spots from the graph. */
-    val deleteSelectedSpots: (() -> Unit) = {
-        logger.info("Called deleteSelectedSpot, trying to delete spot now...")
-        mastodonData.selectionModel.selectedVertices.forEach {
-            mastodonData.model.graph.remove(it)
-            logger.info("Deleted spot $it")
+    private val deleteSelectedSpots: (() -> Unit) = {
+        updateQueue.offer {
+            mastodonData.model.graph.lock.readLock().lock()
+            mastodonData.selectionModel.selectedVertices.forEach {
+                mastodonData.model.graph.remove(it)
+                logger.info("Deleted spot $it")
+            }
+            mastodonData.model.graph.lock.readLock().unlock()
         }
     }
 
@@ -570,7 +584,8 @@ class SphereLinkNodes(
         }
     }
 
-    fun clearSpotSelection() {
+    fun clearSelection() {
+        bridge.selectedSpotInstances.clear()
         mastodonData.focusModel.focusVertex(null)
         mastodonData.selectionModel.clearSelection()
         mastodonData.highlightModel.clearHighlight()
@@ -869,86 +884,95 @@ class SphereLinkNodes(
      * If the boolean is true, the coordinates are in world space and will be converted to local Mastodon space first.
      * A spot is passed when the user wants to start from an existing spot (aka clicked on it for starting the track). */
     val addTrackToMastodon = fun(list: List<Pair<Vector3f, SpineGraphVertex>>, isWorldSpace: Boolean, startWithExisting: Spot?) {
-        logger.debug("got this track list: ${list.joinToString { pair ->
-            "${pair.second}" } }")
-        val graph = mastodonData.model.graph
-        var prevVertex = graph.vertexRef()
-        bridge.bdvNotifier?.lockUpdates = true
-        trackPointList.forEachIndexed { index, (pos, tp) ->
-            val v: Spot
-            if (index == 0 && startWithExisting != null) {
-                v = startWithExisting
-            } else {
-                v = graph.addVertex()
+        updateQueue.offer {
+            logger.debug("got this track list: ${list.joinToString { pair ->
+                "${pair.second}" } }")
+            val graph = mastodonData.model.graph
+            var prevVertex = graph.vertexRef()
+            bridge.bdvNotifier?.lockUpdates = true
+            mastodonData.model.graph.lock.readLock()
+            trackPointList.forEachIndexed { index, (pos, tp) ->
+                val v: Spot
+                if (index == 0 && startWithExisting != null) {
+                    v = startWithExisting
+                } else {
+                    v = graph.addVertex()
 //                val localPos = if (isWorldSpace) bridge.sciviewToMastodonCoords(pos) else pos
-                v.init(tp, pos.toDoubleArray(), 10.0)
-                logger.debug("added $v")
+                    v.init(tp, pos.toDoubleArray(), 10.0)
+                    logger.debug("added $v")
+                }
+                // start adding edges once the first vertex was added
+                if (index > 0) {
+                    val e = graph.addEdge(prevVertex, v)
+                    e.init()
+                    logger.debug("added $e")
+                }
+                prevVertex = graph.vertexRef().refTo(v)
             }
-            // start adding edges once the first vertex was added
-            if (index > 0) {
-                val e = graph.addEdge(prevVertex, v)
-                e.init()
-                logger.debug("added $e")
-            }
-            prevVertex = graph.vertexRef().refTo(v)
-        }
-        bridge.bdvNotifier?.lockUpdates = false
+            bridge.bdvNotifier?.lockUpdates = false
+            mastodonData.model.graph.lock.readLock().unlock()
 //        mastodonData.model.graph.notifyGraphChanged()
-        // Once we send the new track to Mastodon, we can assume we no longer need the previews and can clear them
-        logger.info("instances before deletion: ${mainLinkInstance?.instances?.size}")
-        mainLinkInstance?.instances?.removeAll(linkPreviewList.map { it.instance }.toSet())
-        logger.info("instances after deletion: ${mainLinkInstance?.instances?.size}")
-        linkPreviewList.clear()
-        trackPointList.clear()
+            // Once we send the new track to Mastodon, we can assume we no longer need the previews and can clear them
+            logger.info("instances before deletion: ${mainLinkInstance?.instances?.size}")
+            mainLinkInstance?.instances?.removeAll(linkPreviewList.map { it.instance }.toSet())
+            logger.info("instances after deletion: ${mainLinkInstance?.instances?.size}")
+            linkPreviewList.clear()
+            trackPointList.clear()
+        }
     }
 
     /** Lambda that is passed to sciview to send individual spots from sciview to Mastodon
      * or delete them if a spot is already selected, as we use the same VR button for creation and deletion.
      * Takes the timepoint and the sciview position and a flag that determines whether to delete the whole branch.  */
     val addOrRemoveSpot: (tp: Int, sciviewPos: Vector3f, deleteBranch: Boolean) -> Unit = { tp, sciviewPos, deleteBranch ->
-        bridge.bdvNotifier?.lockUpdates = true
-        // Check if a spot is selected, and perform deletion if true
-        val selected = mastodonData.selectionModel.selectedVertices
-        if (!selected.isEmpty()) {
-            if (!deleteBranch) {
-                logger.info("Deleting spot...")
-                deleteSelectedSpots.invoke()
-            } else {
-                logger.info("Deleting the whole branch...")
-                val spotList = mutableListOf<Spot>()
-                // Perform a recursive forward and backward search for each selected spot
-                // This deletes all branches connected to the selected spot(s)
-                selected.forEach {
-                    spotList.addAll(selectBranch(it))
-                }
-                spotList.forEach {
-                    mastodonData.model.graph.remove(it)
-                }
-            }
-            mastodonData.model.graph.notifyGraphChanged()
-        } else {
-            // If no spot is selected, add a new one
-            val pos = bridge.sciviewToMastodonCoords(sciviewPos)
-            val bb = bridge.volumeNode.boundingBox
-            if (bb != null) {
-                if (bb.isInside(pos)) {
-
-                    val v = mastodonData.model.graph.addVertex()
-                    v.init(tp, pos.toDoubleArray(), 10.0)
-                    logger.info("Added new spot with controller at position $pos.")
-                    logger.debug("we now have ${mastodonData.model.graph.vertices().size} spots in total")
+        updateQueue.offer {
+            bridge.bdvNotifier?.lockUpdates = true
+            // Check if a spot is selected, and perform deletion if true
+            val selected = mastodonData.selectionModel.selectedVertices
+            if (!selected.isEmpty()) {
+                if (!deleteBranch) {
+                    deleteSelectedSpots.invoke()
                 } else {
-                    logger.warn("Not adding new spot, $pos is outside the volume!")
+                    logger.info("Deleting the whole branch...")
+                    val spotList = mutableListOf<Spot>()
+                    // Perform a recursive forward and backward search for each selected spot
+                    // This deletes all branches connected to the selected spot(s)
+                    selected.forEach {
+                        spotList.addAll(selectBranch(it))
+                    }
+                    spotList.forEach {
+                        mastodonData.model.graph.remove(it)
+                    }
+                }
+                mastodonData.model.graph.notifyGraphChanged()
+            } else {
+                // If no spot is selected, add a new one
+                val pos = bridge.sciviewToMastodonCoords(sciviewPos)
+                val bb = bridge.volumeNode.boundingBox
+                if (bb != null) {
+                    if (bb.isInside(pos)) {
+
+                        val v = mastodonData.model.graph.addVertex()
+                        v.init(tp, pos.toDoubleArray(), 10.0)
+                        logger.info("Added new spot with controller at position $pos.")
+                        logger.debug("we now have ${mastodonData.model.graph.vertices().size} spots in total")
+                    } else {
+                        logger.warn("Not adding new spot, $pos is outside the volume!")
+                    }
                 }
             }
+            bridge.bdvNotifier?.lockUpdates = false
         }
-        bridge.bdvNotifier?.lockUpdates = false
     }
 
+    /** Recursively traverse every sub-branch connected to a spot. Returns a list of all spots that are connected
+     * to the spot. */
     fun selectBranch(spot: Spot): List<Spot> {
         val spotList = mutableListOf<Spot>()
         val spotRef = mastodonData.model.graph.vertexRef()
         spotRef.refTo(spot)
+        // Add the actual spot to the list first
+        spotList.add(spotRef)
 
         fun forwardSearch(s: Spot) {
             s.outgoingEdges().forEach {

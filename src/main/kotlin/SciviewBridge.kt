@@ -263,8 +263,9 @@ class SciviewBridge: TimepointObserver {
                         spot?.let { s ->
                             adjacentEdges.addAll(s.incomingEdges())
                             adjacentEdges.addAll(s.outgoingEdges())
-                            logger.info("Moving ${s.incomingEdges().size()} incoming and ${s.outgoingEdges().size()} outgoing edges for spot $s.")
-                            logger.info("adjacentEdges are ${adjacentEdges.map { it.internalPoolIndex }.joinToString(", ")}")
+                            logger.debug("Moving ${s.incomingEdges().map { it.internalPoolIndex }.joinToString { ", " }}" +
+                                    "incoming and ${s.outgoingEdges().map { it.internalPoolIndex }.joinToString { ", " }}" +
+                                    "outgoing edges for spot $s.")
                         }
                     }
                 }
@@ -272,16 +273,16 @@ class SciviewBridge: TimepointObserver {
         }
 
         moveInstanceVRDrag = fun (pos: Vector3f) {
+            val newPos = sciviewToMastodonCoords(pos)
+            val movement = newPos - currentControllerPos
             selectedSpotInstances.forEach {
-                val newPos = sciviewToMastodonCoords(pos)
-                val movement = newPos - currentControllerPos
                 it.spatial {
                     position += movement
                 }
-                currentControllerPos = newPos
                 sphereLinkNodes.moveSpotInBDV(it, movement)
-                sphereLinkNodes.updateLinkTransforms(adjacentEdges)
             }
+            sphereLinkNodes.updateLinkTransforms(adjacentEdges)
+            currentControllerPos = newPos
         }
 
         moveInstanceVREnd = fun (pos: Vector3f) {
@@ -721,6 +722,8 @@ class SciviewBridge: TimepointObserver {
         val maxTP = detachedDPP_withOwnTime.max
         // if we play backwards, start with the highest TP once we reach below 0, otherwise play forward and wrap at maxTP
         detachedDPP_withOwnTime.timepoint = if (timepoint < 0) maxTP else timepoint % maxTP
+        // Clear the selection between time points, otherwise we might run into problems
+        sphereLinkNodes.clearSelection()
         updateSciviewContent(detachedDPP_withOwnTime)
         VRTracking?.volumeTPWidget?.text = detachedDPP_withOwnTime.timepoint.toString()
     }
@@ -771,8 +774,7 @@ class SciviewBridge: TimepointObserver {
                         )
                     }
                 } else {
-                    sphereLinkNodes.clearSpotSelection()
-                    selectedSpotInstances.clear()
+                    sphereLinkNodes.clearSelection()
                 }
             }
         )
