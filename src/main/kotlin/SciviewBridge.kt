@@ -55,6 +55,8 @@ import javax.swing.JFrame
 import javax.swing.JPanel
 import kotlin.concurrent.thread
 import kotlin.math.*
+import kotlin.reflect.jvm.ExperimentalReflectionOnLambdas
+import kotlin.reflect.jvm.reflect
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.TimeSource
 
@@ -381,6 +383,7 @@ class SciviewBridge: TimepointObserver {
                     logger.error("Error while waiting for update task to finish: ", e)
                 }
             }
+            logger.info("Worker executor loop ended.")
         }
     }
 
@@ -721,7 +724,11 @@ class SciviewBridge: TimepointObserver {
     fun showTimepoint(timepoint: Int) {
         val maxTP = detachedDPP_withOwnTime.max
         // if we play backwards, start with the highest TP once we reach below 0, otherwise play forward and wrap at maxTP
-        detachedDPP_withOwnTime.timepoint = if (timepoint < 0) maxTP else timepoint % maxTP
+        detachedDPP_withOwnTime.timepoint = when {
+            timepoint < 0 -> maxTP
+            timepoint > maxTP -> 0
+            else -> timepoint
+        }
         // Clear the selection between time points, otherwise we might run into problems
         sphereLinkNodes.clearSelection()
         updateSciviewContent(detachedDPP_withOwnTime)
@@ -869,7 +876,7 @@ class SciviewBridge: TimepointObserver {
 
             // Pass track and spot handling callbacks to sciview
             VRTracking?.trackCreationCallback = sphereLinkNodes.addTrackToMastodon
-            VRTracking?.spotCreateDeleteCallback = sphereLinkNodes.addOrRemoveSpot
+            VRTracking?.spotCreateDeleteCallback = sphereLinkNodes.addOrRemoveSpots
             VRTracking?.spotSelectionCallback = sphereLinkNodes.selectClosestSpotVR
             VRTracking?.spotMoveInitCallback = moveInstanceVRInit
             VRTracking?.spotMoveDragCallback = moveInstanceVRDrag
