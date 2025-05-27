@@ -1048,111 +1048,13 @@ class SphereLinkNodes(
     // list of all link segments
     var links: ConcurrentHashMap<Int, LinkNode> = ConcurrentHashMap()
 
-    var selectionStorage: Node = RichNode()
-    var refSpot: Spot? = null
-    var minTP = 0
-    var maxTP = 0
-
-    fun registerNewSpot(spot: Spot) {
-        if (refSpot != null) refSpot!!.modelGraph.releaseRef(refSpot)
-        refSpot = spot.modelGraph.vertexRef()
-        refSpot?.refTo(spot)
-        minTP = spot.timepoint
-        maxTP = minTP
-    }
-
-    fun hsvToArgb(hue: Int, saturation: Int, value: Int): Vector4f {
+    fun hsvToRGBA(hue: Int, saturation: Int, value: Int): Vector4f {
         val h = hue / 360.0f
         val s = saturation / 100.0f
         val v = value / 100.0f
 
         val rgbInt = Color.HSBtoRGB(h, s, v)
         return unpackRGB(rgbInt)
-    }
-
-    // TODO also deprecated. We loop over all edges without needing recursion
-//    fun updateLinks(TPsInPast: Int, TPsAhead: Int) {
-//        logger.info("updatelinks!")
-//        refSpot?.let {
-//            clearLinksOutsideRange(it.timepoint, it.timepoint)
-//            backwardSearch(it, it.timepoint - TPsInPast)
-//            forwardSearch(it, it.timepoint + TPsAhead)
-//        }
-//        events?.publish(NodeChangedEvent(linksNodesHub))
-//    }
-
-    /** Recursive method that traverses the links of the provided [origin] up until the given timepoint [toTP].
-     * Forward search is enabled when [forward] is true, otherwise it searches backwards. */
-    // TODO probably not needed anymore. Just keeping this here in case I am wrong.
-    private fun searchAndConnectSpots(
-        spot: Spot,
-        toTP: Int,
-        colorizer: GraphColorGenerator<Spot, Link>,
-        forward: Boolean
-    ) {
-        // ensure that the local state of mainInstance is not nullable
-        val mainInstance = mainLinkInstance?: throw IllegalStateException("Main link instance was not initialized")
-
-        if (forward) {
-            // forward search
-            if (spot.timepoint >= toTP) return
-
-//            val originRef = spot.modelGraph.vertexRef()
-            val targetRef = spot.modelGraph.vertexRef() // so we can have two different references
-            if (spot.outgoingEdges().size() > 1) {
-//                logger.info("got ${spot.outgoingEdges().size()} outgoing edges for TP ${spot.timepoint} and spot ${spot.internalPoolIndex}")
-            }
-            // TODO why even use incoming edges in forward search?
-//            for (l in spot.incomingEdges()) {
-//                l.getSource(targetRef)
-//                if (targetRef.timepoint < spot.timepoint && targetRef.timepoint <= toTP) {
-//                    addLink(spot, originRef)
-//                    searchAndConnectSpots(originRef, toTP, colorizer, true)
-//                }
-//            }
-//            for (l in spot.outgoingEdges()) {
-//                if (l.getTarget(targetRef).timepoint > spot.timepoint && targetRef.timepoint <= toTP) {
-//                    addLink(spot, targetRef, mainInstance, colorizer)
-//                    searchAndConnectSpots(targetRef, toTP, colorizer, true)
-//                }
-//            }
-//            spot.modelGraph.releaseRef(spot)
-            spot.modelGraph.releaseRef(targetRef)
-        }
-        //        else {
-//            // TODO do we even need backwards search?
-//            // backwards search
-//            if (spot.timepoint <= toTP) return
-//            val spotRef = spot.modelGraph.vertexRef()
-//            for (l in spot.incomingEdges()) {
-//                if (l.getSource(spotRef).timepoint < spot.timepoint && spotRef.timepoint >= toTP) {
-//                    addLink(spotRef, spot)
-//                    searchAndConnectSpots(spotRef, toTP, colorizer, false)
-//                }
-//            }
-//            for (l in spot.outgoingEdges()) {
-//                if (l.getTarget(spotRef).timepoint < spot.timepoint && spotRef.timepoint >= toTP) {
-//                    addLink(spotRef, spot)
-//                    searchAndConnectSpots(spotRef, toTP, colorizer, false)
-//                }
-//            }
-//        }
-    }
-
-    fun clearAllLinks() {
-        links.clear()
-        minTP = 999999
-        maxTP = -1
-    }
-
-    fun setupEmptyLinks() {
-        links = ConcurrentHashMap()
-        minTP = 999999
-        maxTP = -1
-    }
-
-    companion object {
-        const val NAME_OF_NOT_USED_SPHERES = "not used now"
     }
 }
 
