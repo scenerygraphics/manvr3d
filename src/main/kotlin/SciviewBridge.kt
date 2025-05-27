@@ -305,7 +305,6 @@ class SciviewBridge: TimepointObserver {
                 settings.timeRange = if (predictAll) volumeNode.timepointCount else 1
                 logger.info("Elephant settings.timeRange was set to ${settings.timeRange}.")
                 val start = TimeSource.Monotonic.markNow()
-                logger.info("Predicting spots for this timepoint...")
                 val currentTP = detachedDPP_showsLastTimepoint.timepoint
                 val groupHandle = mastodon.groupManager.createGroupHandle()
                 groupHandle.groupId = 0
@@ -340,7 +339,19 @@ class SciviewBridge: TimepointObserver {
         neighborLinkingCallback = {
             neighborLinkingAction?.let {
                 logger.info("Linking nearest neighbors...")
+                // Setting the NN linking range to always include the whole time range
+                val settings = ElephantMainSettingsManager.getInstance().forwardDefaultStyle
+                settings.timeRange = volumeNode.timepointCount
+                // Store current TP so we can revert to it after the linking
+                val currentTP = detachedDPP_showsLastTimepoint.timepoint
+                // Get the group handle and move its TP to the last TP
+                val groupHandle = mastodon.groupManager.createGroupHandle()
+                groupHandle.groupId = 0
+                val tpAdapter = TimepointModelAdapter(groupHandle.getModel(mastodon.TIMEPOINT))
+                tpAdapter.timepoint = volumeNode.timepointCount
                 (it as NearestNeighborLinkingAction).run()
+                // Revert to the previous TP
+                tpAdapter.timepoint = currentTP
                 sciviewWin.camera?.showMessage("Linked nearest neighbors.", 2f, 0.2f, centered = true)
             }
         }
