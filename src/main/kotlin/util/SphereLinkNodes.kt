@@ -76,6 +76,8 @@ class SphereLinkNodes(
     var linkForwardRange: Int
     var linkBackwardRange: Int
 
+    lateinit var currentColorizer: GraphColorGenerator<Spot, Link>
+
     private var selectedColor = Vector4f(1f, 0.25f, 0.25f, 1f)
 
     init {
@@ -144,6 +146,7 @@ class SphereLinkNodes(
         colorizer: GraphColorGenerator<Spot, Link>
     ) {
         updateQueue.offer {
+            currentColorizer = colorizer
             logger.debug("Called showInstancedSpots")
             val tStart = TimeSource.Monotonic.markNow()
             // only create and add the main instance once during initialization
@@ -234,7 +237,7 @@ class SphereLinkNodes(
                 }
                 //            inst.drawEigenVectors(eigenvectors, axisLengths)
 
-                inst.setColorFromSpot(vertexRef, colorizer)
+                inst.setColorFromSpot(vertexRef, currentColorizer)
                 // highlight the spots currently selected in BDV
                 selectedSpotRef.find { it.internalPoolIndex == vertexRef.internalPoolIndex }?.let {
                     inst.instancedProperties["Color"] = { selectedColor }
@@ -486,8 +489,9 @@ class SphereLinkNodes(
     /** Lambda that performs nearest neighbor search in the current timepoint (Int),
      * based on a position given by the VR controller (Vector3f). The float specifies the maximum range
      * (multiple of [sphereScaleFactor]) in which the selection is counted as such.
+     * The Boolean specifies whether to only add to the selection. If false, clicking away from a spot will deselect everything.
      * @return a Pair of the selected spot itself and a boolean if the selection was valid (in the spot radius). */
-    val selectClosestSpotVR: ((Vector3f, Int, Float) -> Pair<Spot?, Boolean>) = { pos, tp, radius ->
+    val selectClosestSpotVR: ((Vector3f, Int, Float, Boolean) -> Pair<Spot?, Boolean>) = { pos, tp, radius, addOnly ->
         logger.debug("Trying to select the closest spot for sciview pos $pos and tp $tp")
         var isValidSelection = false
         val localCursorPos = bridge.sciviewToMastodonCoords(pos)
@@ -498,18 +502,20 @@ class SphereLinkNodes(
             spot.localize(spotPos)
             val distance = Vector3f(spotPos).distance(localCursorPos)
             logger.debug("Distance to closest point: ${distance}")
-//            clearSpotSelection()
             isValidSelection = distance < sphereScaleFactor * sqrt(spot.boundingSphereRadiusSquared.toFloat()) / 10f * radius
             if (isValidSelection) {
-//                mastodonData.focusModel.focusVertex(spot)
-//                mastodonData.highlightModel.highlightVertex(spot)
-                mastodonData.selectionModel.setSelected(spot, true)
-                findInstanceFromSpot(spot)?.let { bridge.selectedSpotInstances.add(it) }
-                logger.info("Selected spot $spot. SelectedSpotInstances is now ${bridge.selectedSpotInstances.size} big.")
-                repaintSelectedSpots()
+                if (mastodonData.selectionModel.isSelected(spot) && !addOnly) {
+                    deselectSpot(spot)
+                } else {
+                    selectSpot(spot)
+                }
+                logger.debug("Selected spot $spot. SelectedSpotInstances is now ${bridge.selectedSpotInstances.size} big.")
             } else {
-                clearSelection()
-                mastodonData.model.graph.notifyGraphChanged()
+                // Only clear the selection if no drag select behavior is currently active
+                if (!addOnly) {
+                    clearSelection()
+                    mastodonData.model.graph.notifyGraphChanged()
+                }
             }
 
         } else {
@@ -519,21 +525,32 @@ class SphereLinkNodes(
         Pair(spot, isValidSelection)
     }
 
-    private fun repaintSelectedSpots() {
-        bridge.selectedSpotInstances.forEach {
+    private fun selectSpot(spot: Spot) {
+        findInstanceFromSpot(spot)?.let {
+            bridge.selectedSpotInstances.add(it)
             it.instancedProperties["Color"] = { selectedColor }
+            mastodonData.selectionModel.setSelected(spot, true)
         }
+    }
+
+    private fun deselectSpot(spot: Spot) {
+        findInstanceFromSpot(spot)?.let {
+            bridge.selectedSpotInstances.remove(it)
+            it.setColorFromSpot(spot, currentColorizer)
+            mastodonData.selectionModel.setSelected(spot, false)
+        }
+
     }
 
     /** Deletes the currently selected Spots from the graph. */
     private val deleteSelectedSpots: (() -> Unit) = {
         updateQueue.offer {
-            mastodonData.model.graph.lock.readLock().lock()
+            mastodonData.model.graph.lock.writeLock().lock()
             mastodonData.selectionModel.selectedVertices.forEach {
                 mastodonData.model.graph.remove(it)
-                logger.info("Deleted spot $it")
+                logger.debug("Deleted spot $it")
             }
-            mastodonData.model.graph.lock.readLock().unlock()
+            mastodonData.model.graph.lock.writeLock().unlock()
         }
     }
 
@@ -760,8 +777,7 @@ class SphereLinkNodes(
             var inst: InstancedNode.Instance
             var index = 0
             val start = TimeSource.Monotonic.markNow()
-            // TODO use coroutines for this
-            logger.info("iterating over ${mastodonData.model.graph.edges().size} mastodon edges...")
+            logger.debug("iterating over ${mastodonData.model.graph.edges().size} mastodon edges...")
             graph.edges().forEach { edge ->
                 // reuse a link instance from the pool if the pool is large enough
                 if (index < linkPool.size) {
@@ -800,7 +816,7 @@ class SphereLinkNodes(
                 setLinkTransform(link.from, link.to, link.instance)
             }
 
-            logger.info("${links.size} links in the hashmap, ${linkPool.size} link instances in the pool. " +
+            logger.debug("${links.size} links in the hashmap, ${linkPool.size} link instances in the pool. " +
                     "Mastodon provides ${mastodonData.model.graph.edges().size} links.")
             val end = TimeSource.Monotonic.markNow()
 
@@ -890,7 +906,6 @@ class SphereLinkNodes(
             val graph = mastodonData.model.graph
             var prevVertex = graph.vertexRef()
             bridge.bdvNotifier?.lockUpdates = true
-            mastodonData.model.graph.lock.readLock()
             trackPointList.forEachIndexed { index, (pos, tp) ->
                 val v: Spot
                 if (index == 0 && startWithExisting != null) {
@@ -910,8 +925,6 @@ class SphereLinkNodes(
                 prevVertex = graph.vertexRef().refTo(v)
             }
             bridge.bdvNotifier?.lockUpdates = false
-            mastodonData.model.graph.lock.readLock().unlock()
-//        mastodonData.model.graph.notifyGraphChanged()
             // Once we send the new track to Mastodon, we can assume we no longer need the previews and can clear them
             logger.info("instances before deletion: ${mainLinkInstance?.instances?.size}")
             mainLinkInstance?.instances?.removeAll(linkPreviewList.map { it.instance }.toSet())
@@ -924,7 +937,7 @@ class SphereLinkNodes(
     /** Lambda that is passed to sciview to send individual spots from sciview to Mastodon
      * or delete them if a spot is already selected, as we use the same VR button for creation and deletion.
      * Takes the timepoint and the sciview position and a flag that determines whether to delete the whole branch.  */
-    val addOrRemoveSpot: (tp: Int, sciviewPos: Vector3f, deleteBranch: Boolean) -> Unit = { tp, sciviewPos, deleteBranch ->
+    val addOrRemoveSpots: (tp: Int, sciviewPos: Vector3f, deleteBranch: Boolean) -> Unit = { tp, sciviewPos, deleteBranch ->
         updateQueue.offer {
             bridge.bdvNotifier?.lockUpdates = true
             // Check if a spot is selected, and perform deletion if true
@@ -940,9 +953,11 @@ class SphereLinkNodes(
                     selected.forEach {
                         spotList.addAll(selectBranch(it))
                     }
-                    spotList.forEach {
+                    mastodonData.model.graph.lock.writeLock().lock()
+                    spotList.distinct().forEach {
                         mastodonData.model.graph.remove(it)
                     }
+                    mastodonData.model.graph.lock.writeLock().unlock()
                 }
                 mastodonData.model.graph.notifyGraphChanged()
             } else {
