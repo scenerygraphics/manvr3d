@@ -20,6 +20,7 @@ import org.joml.Quaternionf
 import org.joml.Vector3f
 import org.joml.Vector3i
 import org.joml.Vector4f
+import org.mastodon.graph.Edge
 import org.mastodon.mamut.ProjectModel
 import org.mastodon.mamut.SciviewBridge
 import org.mastodon.mamut.model.Link
@@ -253,7 +254,7 @@ class SphereLinkNodes(
                 spotPool[i++].visible = false
             }
             val tElapsed = TimeSource.Monotonic.markNow() - tStart
-            logger.info("Spot updates took $tElapsed")
+            logger.debug("Spot updates took $tElapsed")
         }
     }
 
@@ -820,7 +821,7 @@ class SphereLinkNodes(
                     "Mastodon provides ${mastodonData.model.graph.edges().size} links.")
             val end = TimeSource.Monotonic.markNow()
 
-            logger.info("Edge traversel took ${end - start}.")
+            logger.debug("Edge traversel took ${end - start}.")
             // first update the link colors without providing a colorizer, because no BDV window has been opened yet
             updateLinkColors(colorizer)
 
@@ -898,8 +899,14 @@ class SphereLinkNodes(
 
     /** Passed to EyeTracking to send a list of vertices from sciview to Mastodon.
      * If the boolean is true, the coordinates are in world space and will be converted to local Mastodon space first.
-     * A spot is passed when the user wants to start from an existing spot (aka clicked on it for starting the track). */
-    val addTrackToMastodon = fun(list: List<Pair<Vector3f, SpineGraphVertex>>, isWorldSpace: Boolean, startWithExisting: Spot?) {
+     * The first passed spot indicates that the user wants to start from an existing spot (aka clicked on it for starting the track).
+     * The second spot is used to merge into existing spots. */
+    val addTrackToMastodon = fun(
+        list: List<Pair<Vector3f, SpineGraphVertex>>,
+        isWorldSpace: Boolean,
+        startWithExisting: Spot?,
+        mergeSpot: Spot?
+    ) {
         updateQueue.offer {
             logger.debug("got this track list: ${list.joinToString { pair ->
                 "${pair.second}" } }")
@@ -907,28 +914,34 @@ class SphereLinkNodes(
             var prevVertex = graph.vertexRef()
             bridge.bdvNotifier?.lockUpdates = true
             trackPointList.forEachIndexed { index, (pos, tp) ->
-                val v: Spot
-                if (index == 0 && startWithExisting != null) {
-                    v = startWithExisting
+                // If we reached the last spot in the list and a mergeSpot was passed, use it instead of the spot in the list
+                if (index == trackPointList.size - 1 && mergeSpot != null) {
+                    graph.addEdge(prevVertex, mergeSpot)
                 } else {
-                    v = graph.addVertex()
-//                val localPos = if (isWorldSpace) bridge.sciviewToMastodonCoords(pos) else pos
-                    v.init(tp, pos.toDoubleArray(), 10.0)
-                    logger.debug("added $v")
+                    val v: Spot
+                    if (index == 0 && startWithExisting != null) {
+                        v = startWithExisting
+                    } else {
+                        v = graph.addVertex()
+                        // val localPos = if (isWorldSpace) bridge.sciviewToMastodonCoords(pos) else pos
+                        v.init(tp, pos.toDoubleArray(), 10.0)
+                        logger.debug("added $v")
+                    }
+                    // start adding edges once the first vertex was added
+                    if (index > 0) {
+                        val e = graph.addEdge(prevVertex, v)
+                        e.init()
+                        logger.debug("added $e")
+                    }
+                    prevVertex = graph.vertexRef().refTo(v)
                 }
-                // start adding edges once the first vertex was added
-                if (index > 0) {
-                    val e = graph.addEdge(prevVertex, v)
-                    e.init()
-                    logger.debug("added $e")
-                }
-                prevVertex = graph.vertexRef().refTo(v)
+
             }
             bridge.bdvNotifier?.lockUpdates = false
             // Once we send the new track to Mastodon, we can assume we no longer need the previews and can clear them
-            logger.info("instances before deletion: ${mainLinkInstance?.instances?.size}")
+            logger.debug("instances before deletion: ${mainLinkInstance?.instances?.size}")
             mainLinkInstance?.instances?.removeAll(linkPreviewList.map { it.instance }.toSet())
-            logger.info("instances after deletion: ${mainLinkInstance?.instances?.size}")
+            logger.debug("instances after deletion: ${mainLinkInstance?.instances?.size}")
             linkPreviewList.clear()
             trackPointList.clear()
         }
