@@ -916,7 +916,7 @@ class SphereLinkNodes(
             trackPointList.forEachIndexed { index, (pos, tp) ->
                 // If we reached the last spot in the list and a mergeSpot was passed, use it instead of the spot in the list
                 if (index == trackPointList.size - 1 && mergeSpot != null) {
-                    graph.addEdge(prevVertex, mergeSpot)
+                    graph.addEdge(mergeSpot, prevVertex)
                 } else {
                     val v: Spot
                     if (index == 0 && startWithExisting != null) {
@@ -929,7 +929,7 @@ class SphereLinkNodes(
                     }
                     // start adding edges once the first vertex was added
                     if (index > 0) {
-                        val e = graph.addEdge(prevVertex, v)
+                        val e = graph.addEdge(v, prevVertex)
                         e.init()
                         logger.debug("added $e")
                     }
