@@ -657,11 +657,20 @@ class SciviewBridge: TimepointObserver {
     /** Calls [updateSciviewTPfromBDV] and [SphereLinkNodes.showInstancedSpots] to update the current volume and corresponding spots. */
     fun updateSciviewContent(forThisBdv: DisplayParamsProvider) {
         logger.debug("Called updateSciviewContent")
-        updateSciviewTPfromBDV(forThisBdv)
+        val needsUpdate = updateSciviewTPfromBDV(forThisBdv)
 //        volumeTPWidget.text = volumeNode.currentTimepoint.toString()
-        sphereLinkNodes.showInstancedSpots(forThisBdv.timepoint, forThisBdv.colorizer)
-        sphereLinkNodes.updateLinkVisibility(forThisBdv.timepoint)
-        sphereLinkNodes.updateLinkColors(forThisBdv.colorizer)
+        if (needsUpdate) {
+            sphereLinkNodes.showInstancedSpots(forThisBdv.timepoint, forThisBdv.colorizer)
+            sphereLinkNodes.updateLinkVisibility(forThisBdv.timepoint)
+            sphereLinkNodes.updateLinkColors(forThisBdv.colorizer)
+        }
+    }
+
+    /** Uses the current [bdvWinParamsProvider] to update the sciview spots of the current timepoint. */
+    fun redrawSciviewSpots() {
+        bdvWinParamsProvider?.let {
+            sphereLinkNodes.showInstancedSpots(it.timepoint, it.colorizer)
+        }
     }
 
     /** Takes a timepoint and updates the current BDV window's time accordingly. */
@@ -677,24 +686,25 @@ class SciviewBridge: TimepointObserver {
     var lastUpdatedSciviewTP = 0
     val detachedDPP_showsLastTimepoint: DisplayParamsProvider = DPP_Detached()
 
-    /** Fetch the volume state at the current time point,
-     * then call [volumeIntensityProcessing] to adjust the intensity values */
+    /** Update the sciview content based on the timepoint from the BDV window.
+     * Returns true if the content was updated. */
     @JvmOverloads
     fun updateSciviewTPfromBDV(
         forThisBdv: DisplayParamsProvider = detachedDPP_showsLastTimepoint,
         force: Boolean = false
-    ) {
+    ): Boolean {
 
         if (updateVolAutomatically || force) {
             val currTP = forThisBdv.timepoint
-
             if (currTP != lastUpdatedSciviewTP) {
                 lastUpdatedSciviewTP = currTP
-
                 val tp = forThisBdv.timepoint
                 volumeNode.goToTimepoint(tp)
+                // Only return true
+                return true
             }
         }
+        return false
     }
 
     private fun updateSciviewCameraFromBDV(forThisBdv: MamutViewBdv) {
