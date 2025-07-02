@@ -114,7 +114,7 @@ class SciviewBridgeUIMig(controlledBridge: SciviewBridge, populateThisContainer:
             SpinnerNumberModel(1f, 0.1f, 10f, 0.1f)
         ) { value ->
             bridge.sphereLinkNodes.sphereScaleFactor = value.toFloat()
-            bridge.sphereLinkNodes.updateSphereScales()
+            bridge.redrawSciviewSpots()
         }
 
         // Adding dropdowns for link LUTs and volume colors

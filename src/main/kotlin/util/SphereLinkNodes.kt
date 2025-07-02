@@ -20,22 +20,25 @@ import org.joml.Quaternionf
 import org.joml.Vector3f
 import org.joml.Vector3i
 import org.joml.Vector4f
-import org.mastodon.graph.Edge
 import org.mastodon.mamut.ProjectModel
 import org.mastodon.mamut.SciviewBridge
 import org.mastodon.mamut.model.Link
 import org.mastodon.mamut.model.Spot
 import org.mastodon.spatial.SpatialIndex
 import org.mastodon.ui.coloring.GraphColorGenerator
+import org.mastodon.views.bdv.overlay.util.JamaEigenvalueDecomposition
 import org.scijava.event.EventService
 import sc.iview.SciView
 import sc.iview.commands.demo.advanced.HedgehogAnalysis.SpineGraphVertex
 import spim.fiji.spimdata.interestpoints.InterestPoint
+import util.SphereLinkNodes.ColorMode.LUT
+import util.SphereLinkNodes.ColorMode.SPOT
 import java.awt.Color
+import java.lang.Math
 import java.util.*
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.LinkedBlockingQueue
-import kotlin.collections.ArrayList
+import kotlin.math.pow
 import kotlin.math.sqrt
 import kotlin.time.TimeSource
 
@@ -69,7 +72,7 @@ class SphereLinkNodes(
     private var spotRef: Spot? = null
     var events: EventService? = null
 
-    val sphere = Icosphere(2f, 2)
+    val sphere = Icosphere(1f, 2)
     val cylinder = Cylinder(0.2f, 1f, 6, true, true)
     var mainSpotInstance: InstancedNode? = null
     var mainLinkInstance: InstancedNode? = null
@@ -192,9 +195,14 @@ class SphereLinkNodes(
             spots = mastodonData.model.spatioTemporalIndex.getSpatialIndex(timepoint)
             sv.blockOnNewNodes = false
 
+            // Pre-allocate memory to prevent recreation of variables inside the loop
             val spotPosition = FloatArray(3)
             val covArray = Array(3) { DoubleArray(3) }
             var covariance: Array2DRowRealMatrix
+            var eig: JamaEigenvalueDecomposition
+            var eigVals: DoubleArray
+            var spotVolume: Double
+            var spotRadius: Float
             var inst: InstancedNode.Instance
             var axisLengths: Vector3f
 
@@ -220,18 +228,25 @@ class SphereLinkNodes(
                 // get spot covariance and calculate the scaling and rotation from it
                 vertexRef.localize(spotPosition)
                 spot.getCovariance(covArray)
-                //            covariance = Array2DRowRealMatrix(covArray)
-                //            val (eigenvalues, eigenvectors) = computeEigen(covariance)
+                covariance = Array2DRowRealMatrix(covArray)
 
-                //            val avgScale = eigenvalues.average()
-                //            axisLengths = computeSemiAxes(eigenvalues)
+                // We don't use getSpotRadius() here to prevent re-allocation of variables
+                eig = JamaEigenvalueDecomposition(3)
+                eig.decomposeSymmetric(covArray)
+                eigVals = eig.realEigenvalues
+                spotVolume = 4.0 / 3.0 * Math.PI
+                for (k in eigVals.indices) {
+                    val semiAxis = sqrt(eigVals[k])
+                    spotVolume *= semiAxis
+                }
+                spotRadius = (spotVolume * 3.0 / 4.0 / Math.PI).pow(1.0 / 3.0).toFloat()
 
                 if (vertexRef.internalPoolIndex % 10 == 0) {
-                    logger.debug("Spot ${vertexRef.internalPoolIndex} has radius ${sqrt(vertexRef.boundingSphereRadiusSquared)}")
+                    logger.debug("Spot ${vertexRef.label} has radius $spotRadius")
                 }
                 inst.spatial {
                     position = Vector3f(spotPosition)
-                    scale = Vector3f(sphereScaleFactor * sqrt(spot.boundingSphereRadiusSquared.toFloat()) / 10f)
+                    scale = Vector3f(sphereScaleFactor * spotRadius)
                     // TODO add ellipsoid scale & rotation to instances
                     // scale = axisLengths * sphereScaleFactor * 0.5f
                     // rotation = eigenvectors.toQuaternion()
@@ -275,6 +290,21 @@ class SphereLinkNodes(
             sqrt(eigenvalues[matrixOrder[1]]).toFloat(),
             sqrt(eigenvalues[matrixOrder[2]]).toFloat()
         )
+    }
+
+    /** Calculates the geometric mean from the covariance matrix of a spot. */
+    private fun getSpotRadius(spot: Spot): Float {
+        val covArray = Array(3) { DoubleArray(3) }
+        spot.getCovariance(covArray)
+        val eig = JamaEigenvalueDecomposition(3)
+        eig.decomposeSymmetric(covArray)
+        val eigVals = eig.realEigenvalues
+        var volume = 4.0 / 3.0 * Math.PI
+        for (k in eigVals.indices) {
+            val semiAxis = sqrt(eigVals[k])
+            volume *= semiAxis
+        }
+        return (volume * 3.0 / 4.0 / Math.PI).pow(1.0 / 3.0).toFloat()
     }
 
     /** Debug function to help with aligning ellipsoids with the eigenvectors from the covariance matrix.
@@ -625,7 +655,7 @@ class SphereLinkNodes(
         spot.localize(spotPosition)
         selectedInstance?.spatial {
             position = Vector3f(spotPosition)
-            scale = Vector3f(sphereScaleFactor *  sqrt(spot.boundingSphereRadiusSquared.toFloat()) / 10f)
+            scale = Vector3f(sphereScaleFactor * getSpotRadius(spot))
         }
         val edges = spot.incomingEdges() + spot.outgoingEdges()
         for (edge in edges) {
@@ -640,7 +670,7 @@ class SphereLinkNodes(
      * This does not change the actual radius of the spot, it just changes its apparent scale in sciview. */
     private fun adjustSpotInstanceScale(inst: InstancedNode.Instance) {
         findSpotFromInstance(inst)?.let { spot ->
-            inst.spatial().scale = Vector3f(sphereScaleFactor *  sqrt(spot.boundingSphereRadiusSquared.toFloat()) / 10f)
+            inst.spatial().scale = Vector3f(sphereScaleFactor * getSpotRadius(spot))
         }
     }
 
