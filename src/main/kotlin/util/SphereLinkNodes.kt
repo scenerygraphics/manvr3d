@@ -182,7 +182,7 @@ class SphereLinkNodes(
                     spotPool.add(inst)
                 }
 
-                sv.addNode(mainSpot, parent = sphereParentNode)
+                sv.addNode(mainSpot, parent = sphereParentNode, activePublish = false)
                 mainSpotInstance = mainSpot
             }
 
@@ -794,7 +794,7 @@ class SphereLinkNodes(
                     linkPool.add(mainLink.addInstance())
                 }
                 logger.debug("initialized mainLinkInstance")
-                sv.addNode(mainLink, parent = linkParentNode)
+                sv.addNode(mainLink, parent = linkParentNode, activePublish = false)
                 mainLinkInstance = mainLink
             }
 
@@ -927,36 +927,26 @@ class SphereLinkNodes(
         }
     }
 
-    /** Passed to EyeTracking to send a list of vertices from sciview to Mastodon.
+    /** Passed as callback to sciview to send a list of vertices from sciview to Mastodon.
      * If the boolean is true, the coordinates are in world space and will be converted to local Mastodon space first.
      * The first passed spot indicates that the user wants to start from an existing spot (aka clicked on it for starting the track).
      * The second spot is used to merge into existing spots. */
     val addTrackToMastodon = fun(
-        list: List<Pair<Vector3f, SpineGraphVertex>>,
+        list: List<Pair<Vector3f, SpineGraphVertex>>?,
         isWorldSpace: Boolean,
         startWithExisting: Spot?,
         mergeSpot: Spot?
     ) {
         updateQueue.offer {
-            logger.debug("got this track list: ${list.joinToString { pair ->
-                "${pair.second}" } }")
             val graph = mastodonData.model.graph
             var prevVertex = graph.vertexRef()
             bridge.bdvNotifier?.lockUpdates = true
-            trackPointList.forEachIndexed { index, (pos, tp) ->
-                // If we reached the last spot in the list and a mergeSpot was passed, use it instead of the spot in the list
-                if (index == trackPointList.size - 1 && mergeSpot != null) {
-                    graph.addEdge(mergeSpot, prevVertex)
-                } else {
-                    val v: Spot
-                    if (index == 0 && startWithExisting != null) {
-                        v = startWithExisting
-                    } else {
-                        v = graph.addVertex()
-                        // val localPos = if (isWorldSpace) bridge.sciviewToMastodonCoords(pos) else pos
-                        v.init(tp, pos.toDoubleArray(), 10.0)
-                        logger.debug("added $v")
-                    }
+            // If the list isn't null, it was passed from eyetracking, and we have to treat it accordingly
+            if (list != null) {
+                list.forEachIndexed { index, (pos, vertex) ->
+                    val v = graph.addVertex()
+                    v.init(vertex.timepoint, pos.toDoubleArray(), 10.0)
+                    logger.debug("added $v")
                     // start adding edges once the first vertex was added
                     if (index > 0) {
                         val e = graph.addEdge(v, prevVertex)
@@ -966,6 +956,34 @@ class SphereLinkNodes(
                     prevVertex = graph.vertexRef().refTo(v)
                 }
 
+            } else {
+                // Otherwise we did controller tracking and the points are inside trackPointList and not in list
+                var radius: Float
+                trackPointList.forEachIndexed { index, (pos, tp, rawRadius) ->
+                    // Calculate the equivalent radius in Mastodon from the raw radius from the cursor in sciview scale
+                    radius = bridge.sciviewToMastodonScale().max() * rawRadius
+                    // If we reached the last spot in the list and a mergeSpot was passed, use it instead of the spot in the list
+                    if (index == trackPointList.size - 1 && mergeSpot != null) {
+                        graph.addEdge(mergeSpot, prevVertex)
+                    } else {
+                        val v: Spot
+                        if (index == 0 && startWithExisting != null) {
+                            v = startWithExisting
+                        } else {
+                            v = graph.addVertex()
+                            // val localPos = if (isWorldSpace) bridge.sciviewToMastodonCoords(pos) else pos
+                            v.init(tp, pos.toDoubleArray(), radius.toDouble())
+                            logger.debug("added $v")
+                        }
+                        // start adding edges once the first vertex was added
+                        if (index > 0) {
+                            val e = graph.addEdge(v, prevVertex)
+                            e.init()
+                            logger.debug("added $e")
+                        }
+                        prevVertex = graph.vertexRef().refTo(v)
+                    }
+                }
             }
             bridge.bdvNotifier?.lockUpdates = false
             // Once we send the new track to Mastodon, we can assume we no longer need the previews and can clear them
@@ -980,7 +998,8 @@ class SphereLinkNodes(
     /** Lambda that is passed to sciview to send individual spots from sciview to Mastodon
      * or delete them if a spot is already selected, as we use the same VR button for creation and deletion.
      * Takes the timepoint and the sciview position and a flag that determines whether to delete the whole branch.  */
-    val addOrRemoveSpots: (tp: Int, sciviewPos: Vector3f, deleteBranch: Boolean) -> Unit = { tp, sciviewPos, deleteBranch ->
+    val addOrRemoveSpots: (tp: Int, sciviewPos: Vector3f, radius: Float, deleteBranch: Boolean) -> Unit =
+        { tp, sciviewPos, rawRadius, deleteBranch ->
         updateQueue.offer {
             bridge.bdvNotifier?.lockUpdates = true
             // Check if a spot is selected, and perform deletion if true
@@ -1009,14 +1028,17 @@ class SphereLinkNodes(
                 val bb = bridge.volumeNode.boundingBox
                 if (bb != null) {
                     if (bb.isInside(pos)) {
-
+                        val radius = bridge.sciviewToMastodonScale().max() * rawRadius
+                        logger.info("Raw radius was $rawRadius, got turned into radius $radius.")
                         val v = mastodonData.model.graph.addVertex()
-                        v.init(tp, pos.toDoubleArray(), 10.0)
-                        logger.info("Added new spot with controller at position $pos.")
+                        v.init(tp, pos.toDoubleArray(), radius.toDouble())
+                        logger.info("Added new spot with controller at position $pos, radius is $radius")
                         logger.debug("we now have ${mastodonData.model.graph.vertices().size} spots in total")
                     } else {
                         logger.warn("Not adding new spot, $pos is outside the volume!")
                     }
+                } else {
+                    logger.warn("Not adding new spot, volume has no bounding box!")
                 }
             }
             bridge.bdvNotifier?.lockUpdates = false
@@ -1053,13 +1075,14 @@ class SphereLinkNodes(
 
     data class LinkPreview( val instance: InstancedNode.Instance, val from: Vector3f, val to: Vector3f , val tp: Int)
 
-    val trackPointList = mutableListOf<Pair<Vector3f, Int>>()
+    /** This list is populated point by point during the controller tracking. Each point contains the position, timepoint and radius. */
+    val trackPointList = mutableListOf<Triple<Vector3f, Int, Float>>()
 
     val linkPreviewList = mutableListOf<LinkPreview>()
 
     /** Adds a single link instance to the scene for visual feedback during controller based tracking.
      * No data are sent to Mastodon yet, but we keep track of the points in local space in a [trackPointList]. */
-    val addTrackedPoint: (pos: Vector3f, tp: Int, preview: Boolean) -> Unit = { pos, tp, preview ->
+    val addTrackedPoint: (pos: Vector3f, tp: Int, rawRadius: Float, preview: Boolean) -> Unit = { pos, tp, radius, preview ->
         val localPos = bridge.sciviewToMastodonCoords(pos)
         // Once we tracked the first point, we can start adding link previews
         if (trackPointList.size > 0 && mainLinkInstance != null) {
@@ -1075,7 +1098,7 @@ class SphereLinkNodes(
             linkPreviewList.add(link)
             logger.info("Added a new preview link from ${link.from} to ${link.to}. Visibility is $preview")
         }
-        trackPointList.add(localPos to tp)
+        trackPointList.add(Triple(localPos, tp, radius))
     }
 
     /** Toggle the preview links that are rendered during controller tracking */
