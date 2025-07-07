@@ -454,6 +454,15 @@ class SciviewBridge: TimepointObserver {
         return localCoords
     }
 
+    /** Converts a [Vector3f] from sciview scale to Mastodon scale without looking at positions or flipped coordinate systems.
+     * Returns the scale factor itself if called without passing a vector. */
+    fun sciviewToMastodonScale(v: Vector3f = Vector3f(1f)) : Vector3f {
+        val scale = v
+        scale.div(volumeNode.spatial().scale)
+        scale.div(volumeNode.pixelToWorldRatio)
+        return scale
+    }
+
     /** Convert a [Vector3f] from Mastodon's voxel coordinate space into sciview space,
      * taking the volume's transforms into account. This assumes the volume has a centered origin. */
     fun mastodonToSciviewCoords(v: Vector3f) : Vector3f {
@@ -902,7 +911,7 @@ class SciviewBridge: TimepointObserver {
             VRTracking?.spotMoveInitCallback = moveInstanceVRInit
             VRTracking?.spotMoveDragCallback = moveInstanceVRDrag
             VRTracking?.spotMoveEndCallback = moveInstanceVREnd
-            VRTracking?.spotLinkCallback = sphereLinkNodes.mergeSelectedToClosestSpot
+//            VRTracking?.spotLinkCallback = sphereLinkNodes.mergeSelectedToClosestSpot
             VRTracking?.singleLinkTrackedCallback = sphereLinkNodes.addTrackedPoint
             VRTracking?.toggleTrackingPreviewCallback = sphereLinkNodes.toggleLinkPreviews
             VRTracking?.rebuildGeometryCallback = {
