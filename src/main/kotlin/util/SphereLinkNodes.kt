@@ -497,6 +497,27 @@ class SphereLinkNodes(
         }
     }
 
+    /** Returns a list of all spots within the given [radius] around the [origin] in the current [timepoint]. */
+    private fun findSpotsInRange(timepoint: Int, origin: Vector3f, radius: Float): List<Spot> {
+        val spots = mutableListOf<Spot>()
+        val spatialIndex = mastodonData.model.spatioTemporalIndex.getSpatialIndex(timepoint)
+        if (spatialIndex.size() > 0) {
+            val spotSearch = spatialIndex.incrementalNearestNeighborSearch
+            val p = InterestPoint(0, origin.toDoubleArray())
+            spotSearch.search(p)
+            var found: Spot
+            while (spotSearch.hasNext()) {
+                found = spotSearch.next()
+                if (spotSearch.distance < (radius + getSpotRadius(found) ) ) {
+                    spots.add(mastodonData.model.graph.vertexRef().refTo(found))
+                } else {
+                    break
+                }
+            }
+        }
+        return spots
+    }
+
     /** Given an existing spot, find the closest neighbor in the Mastodon graph. */
     private fun findNearestSpot(spot: Spot): Spot? {
         val spatialIndex = mastodonData.model.spatioTemporalIndex.getSpatialIndex(spot.timepoint)
@@ -517,44 +538,39 @@ class SphereLinkNodes(
         }
     }
 
-    /** Lambda that performs nearest neighbor search in the current timepoint (Int),
-     * based on a position given by the VR controller (Vector3f). The float specifies the maximum range
-     * (multiple of [sphereScaleFactor]) in which the selection is counted as such.
+    /** Lambda that performs incremental nearest neighbor search in the current timepoint (Int),
+     * based on a position given by the VR controller (Vector3f) and a search radius.
      * The Boolean specifies whether to only add to the selection. If false, clicking away from a spot will deselect everything.
-     * @return a Pair of the selected spot itself and a boolean if the selection was valid (in the spot radius). */
-    val selectClosestSpotVR: ((Vector3f, Int, Float, Boolean) -> Pair<Spot?, Boolean>) = { pos, tp, radius, addOnly ->
-        logger.debug("Trying to select the closest spot for sciview pos $pos and tp $tp")
-        var isValidSelection = false
-        val localCursorPos = bridge.sciviewToMastodonCoords(pos)
-        val spot = findNearestSpot(tp, localCursorPos)
-        // only proceed if we found a spot
-        if (spot != null) {
-            val spotPos = FloatArray(3)
-            spot.localize(spotPos)
-            val distance = Vector3f(spotPos).distance(localCursorPos)
-            logger.debug("Distance to closest point: ${distance}")
-            isValidSelection = distance < sphereScaleFactor * sqrt(spot.boundingSphereRadiusSquared.toFloat()) / 10f * radius
-            if (isValidSelection) {
-                if (mastodonData.selectionModel.isSelected(spot) && !addOnly) {
-                    deselectSpot(spot)
-                } else {
-                    selectSpot(spot)
+     * @return a Pair of the first selected spot itself and a boolean if the selection was valid (in the spot radius). */
+    val selectClosestSpotsVR: ((pos: Vector3f, tp: Int, radius: Float, addOnly: Boolean) -> Pair<Spot?, Boolean>) =
+        { pos, tp, radius, addOnly ->
+            val start = TimeSource.Monotonic.markNow()
+            val localPos = bridge.sciviewToMastodonCoords(pos)
+            val localRadius = bridge.sciviewToMastodonScale().max() * radius
+            val spots = findSpotsInRange(tp, localPos, localRadius)
+            // only proceed if we found at least one spot
+            if (spots.isNotEmpty()) {
+                spots.forEach { spot ->
+                    if (mastodonData.selectionModel.isSelected(spot) && !addOnly) {
+                        deselectSpot(spot)
+                    } else {
+                        selectSpot(spot)
+                    }
                 }
-                logger.debug("Selected spot $spot. SelectedSpotInstances is now ${bridge.selectedSpotInstances.size} big.")
+                logger.debug("Selecting spots in range took ${TimeSource.Monotonic.markNow() - start}")
+                // Return the first spot if we found one
+                Pair(spots.firstOrNull(), true)
             } else {
                 // Only clear the selection if no drag select behavior is currently active
                 if (!addOnly) {
                     clearSelection()
                     mastodonData.model.graph.notifyGraphChanged()
                 }
+                Pair(spots.firstOrNull(), false)
             }
 
-        } else {
-            logger.warn("Couldn't find a closest spot! Maybe there are none in the dataset?")
+
         }
-        // Return the spot if we found it, otherwise it is null
-        Pair(spot, isValidSelection)
-    }
 
     private fun selectSpot(spot: Spot) {
         findInstanceFromSpot(spot)?.let {
@@ -958,10 +974,10 @@ class SphereLinkNodes(
 
             } else {
                 // Otherwise we did controller tracking and the points are inside trackPointList and not in list
-                var radius: Float
-                trackPointList.forEachIndexed { index, (pos, tp, rawRadius) ->
+                var localRadius: Float
+                trackPointList.forEachIndexed { index, (pos, tp, radius) ->
                     // Calculate the equivalent radius in Mastodon from the raw radius from the cursor in sciview scale
-                    radius = bridge.sciviewToMastodonScale().max() * rawRadius
+                    localRadius = bridge.sciviewToMastodonScale().max() * radius
                     // If we reached the last spot in the list and a mergeSpot was passed, use it instead of the spot in the list
                     if (index == trackPointList.size - 1 && mergeSpot != null) {
                         graph.addEdge(mergeSpot, prevVertex)
@@ -972,7 +988,7 @@ class SphereLinkNodes(
                         } else {
                             v = graph.addVertex()
                             // val localPos = if (isWorldSpace) bridge.sciviewToMastodonCoords(pos) else pos
-                            v.init(tp, pos.toDoubleArray(), radius.toDouble())
+                            v.init(tp, pos.toDoubleArray(), localRadius.toDouble())
                             logger.debug("added $v")
                         }
                         // start adding edges once the first vertex was added
@@ -999,7 +1015,7 @@ class SphereLinkNodes(
      * or delete them if a spot is already selected, as we use the same VR button for creation and deletion.
      * Takes the timepoint and the sciview position and a flag that determines whether to delete the whole branch.  */
     val addOrRemoveSpots: (tp: Int, sciviewPos: Vector3f, radius: Float, deleteBranch: Boolean) -> Unit =
-        { tp, sciviewPos, rawRadius, deleteBranch ->
+        { tp, sciviewPos, radius, deleteBranch ->
         updateQueue.offer {
             bridge.bdvNotifier?.lockUpdates = true
             // Check if a spot is selected, and perform deletion if true
@@ -1028,11 +1044,10 @@ class SphereLinkNodes(
                 val bb = bridge.volumeNode.boundingBox
                 if (bb != null) {
                     if (bb.isInside(pos)) {
-                        val radius = bridge.sciviewToMastodonScale().max() * rawRadius
-                        logger.info("Raw radius was $rawRadius, got turned into radius $radius.")
+                        val localRadius = bridge.sciviewToMastodonScale().max() * radius
                         val v = mastodonData.model.graph.addVertex()
-                        v.init(tp, pos.toDoubleArray(), radius.toDouble())
-                        logger.info("Added new spot with controller at position $pos, radius is $radius")
+                        v.init(tp, pos.toDoubleArray(), localRadius.toDouble())
+                        logger.info("Added new spot with controller at position $pos, radius is $localRadius")
                         logger.debug("we now have ${mastodonData.model.graph.vertices().size} spots in total")
                     } else {
                         logger.warn("Not adding new spot, $pos is outside the volume!")

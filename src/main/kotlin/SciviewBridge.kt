@@ -55,8 +55,6 @@ import javax.swing.JFrame
 import javax.swing.JPanel
 import kotlin.concurrent.thread
 import kotlin.math.*
-import kotlin.reflect.jvm.ExperimentalReflectionOnLambdas
-import kotlin.reflect.jvm.reflect
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.TimeSource
 
@@ -894,7 +892,6 @@ class SciviewBridge: TimepointObserver {
     fun launchVR(withEyetracking: Boolean = true) {
         isVRactive = true
 
-
         thread {
             if (withEyetracking) {
                 VRTracking = EyeTracking(sciviewWin)
@@ -907,11 +904,10 @@ class SciviewBridge: TimepointObserver {
             // Pass track and spot handling callbacks to sciview
             VRTracking?.trackCreationCallback = sphereLinkNodes.addTrackToMastodon
             VRTracking?.spotCreateDeleteCallback = sphereLinkNodes.addOrRemoveSpots
-            VRTracking?.spotSelectionCallback = sphereLinkNodes.selectClosestSpotVR
+            VRTracking?.spotSelectionCallback = sphereLinkNodes.selectClosestSpotsVR
             VRTracking?.spotMoveInitCallback = moveInstanceVRInit
             VRTracking?.spotMoveDragCallback = moveInstanceVRDrag
             VRTracking?.spotMoveEndCallback = moveInstanceVREnd
-//            VRTracking?.spotLinkCallback = sphereLinkNodes.mergeSelectedToClosestSpot
             VRTracking?.singleLinkTrackedCallback = sphereLinkNodes.addTrackedPoint
             VRTracking?.toggleTrackingPreviewCallback = sphereLinkNodes.toggleLinkPreviews
             VRTracking?.rebuildGeometryCallback = {
@@ -961,7 +957,6 @@ class SciviewBridge: TimepointObserver {
 
         // ensure that the volume is visible again (could be turned invisible during the calibration)
         volumeNode.visible = true
-        sciviewWin.centerOnNode(axesParent)
         sciviewWin.requestPropEditorRefresh()
         registerKeyboardHandlers()
         centerCameraOnVolume()
