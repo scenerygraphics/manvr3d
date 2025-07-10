@@ -770,8 +770,8 @@ class SciviewBridge: TimepointObserver {
         val handler = sciviewWin.sceneryInputHandler ?: throw IllegalStateException("Could not find input handler!")
 
         val behaviourCollection = arrayOf(
-            BehaviourTriple(desc_DEC_SPH, key_DEC_SPH, { _, _ -> sphereLinkNodes.decreaseSphereScale(); updateUI() }),
-            BehaviourTriple(desc_INC_SPH, key_INC_SPH, { _, _ -> sphereLinkNodes.increaseSphereScale(); updateUI() }),
+            BehaviourTriple(desc_DEC_SPH, key_DEC_SPH, { _, _ -> sphereLinkNodes.decreaseSphereInstanceScale(); updateUI() }),
+            BehaviourTriple(desc_INC_SPH, key_INC_SPH, { _, _ -> sphereLinkNodes.increaseSphereInstanceScale(); updateUI() }),
             BehaviourTriple(desc_DEC_LINK, key_DEC_LINK, { _, _ -> sphereLinkNodes.decreaseLinkScale(); updateUI() }),
             BehaviourTriple(desc_INC_LINK, key_INC_LINK, { _, _ -> sphereLinkNodes.increaseLinkScale(); updateUI() }),
             BehaviourTriple(desc_CTRL_WIN, key_CTRL_WIN, { _, _ -> createAndShowControllingUI() }),
@@ -929,8 +929,8 @@ class SciviewBridge: TimepointObserver {
             VRTracking?.getSelectionCallback = {
                 selectedSpotInstances.toList()
             }
-            VRTracking?.scaleSpotsCallback = {factor ->
-                sphereLinkNodes.changeSpotRadius(selectedSpotInstances, factor)
+            VRTracking?.scaleSpotsCallback = {factor, update ->
+                sphereLinkNodes.changeSpotRadius(selectedSpotInstances, factor, update)
             }
 
             var timeSinceUndo = TimeSource.Monotonic.markNow()

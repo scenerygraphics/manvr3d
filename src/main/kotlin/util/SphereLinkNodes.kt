@@ -597,9 +597,10 @@ class SphereLinkNodes(
             mastodonData.model.graph.lock.writeLock().lock()
             mastodonData.selectionModel.selectedVertices.forEach {
                 mastodonData.model.graph.remove(it)
-                logger.debug("Deleted spot $it")
+                logger.debug("Deleted spot {}", it)
             }
             mastodonData.model.graph.lock.writeLock().unlock()
+            bridge.selectedSpotInstances.clear()
         }
     }
 
@@ -632,7 +633,7 @@ class SphereLinkNodes(
                     graph.remove(edge)
                     val e = graph.addEdge(sourceRef, selectedRef)
                     e.init()
-                    logger.debug("Merge event: added incoming edge $e, deleted old edge $edge")
+                    logger.debug("Merge event: added incoming edge {}, deleted old edge {}", e, edge)
                 }
 
                 val outgoing = nearestRef.outgoingEdges() + selectedRef.outgoingEdges()
@@ -641,7 +642,7 @@ class SphereLinkNodes(
                     graph.remove(edge)
                     val e = graph.addEdge(selectedRef, targetRef)
                     e.init()
-                    logger.debug("Merge event: added outgoing edge $e, deleted old edge $edge")
+                    logger.debug("Merge event: added outgoing edge {}, deleted old edge {}", e, edge)
                 }
                 graph.remove(nearestRef)
                 bridge.bdvNotifier?.lockUpdates = false
@@ -693,8 +694,9 @@ class SphereLinkNodes(
     }
 
     /** Called when a spot's radius is changed in the sciview window. This changes both the actual spot radius in BDV
-     * and its apparent scale in sciview. */
-    fun changeSpotRadius(instances: List<InstancedNode.Instance>, factor: Float) {
+     * and its apparent scale in sciview. Setting the [update] flag to false allows deferring the actual Mastodon update.
+     * This can be used for drag behaviors in VR that don't require continuous Mastodon updating.*/
+    fun changeSpotRadius(instances: List<InstancedNode.Instance>, factor: Float, update: Boolean = true) {
         instances.forEach {
             val spot = findSpotFromInstance(it)
             val covArray = Array(3) { DoubleArray(3) }
@@ -705,8 +707,11 @@ class SphereLinkNodes(
                 }
             }
             spot?.setCovariance(covArray)
-            mastodonData.model.graph.notifyGraphChanged()
-            it.spatial().scale *= Vector3f(factor)
+            if (update) {
+                mastodonData.model.setUndoPoint()
+                mastodonData.model.graph.notifyGraphChanged()
+            }
+            it.spatial().scale *= Vector3f(sqrt(factor))
         }
     }
 
@@ -744,7 +749,7 @@ class SphereLinkNodes(
         return Vector4f(r, g, b, 1.0f)
     }
 
-    fun updateSphereScales() {
+    fun updateSphereInstanceScales() {
         val tStart = TimeSource.Monotonic.markNow()
         mainSpotInstance?.instances?.forEach { s ->
             adjustSpotInstanceScale(s)
@@ -753,16 +758,16 @@ class SphereLinkNodes(
         logger.debug("Updating spot scale to $sphereScaleFactor, took $tElapsed")
     }
 
-    fun decreaseSphereScale() {
+    fun decreaseSphereInstanceScale() {
         sphereScaleFactor -= 0.1f
         if (sphereScaleFactor < 0.1f) sphereScaleFactor = 0.1f
-        updateSphereScales()
+        updateSphereInstanceScales()
         bridge.associatedUI?.updatePaneValues()
     }
 
-    fun increaseSphereScale() {
+    fun increaseSphereInstanceScale() {
         sphereScaleFactor += 0.1f
-        updateSphereScales()
+        updateSphereInstanceScales()
         bridge.associatedUI?.updatePaneValues()
     }
 
@@ -907,7 +912,7 @@ class SphereLinkNodes(
     }
 
     /** Traverse and update the colors of all [links] using the provided color mode [cm].
-     * When set to [cm.SPOT], it uses the [colorizer] to get the spot colors. */
+     * When set to [ColorMode.SPOT], it uses the [colorizer] to get the spot colors. */
     fun updateLinkColors (
         colorizer: GraphColorGenerator<Spot, Link>?,
         cm: ColorMode =  currentColorMode
@@ -962,12 +967,12 @@ class SphereLinkNodes(
                 list.forEachIndexed { index, (pos, vertex) ->
                     val v = graph.addVertex()
                     v.init(vertex.timepoint, pos.toDoubleArray(), 10.0)
-                    logger.debug("added $v")
+                    logger.debug("added {}", v)
                     // start adding edges once the first vertex was added
                     if (index > 0) {
                         val e = graph.addEdge(v, prevVertex)
                         e.init()
-                        logger.debug("added $e")
+                        logger.debug("added {}", e)
                     }
                     prevVertex = graph.vertexRef().refTo(v)
                 }
@@ -989,13 +994,13 @@ class SphereLinkNodes(
                             v = graph.addVertex()
                             // val localPos = if (isWorldSpace) bridge.sciviewToMastodonCoords(pos) else pos
                             v.init(tp, pos.toDoubleArray(), localRadius.toDouble())
-                            logger.debug("added $v")
+                            logger.debug("added {}", v)
                         }
                         // start adding edges once the first vertex was added
                         if (index > 0) {
                             val e = graph.addEdge(v, prevVertex)
                             e.init()
-                            logger.debug("added $e")
+                            logger.debug("added {}", e)
                         }
                         prevVertex = graph.vertexRef().refTo(v)
                     }
