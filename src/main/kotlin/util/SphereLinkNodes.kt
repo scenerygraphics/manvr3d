@@ -20,6 +20,8 @@ import org.joml.Quaternionf
 import org.joml.Vector3f
 import org.joml.Vector3i
 import org.joml.Vector4f
+import org.mastodon.collection.RefCollections
+import org.mastodon.collection.RefList
 import org.mastodon.mamut.ProjectModel
 import org.mastodon.mamut.SciviewBridge
 import org.mastodon.mamut.model.Link
@@ -498,8 +500,8 @@ class SphereLinkNodes(
     }
 
     /** Returns a list of all spots within the given [radius] around the [origin] in the current [timepoint]. */
-    private fun findSpotsInRange(timepoint: Int, origin: Vector3f, radius: Float): List<Spot> {
-        val spots = mutableListOf<Spot>()
+    private fun findSpotsInRange(timepoint: Int, origin: Vector3f, radius: Float): RefList<Spot> {
+        val spots = RefCollections.createRefList(mastodonData.model.graph.vertices())
         val spatialIndex = mastodonData.model.spatioTemporalIndex.getSpatialIndex(timepoint)
         if (spatialIndex.size() > 0) {
             val spotSearch = spatialIndex.incrementalNearestNeighborSearch
@@ -509,7 +511,7 @@ class SphereLinkNodes(
             while (spotSearch.hasNext()) {
                 found = spotSearch.next()
                 if (spotSearch.distance < (radius + getSpotRadius(found) ) ) {
-                    spots.add(mastodonData.model.graph.vertexRef().refTo(found))
+                    spots.add(found)
                 } else {
                     break
                 }
@@ -681,9 +683,9 @@ class SphereLinkNodes(
         }
     }
 
-    /** Takes a single instance, looks for the corresponding spot in the current timepoint,
-     * and updates the instance's scale based on the current [sphereScaleFactor] and the spot's radius.
-     * This does not change the actual radius of the spot, it just changes its apparent scale in sciview. */
+    /** THIS IS A PURELY COSMETIC SETTING AND DOESN'T AFFECT THE TRUE RADIUS.
+     * Takes a single instance, looks for the corresponding spot in the current timepoint,
+     * and updates the instance's scale based on the current [sphereScaleFactor] and the spot's radius. */
     private fun adjustSpotInstanceScale(inst: InstancedNode.Instance) {
         findSpotFromInstance(inst)?.let { spot ->
             inst.spatial().scale = Vector3f(sphereScaleFactor * getSpotRadius(spot))
@@ -691,22 +693,20 @@ class SphereLinkNodes(
     }
 
     /** Called when a spot's radius is changed in the sciview window. This changes both the actual spot radius in BDV
-     * and its apparent scale in sciview.
-     * Setting the [direction] to true means to scale up, false means scale down. */
-    fun changeSpotRadius(instances: List<InstancedNode.Instance>, direction: Boolean) {
-        val factor = if (direction) 1.1 else 0.9
+     * and its apparent scale in sciview. */
+    fun changeSpotRadius(instances: List<InstancedNode.Instance>, factor: Float) {
         instances.forEach {
             val spot = findSpotFromInstance(it)
             val covArray = Array(3) { DoubleArray(3) }
             spot?.getCovariance(covArray)
             for (i in covArray.indices) {
                 for (j in covArray[i].indices) {
-                    covArray[i][j] *= factor
+                    covArray[i][j] *= factor.toDouble()
                 }
             }
             spot?.setCovariance(covArray)
             mastodonData.model.graph.notifyGraphChanged()
-            it.spatial().scale *= Vector3f(factor.toFloat())
+            it.spatial().scale *= Vector3f(factor)
         }
     }
 

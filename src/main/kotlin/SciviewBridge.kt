@@ -781,9 +781,9 @@ class SciviewBridge: TimepointObserver {
             BehaviourTriple(desc_NEXT_TP, key_NEXT_TP, { _, _ -> detachedDPP_withOwnTime.nextTimepoint()
                 updateSciviewContent(detachedDPP_withOwnTime) }),
             BehaviourTriple("Scale Instance Up", "ctrl E",
-                {_, _ -> sphereLinkNodes.changeSpotRadius(selectedSpotInstances, true)}),
+                {_, _ -> sphereLinkNodes.changeSpotRadius(selectedSpotInstances, 1.1f)}),
             BehaviourTriple("Scale Instance Down", "ctrl Q",
-                {_, _ -> sphereLinkNodes.changeSpotRadius(selectedSpotInstances, false)}),
+                {_, _ -> sphereLinkNodes.changeSpotRadius(selectedSpotInstances, 0.9f)}),
         )
 
         behaviourCollection.forEach {
@@ -904,7 +904,7 @@ class SciviewBridge: TimepointObserver {
             // Pass track and spot handling callbacks to sciview
             VRTracking?.trackCreationCallback = sphereLinkNodes.addTrackToMastodon
             VRTracking?.spotCreateDeleteCallback = sphereLinkNodes.addOrRemoveSpots
-            VRTracking?.spotSelectionCallback = sphereLinkNodes.selectClosestSpotsVR
+            VRTracking?.spotSelectCallback = sphereLinkNodes.selectClosestSpotsVR
             VRTracking?.spotMoveInitCallback = moveInstanceVRInit
             VRTracking?.spotMoveDragCallback = moveInstanceVRDrag
             VRTracking?.spotMoveEndCallback = moveInstanceVREnd
@@ -926,6 +926,12 @@ class SciviewBridge: TimepointObserver {
             VRTracking?.trainFlowCallback = null
             VRTracking?.neighborLinkingCallback = neighborLinkingCallback
             VRTracking?.stageSpotsCallback = stageSpotsCallback
+            VRTracking?.getSelectionCallback = {
+                selectedSpotInstances.toList()
+            }
+            VRTracking?.scaleSpotsCallback = {factor ->
+                sphereLinkNodes.changeSpotRadius(selectedSpotInstances, factor)
+            }
 
             var timeSinceUndo = TimeSource.Monotonic.markNow()
             VRTracking?.mastodonUndoCallback = {
