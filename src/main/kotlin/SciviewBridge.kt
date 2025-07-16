@@ -934,10 +934,14 @@ class SciviewBridge: TimepointObserver {
             }
 
             var timeSinceUndo = TimeSource.Monotonic.markNow()
-            VRTracking?.mastodonUndoCallback = {
+            VRTracking?.mastodonUndoRedoCallback = { undo ->
                 val now = TimeSource.Monotonic.markNow()
                 if (now.minus(timeSinceUndo) > 0.5.seconds) {
-                    mastodon.model.undo()
+                    if (undo) {
+                        mastodon.model.undo()
+                    } else {
+                        mastodon.model.redo()
+                    }
                     logger.info("Undid last change.")
                     timeSinceUndo = now
                 }
