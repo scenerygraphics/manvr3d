@@ -1019,8 +1019,8 @@ class SphereLinkNodes(
     /** Lambda that is passed to sciview to send individual spots from sciview to Mastodon
      * or delete them if a spot is already selected, as we use the same VR button for creation and deletion.
      * Takes the timepoint and the sciview position and a flag that determines whether to delete the whole branch.  */
-    val addOrRemoveSpots: (tp: Int, sciviewPos: Vector3f, radius: Float, deleteBranch: Boolean) -> Unit =
-        { tp, sciviewPos, radius, deleteBranch ->
+    val addOrRemoveSpots: (tp: Int, sciviewPos: Vector3f, radius: Float, deleteBranch: Boolean, isWorldSpace: Boolean) -> Unit =
+        { tp, sciviewPos, radius, deleteBranch, isWorldSpace ->
         updateQueue.offer {
             bridge.bdvNotifier?.lockUpdates = true
             // Check if a spot is selected, and perform deletion if true
@@ -1045,14 +1045,18 @@ class SphereLinkNodes(
                 mastodonData.model.graph.notifyGraphChanged()
             } else {
                 // If no spot is selected, add a new one
-                val pos = bridge.sciviewToMastodonCoords(sciviewPos)
+                val pos = if (isWorldSpace) {
+                    bridge.sciviewToMastodonCoords(sciviewPos)
+                } else {
+                    sciviewPos
+                }
                 val bb = bridge.volumeNode.boundingBox
                 if (bb != null) {
                     if (bb.isInside(pos)) {
                         val localRadius = bridge.sciviewToMastodonScale().max() * radius
                         val v = mastodonData.model.graph.addVertex()
                         v.init(tp, pos.toDoubleArray(), localRadius.toDouble())
-                        logger.info("Added new spot with controller at position $pos, radius is $localRadius")
+                        logger.info("Added new spot at position $pos, radius is $localRadius")
                         logger.debug("we now have ${mastodonData.model.graph.vertices().size} spots in total")
                     } else {
                         logger.warn("Not adding new spot, $pos is outside the volume!")
