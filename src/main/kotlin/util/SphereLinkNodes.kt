@@ -466,7 +466,7 @@ class SphereLinkNodes(
         return if (results.isNotEmpty()) {
             results.entries.first().value.instance
         } else {
-            logger.info("Couldnt find an instance for ${link.internalPoolIndex}")
+            logger.info("Couldnt find an instance for link ${link.internalPoolIndex}")
             null
         }
     }
@@ -542,7 +542,7 @@ class SphereLinkNodes(
 
     /** Lambda that performs incremental nearest neighbor search in the current timepoint (Int),
      * based on a position given by the VR controller (Vector3f) and a search radius.
-     * The Boolean specifies whether to only add to the selection. If false, clicking away from a spot will deselect everything.
+     * The Boolean addOnly specifies whether to only add to the selection. If false, clicking away from a spot will deselect everything.
      * @return a Pair of the first selected spot itself and a boolean if the selection was valid (in the spot radius). */
     val selectClosestSpotsVR: ((pos: Vector3f, tp: Int, radius: Float, addOnly: Boolean) -> Pair<Spot?, Boolean>) =
         { pos, tp, radius, addOnly ->
@@ -877,7 +877,7 @@ class SphereLinkNodes(
             updateLinkColors(colorizer)
 
             val tElapsed = TimeSource.Monotonic.markNow() - tStart
-            logger.info("Total link updates (with coloring) took $tElapsed")
+            logger.debug("Total link updates (with coloring) took $tElapsed")
 
         }
     }
@@ -1008,11 +1008,12 @@ class SphereLinkNodes(
             }
             bridge.bdvNotifier?.lockUpdates = false
             // Once we send the new track to Mastodon, we can assume we no longer need the previews and can clear them
-            logger.debug("instances before deletion: ${mainLinkInstance?.instances?.size}")
+            logger.info("instances before deletion: ${mainLinkInstance?.instances?.size}")
             mainLinkInstance?.instances?.removeAll(linkPreviewList.map { it.instance }.toSet())
-            logger.debug("instances after deletion: ${mainLinkInstance?.instances?.size}")
+            logger.info("instances after deletion: ${mainLinkInstance?.instances?.size}")
             linkPreviewList.clear()
             trackPointList.clear()
+            clearSelection()
         }
     }
 
@@ -1041,6 +1042,7 @@ class SphereLinkNodes(
                         mastodonData.model.graph.remove(it)
                     }
                     mastodonData.model.graph.lock.writeLock().unlock()
+                    clearSelection()
                 }
                 mastodonData.model.graph.notifyGraphChanged()
             } else {
@@ -1120,7 +1122,7 @@ class SphereLinkNodes(
             setLinkTransform(trackPointList.last().first, localPos, inst)
             val link = LinkPreview(inst, trackPointList.last().first, localPos, tp)
             linkPreviewList.add(link)
-            logger.info("Added a new preview link from ${link.from} to ${link.to}. Visibility is $preview")
+            logger.debug("Added a new preview link from ${link.from} to ${link.to}. Visibility is $preview")
         }
         trackPointList.add(Triple(localPos, tp, radius))
     }
