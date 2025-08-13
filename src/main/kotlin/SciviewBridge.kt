@@ -893,12 +893,10 @@ class SciviewBridge: TimepointObserver {
         isVRactive = true
 
         thread {
-            if (withEyetracking) {
-                VRTracking = EyeTracking(sciviewWin)
-                (VRTracking as EyeTracking).run()
+            VRTracking = if (withEyetracking) {
+                EyeTracking(sciviewWin)
             } else {
-                VRTracking = CellTrackingBase(sciviewWin)
-                VRTracking?.run()
+                CellTrackingBase(sciviewWin)
             }
 
             // Pass track and spot handling callbacks to sciview
@@ -911,7 +909,7 @@ class SciviewBridge: TimepointObserver {
             VRTracking?.singleLinkTrackedCallback = sphereLinkNodes.addTrackedPoint
             VRTracking?.toggleTrackingPreviewCallback = sphereLinkNodes.toggleLinkPreviews
             VRTracking?.rebuildGeometryCallback = {
-                logger.info("Called rebuildGeometryCallback")
+                logger.debug("Called rebuildGeometryCallback")
                 sphereLinkNodes.showInstancedSpots(
                     detachedDPP_showsLastTimepoint.timepoint,
                     detachedDPP_showsLastTimepoint.colorizer
@@ -951,6 +949,12 @@ class SciviewBridge: TimepointObserver {
             // register the bridge as an observer to the timepoint changes by the user in VR,
             // allowing us to get updates via the onTimepointChanged() function
             VRTracking?.registerObserver(this)
+
+            if (withEyetracking) {
+                (VRTracking as EyeTracking).run()
+            } else {
+                VRTracking?.run()
+            }
         }
     }
 
