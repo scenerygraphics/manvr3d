@@ -5,6 +5,7 @@ package org.mastodon.mamut
 import bdv.viewer.Source
 import bdv.viewer.SourceAndConverter
 import graphics.scenery.*
+import graphics.scenery.backends.RenderConfigReader
 import graphics.scenery.controls.behaviours.SelectCommand
 import graphics.scenery.controls.behaviours.WithCameraDelegateBase
 import graphics.scenery.primitives.Cylinder
@@ -898,7 +899,7 @@ class SciviewBridge: TimepointObserver {
             } else {
                 CellTrackingBase(sciviewWin)
             }
-
+            sciviewWin.getSceneryRenderer()?.setRenderingQuality(RenderConfigReader.RenderingQuality.Low)
             // Pass track and spot handling callbacks to sciview
             VRTracking?.trackCreationCallback = sphereLinkNodes.addTrackToMastodon
             VRTracking?.spotCreateDeleteCallback = sphereLinkNodes.addOrRemoveSpots
@@ -943,7 +944,13 @@ class SciviewBridge: TimepointObserver {
                     logger.info("Undid last change.")
                     timeSinceUndo = now
                 }
+            }
 
+            VRTracking?.setSpotVisCallback = { state ->
+                sphereLinkNodes.mainSpotInstance?.visible = state
+            }
+            VRTracking?.setTrackVisCallback = {state ->
+                sphereLinkNodes.mainLinkInstance?.visible = state
             }
 
             // register the bridge as an observer to the timepoint changes by the user in VR,
