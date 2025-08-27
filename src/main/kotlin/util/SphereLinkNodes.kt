@@ -294,12 +294,10 @@ class SphereLinkNodes(
         )
     }
 
-    /** Calculates the geometric mean from the covariance matrix of a spot. */
     private fun getSpotRadius(spot: Spot): Float {
         val covArray = Array(3) { DoubleArray(3) }
         spot.getCovariance(covArray)
-        val eig = JamaEigenvalueDecomposition(3)
-        eig.decomposeSymmetric(covArray)
+        val eig = EigenDecomposition(Array2DRowRealMatrix(covArray))
         val eigVals = eig.realEigenvalues
         var volume = 4.0 / 3.0 * Math.PI
         for (k in eigVals.indices) {
@@ -538,6 +536,68 @@ class SphereLinkNodes(
         } else {
             return null
         }
+    }
+
+    /** Iterates over all spots of a given timepoint [tp], checks whether there are overlapping spots and merges them. */
+    fun mergeOverlappingSpots(tp: Int) {
+        val spatialIndex = mastodonData.model.spatioTemporalIndex.getSpatialIndex(tp)
+        val initSize = spatialIndex.size()
+        val queue = ArrayDeque<Spot>(spatialIndex.size())
+        queue.addAll(spatialIndex)
+        logger.info("Merging overlapping spots...")
+        var currentSpot: Spot
+        val pos = FloatArray(3)
+        var overlaps: MutableList<Spot>
+        var iter = 0
+        while (queue.isNotEmpty()) {
+            currentSpot = queue.poll()
+            currentSpot.localize(pos)
+            overlaps = findSpotsInRange(currentSpot.timepoint, Vector3f(pos), getSpotRadius(currentSpot))
+            overlaps.removeIf { it.internalPoolIndex == currentSpot.internalPoolIndex }
+            if (overlaps.isNotEmpty()) {
+                logger.info("Found overlap, merging now...")
+                mergeWithTargetSpot(currentSpot, overlaps)
+                queue.add(currentSpot)
+            }
+            iter += 1
+            overlaps.clear()
+        }
+        logger.info("Merging took $iter iterations for initially $initSize spots.")
+    }
+
+    /** Merges a list of spots into a target spot that remains part of Mastodon's data structure,
+     * while the other spots are removed. Positions and radii are averaged. */
+    private fun mergeWithTargetSpot(target: Spot, other: List<Spot>) {
+        val meanPos = Vector3f()
+        var meanRadius = 0f
+        val pos = FloatArray(3)
+        // Accumulate positions and radii
+        logger.info("Merging spots ${other.map { it.internalPoolIndex }} into spot ${target.internalPoolIndex}.")
+        (other + target).forEach { spot ->
+            spot.localize(pos)
+            meanPos.add(Vector3f(pos))
+            meanRadius += getSpotRadius(spot)
+        }
+        // Get the mean values
+        meanPos /= (other.size + 1f)
+        meanRadius /= (other.size + 1f)
+        // Now update the target
+        target.setPosition(meanPos.toFloatArray())
+        target.setRadius(meanRadius)
+        // Remove the rest
+        other.forEach {
+            mastodonData.model.graph.remove(it)
+        }
+    }
+
+    /** Extension function that allows setting [Spot] covariances via passing a [radius]. */
+    private fun Spot.setRadius(radius: Float) {
+        val rSquared = radius.toDouble() * radius.toDouble()
+        this.setCovariance(Array(3) { DoubleArray(3) }.also {
+            it[0][0] = rSquared
+            it[1][1] = rSquared
+            it[2][2] = rSquared
+        })
     }
 
     /** Lambda that performs incremental nearest neighbor search in the current timepoint (Int),
@@ -954,6 +1014,7 @@ class SphereLinkNodes(
      * The second spot is used to merge into existing spots. */
     val addTrackToMastodon = fun(
         list: List<Pair<Vector3f, SpineGraphVertex>>?,
+        cursorRadius: Float,
         isWorldSpace: Boolean,
         startWithExisting: Spot?,
         mergeSpot: Spot?
@@ -966,7 +1027,8 @@ class SphereLinkNodes(
             if (list != null) {
                 list.forEachIndexed { index, (pos, vertex) ->
                     val v = graph.addVertex()
-                    v.init(vertex.timepoint, pos.toDoubleArray(), 10.0)
+                    val r = (bridge.sciviewToMastodonScale().max() * cursorRadius).toDouble()
+                    v.init(vertex.timepoint, pos.toDoubleArray(), r)
                     logger.debug("added {}", v)
                     // start adding edges once the first vertex was added
                     if (index > 0) {
@@ -980,9 +1042,9 @@ class SphereLinkNodes(
             } else {
                 // Otherwise we did controller tracking and the points are inside trackPointList and not in list
                 var localRadius: Float
-                trackPointList.forEachIndexed { index, (pos, tp, radius) ->
+                trackPointList.forEachIndexed { index, (pos, tp, pointRadius) ->
                     // Calculate the equivalent radius in Mastodon from the raw radius from the cursor in sciview scale
-                    localRadius = bridge.sciviewToMastodonScale().max() * radius
+                    localRadius = bridge.sciviewToMastodonScale().max() * pointRadius
                     // If we reached the last spot in the list and a mergeSpot was passed, use it instead of the spot in the list
                     if (index == trackPointList.size - 1 && mergeSpot != null) {
                         graph.addEdge(mergeSpot, prevVertex)
@@ -1006,6 +1068,7 @@ class SphereLinkNodes(
                     }
                 }
             }
+            graph.releaseRef(prevVertex)
             bridge.bdvNotifier?.lockUpdates = false
             // Once we send the new track to Mastodon, we can assume we no longer need the previews and can clear them
             logger.info("instances before deletion: ${mainLinkInstance?.instances?.size}")
@@ -1062,6 +1125,7 @@ class SphereLinkNodes(
                         logger.debug("we now have ${mastodonData.model.graph.vertices().size} spots in total")
                     } else {
                         logger.warn("Not adding new spot, $pos is outside the volume!")
+                        bridge.flashBoundingGrid()
                     }
                 } else {
                     logger.warn("Not adding new spot, volume has no bounding box!")

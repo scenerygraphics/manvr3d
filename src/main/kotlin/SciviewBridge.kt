@@ -952,7 +952,13 @@ class SciviewBridge: TimepointObserver {
             VRTracking?.setTrackVisCallback = {state ->
                 sphereLinkNodes.mainLinkInstance?.visible = state
             }
-
+            VRTracking?.mergeOverlapsCallback = { tp ->
+                sphereLinkNodes.mergeOverlappingSpots(tp)
+                sphereLinkNodes.showInstancedSpots(
+                    detachedDPP_showsLastTimepoint.timepoint,
+                    detachedDPP_showsLastTimepoint.colorizer
+                )
+            }
             // register the bridge as an observer to the timepoint changes by the user in VR,
             // allowing us to get updates via the onTimepointChanged() function
             VRTracking?.registerObserver(this)
@@ -989,6 +995,29 @@ class SciviewBridge: TimepointObserver {
         logger.debug("Called onTimepointChanged")
         updateBDV_TPfromSciview(timepoint)
         showTimepoint(timepoint)
+    }
+
+    /** Quickly flashes the volume's bounding grid to indicate the borders of the volume. */
+    fun flashBoundingGrid(flashColor: Vector3f = Vector3f(0.95f, 0.25f, 0.15f)) {
+        val bg = volumeNode.children.filterIsInstance<BoundingGrid>()
+        bg.firstOrNull()?.let { grid ->
+            logger.info("Flashing bounding grid. Grid is ${if (grid.visible) "visible" else "invisible"}")
+            val initVisibility = grid.visible
+            val initColor = grid.gridColor
+            thread {
+                grid.gridColor = flashColor
+                var count = 7
+                while (count > 0) {
+                    grid.visible != grid.visible
+                    logger.info("grid is now ${if (grid.visible) "visible" else "invisible"}")
+                    grid.spatial().needsUpdate = true
+                    Thread.sleep(200)
+                    count -= 1
+                }
+                grid.visible = initVisibility
+                grid.gridColor = initColor
+            }
+        }
     }
 
     private fun deregisterKeyboardHandlers() {
