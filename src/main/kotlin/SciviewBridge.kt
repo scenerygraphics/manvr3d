@@ -370,14 +370,14 @@ class SciviewBridge: TimepointObserver {
 
         registerKeyboardHandlers()
 
-        startWorker()
+        submitToTaskExecutor()
     }
 
     val eventService: EventService?
         get() = sciviewWin.scijavaContext?.getService(EventService::class.java)
 
-    /** Launches a worker thread that sequentially executes queued spot and link updates from [SphereLinkNodes]. */
-    private fun startWorker() {
+    /** Launches a worker that sequentially executes queued spot and link updates from [SphereLinkNodes]. */
+    private fun submitToTaskExecutor() {
         workerExecutor.submit {
             while (isRunning && !Thread.currentThread().isInterrupted) {
                 try {
