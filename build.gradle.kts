@@ -18,7 +18,6 @@ repositories {
 
 dependencies {
     implementation(platform("org.scijava:pom-scijava:37.0.0"))
-    implementation("org.yaml:snakeyaml:2.3")
 
     implementation("net.imagej:imagej")
 

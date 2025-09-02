@@ -269,7 +269,7 @@ class SciviewBridgeUI(controlledBridge: SciviewBridge, populateThisContainer: Co
         c.gridx = 1
         c.gridwidth = 1
         val closeBtn = JButton("Close")
-        closeBtn.addActionListener { bridge.detachControllingUI() }
+        closeBtn.addActionListener { bridge.stopAndDetachUI() }
         c.insets = Insets(0, 0, 15, 15)
         controlsWindowPanel.add(closeBtn, c)
     }
