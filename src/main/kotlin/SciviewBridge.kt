@@ -1000,8 +1000,11 @@ class SciviewBridge: TimepointObserver {
         logger.info("Stopped bridge worker queue.")
         try {
             // Wait for graceful termination
+            logger.info("Waiting for graph update worker shutdown...")
             if (!workerExecutor.awaitTermination(5, TimeUnit.SECONDS)) {
                 logger.error("Worker thread did not terminate gracefully")
+            } else {
+                logger.info("Properly shut down worker.")
             }
         } catch (e: InterruptedException) {
             Thread.currentThread().interrupt()
