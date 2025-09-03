@@ -1001,17 +1001,15 @@ class SciviewBridge: TimepointObserver {
     fun flashBoundingGrid(flashColor: Vector3f = Vector3f(0.95f, 0.25f, 0.15f)) {
         val bg = volumeNode.children.filterIsInstance<BoundingGrid>()
         bg.firstOrNull()?.let { grid ->
-            logger.info("Flashing bounding grid. Grid is ${if (grid.visible) "visible" else "invisible"}")
             val initVisibility = grid.visible
             val initColor = grid.gridColor
             thread {
                 grid.gridColor = flashColor
                 var count = 7
                 while (count > 0) {
-                    grid.visible != grid.visible
-                    logger.info("grid is now ${if (grid.visible) "visible" else "invisible"}")
+                    grid.visible = !grid.visible
                     grid.spatial().needsUpdate = true
-                    Thread.sleep(200)
+                    Thread.sleep(100)
                     count -= 1
                 }
                 grid.visible = initVisibility
