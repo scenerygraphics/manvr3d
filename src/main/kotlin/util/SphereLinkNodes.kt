@@ -27,6 +27,8 @@ import org.mastodon.mamut.SciviewBridge
 import org.mastodon.mamut.model.Link
 import org.mastodon.mamut.model.Spot
 import org.mastodon.spatial.SpatialIndex
+import org.mastodon.spatial.SpatialIndexImp
+import org.mastodon.spatial.SpatioTemporalIndexImp
 import org.mastodon.ui.coloring.GraphColorGenerator
 import org.mastodon.views.bdv.overlay.util.JamaEigenvalueDecomposition
 import org.scijava.event.EventService
@@ -540,54 +542,62 @@ class SphereLinkNodes(
 
     /** Iterates over all spots of a given timepoint [tp], checks whether there are overlapping spots and merges them. */
     fun mergeOverlappingSpots(tp: Int) {
-        val spatialIndex = mastodonData.model.spatioTemporalIndex.getSpatialIndex(tp)
-        val initSize = spatialIndex.size()
-        val queue = ArrayDeque<Spot>(spatialIndex.size())
-        queue.addAll(spatialIndex)
-        logger.info("Merging overlapping spots...")
-        var currentSpot: Spot
-        val pos = FloatArray(3)
-        var overlaps: MutableList<Spot>
-        var iter = 0
-        while (queue.isNotEmpty()) {
-            currentSpot = queue.poll()
-            currentSpot.localize(pos)
-            overlaps = findSpotsInRange(currentSpot.timepoint, Vector3f(pos), getSpotRadius(currentSpot))
-            overlaps.removeIf { it.internalPoolIndex == currentSpot.internalPoolIndex }
-            if (overlaps.isNotEmpty()) {
-                logger.info("Found overlap, merging now...")
-                mergeWithTargetSpot(currentSpot, overlaps)
-                queue.add(currentSpot)
+        updateQueue.offer {
+            val spatialIndex = mastodonData.model.spatioTemporalIndex.getSpatialIndex(tp)
+            val queue = RefCollections.createRefDeque(mastodonData.model.graph.vertices())
+            queue.addAll(spatialIndex)
+            val currentSpot = mastodonData.model.graph.vertexRef()
+            val pos = FloatArray(3)
+            var overlaps: RefList<Spot>
+            while (queue.isNotEmpty()) {
+                currentSpot.refTo(queue.poll())
+                currentSpot.localize(pos)
+                overlaps = findSpotsInRange(currentSpot.timepoint, Vector3f(pos), getSpotRadius(currentSpot))
+                // The target spot is going to be the first in the overlap list, so we remove it
+                overlaps.removeFirstOrNull()
+                if (overlaps.isNotEmpty()) {
+                    mergeWithTargetSpot(currentSpot, overlaps)
+                    // This would have been easier by simply writing queue.removeAll(overlaps), but this always
+                    // missed the spot with index 0 for whatever reason.
+                    val overlapIndices = overlaps.map { it.internalPoolIndex }.toSet()
+                    queue.removeIf { spot -> overlapIndices.contains(spot.internalPoolIndex) }
+                    queue.add(currentSpot)
+                }
             }
-            iter += 1
-            overlaps.clear()
+            mastodonData.model.graph.releaseRef(currentSpot)
+            clearSelection()
         }
-        logger.info("Merging took $iter iterations for initially $initSize spots.")
     }
 
     /** Merges a list of spots into a target spot that remains part of Mastodon's data structure,
      * while the other spots are removed. Positions and radii are averaged. */
     private fun mergeWithTargetSpot(target: Spot, other: List<Spot>) {
+        val graph = mastodonData.model.graph
+        val spotRef = graph.vertexRef()
         val meanPos = Vector3f()
         var meanRadius = 0f
         val pos = FloatArray(3)
         // Accumulate positions and radii
         logger.info("Merging spots ${other.map { it.internalPoolIndex }} into spot ${target.internalPoolIndex}.")
         (other + target).forEach { spot ->
-            spot.localize(pos)
+            spotRef.refTo(spot)
+            spotRef.localize(pos)
             meanPos.add(Vector3f(pos))
-            meanRadius += getSpotRadius(spot)
+            meanRadius += getSpotRadius(spotRef)
         }
         // Get the mean values
         meanPos /= (other.size + 1f)
         meanRadius /= (other.size + 1f)
+        graph.lock.writeLock().lock()
         // Now update the target
         target.setPosition(meanPos.toFloatArray())
         target.setRadius(meanRadius)
         // Remove the rest
         other.forEach {
-            mastodonData.model.graph.remove(it)
+            graph.remove(it)
         }
+        graph.lock.writeLock().unlock()
+        graph.releaseRef(spotRef)
     }
 
     /** Extension function that allows setting [Spot] covariances via passing a [radius]. */
@@ -777,8 +787,9 @@ class SphereLinkNodes(
 
     /** Takes a list of Mastodon [Link]s, tries to find their corresponding instances and updates their transforms. */
     fun updateLinkTransforms(edges: MutableList<Link>) {
-        val sourceRef = mastodonData.model.graph.vertexRef()
-        val targetRef = mastodonData.model.graph.vertexRef()
+        val graph = mastodonData.model.graph
+        val sourceRef = graph.vertexRef()
+        val targetRef = graph.vertexRef()
         for (edge in edges) {
             findInstanceFromLink(edge)?.let {
                 sourceRef.refTo(edge.source)
@@ -786,6 +797,8 @@ class SphereLinkNodes(
                 setLinkTransform(sourceRef, targetRef, it)
             }
         }
+        graph.releaseRef(sourceRef)
+        graph.releaseRef(targetRef)
     }
 
     /** Sort a list of instances by their distance to a given [origin] position (e.g. of the camera)
@@ -916,6 +929,8 @@ class SphereLinkNodes(
 
                 index++
             }
+            graph.releaseRef(from)
+            graph.releaseRef(to)
 
             // turn all leftover links from the pool invisible
             var i = index
