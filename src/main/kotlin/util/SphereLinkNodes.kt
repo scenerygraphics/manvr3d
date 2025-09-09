@@ -543,6 +543,8 @@ class SphereLinkNodes(
     /** Iterates over all spots of a given timepoint [tp], checks whether there are overlapping spots and merges them. */
     fun mergeOverlappingSpots(tp: Int) {
         updateQueue.offer {
+            mastodonData.model.setUndoPoint()
+            bridge.bdvNotifier?.lockUpdates = true
             val spatialIndex = mastodonData.model.spatioTemporalIndex.getSpatialIndex(tp)
             val queue = RefCollections.createRefDeque(mastodonData.model.graph.vertices())
             queue.addAll(spatialIndex)
@@ -566,6 +568,7 @@ class SphereLinkNodes(
             }
             mastodonData.model.graph.releaseRef(currentSpot)
             clearSelection()
+            bridge.bdvNotifier?.lockUpdates = false
         }
     }
 
