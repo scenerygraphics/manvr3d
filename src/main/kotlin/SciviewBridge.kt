@@ -6,6 +6,7 @@ import bdv.viewer.Source
 import bdv.viewer.SourceAndConverter
 import graphics.scenery.*
 import graphics.scenery.backends.RenderConfigReader
+import graphics.scenery.controls.OpenVRHMD
 import graphics.scenery.controls.behaviours.SelectCommand
 import graphics.scenery.controls.behaviours.WithCameraDelegateBase
 import graphics.scenery.primitives.Cylinder
@@ -122,7 +123,7 @@ class SciviewBridge: TimepointObserver {
     var associatedUI: SciviewBridgeUIMig? = null
     var uiFrame: JFrame? = null
     private var isRunning = true
-    private var isVRactive = false
+    var isVRactive = false
 
     var VRTracking: CellTrackingBase? = null
     private var adjacentEdges: MutableList<Link> = ArrayList()
@@ -734,13 +735,20 @@ class SciviewBridge: TimepointObserver {
         camSpatial.position = sciviewWin.camera?.forward!!.normalize().mul(-1f * dist)
     }
 
-    fun setVisibilityOfVolume(state: Boolean) {
+    fun setVolumeOnlyVisibility(state: Boolean) {
+        val spots = sphereLinkNodes.mainSpotInstance
+        val spotVis = spots?.visible ?: false
+        val links = sphereLinkNodes.mainLinkInstance
+        val linksVis = links?.visible ?: false
+
         volumeNode.visible = state
         if (state) {
             volumeNode.children.stream()
                 .filter { c: Node -> c.name.startsWith("Bounding") }
                 .forEach { c: Node -> c.visible = false }
         }
+        spots?.visible = spotVis
+        links?.visible = linksVis
     }
 
     /** Sets the detail level of the volume node. */
@@ -797,7 +805,8 @@ class SciviewBridge: TimepointObserver {
 
         val clickInstance = SelectCommand(
             "Click Instance", renderer, scene, { scene.findObserver() },
-            ignoredObjects = listOf(Volume::class.java, RAIVolume::class.java, BufferedVolume::class.java), action = { result, _, _ ->
+            ignoredObjects = listOf(Volume::class.java, RAIVolume::class.java, BufferedVolume::class.java, Mesh::class.java),
+            action = { result, _, _ ->
                 if (result.matches.isNotEmpty()) {
                     // Try to cast the result to an instance, or clear the existing selection if it fails
                     selectedSpotInstances.add(result.matches.first().node as InstancedNode.Instance)
@@ -890,7 +899,16 @@ class SciviewBridge: TimepointObserver {
 
     /** Starts the sciview VR environment and optionally the eye tracking environment,
      * depending on the user's selection in the UI. Sends spot and track manipulation callbacks to the VR environment. */
-    fun launchVR(withEyetracking: Boolean = true) {
+    fun launchVR(withEyetracking: Boolean = true): Boolean {
+        // Test whether a headset is connected before starting sciview's VR launch routines
+        val hmd = OpenVRHMD(false, true)
+        if (!hmd.initializedAndWorking()) {
+            logger.warn("Could not find VR headset. Aborting launch of VR environment.")
+            hmd.close()
+            return false
+        }
+        hmd.close()
+
         isVRactive = true
 
         thread {
@@ -952,6 +970,9 @@ class SciviewBridge: TimepointObserver {
             VRTracking?.setTrackVisCallback = {state ->
                 sphereLinkNodes.mainLinkInstance?.visible = state
             }
+            VRTracking?.setVolumeVisCallback = { state ->
+                setVolumeOnlyVisibility(state)
+            }
             VRTracking?.mergeOverlapsCallback = { tp ->
                 sphereLinkNodes.mergeOverlappingSpots(tp)
                 sphereLinkNodes.showInstancedSpots(
@@ -969,6 +990,7 @@ class SciviewBridge: TimepointObserver {
                 VRTracking?.run()
             }
         }
+        return true
     }
 
     /** Stop the VR session and clean up the scene. */
@@ -984,8 +1006,11 @@ class SciviewBridge: TimepointObserver {
 
         // ensure that the volume is visible again (could be turned invisible during the calibration)
         volumeNode.visible = true
+        logger.info("Requesting prop editor refresh...")
         sciviewWin.requestPropEditorRefresh()
+        logger.info("Registering keyboardhandles again...")
         registerKeyboardHandlers()
+        logger.info("Centering on volume...")
         centerCameraOnVolume()
     }
 

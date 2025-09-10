@@ -160,16 +160,20 @@ class SciviewBridgeUIMig(controlledBridge: SciviewBridge, populateThisContainer:
         }
         windowPanel.add(visButtons, "span, growx")
 
-        // Eye Tracking
-        toggleVR = JButton("Start VR").apply { addActionListener {
-            if (toggleVR.text == "Start VR") {
-                bridge.launchVR(eyeTrackingToggle.isSelected)
-                toggleVR.text = "Stop VR"
-            } else {
-                bridge.stopVR()
-                toggleVR.text = "Start VR"
+        // Launch VR session
+        toggleVR = JButton("Start VR").apply {
+            addActionListener {
+                if (!bridge.isVRactive) {
+                    val launched = bridge.launchVR(eyeTrackingToggle.isSelected)
+                    if (launched) {
+                        toggleVR.text = "Stop VR"
+                    }
+                } else {
+                    bridge.stopVR()
+                    toggleVR.text = "Start VR"
+                }
             }
-        } }
+        }
         eyeTrackingToggle = JCheckBox("Launch with Eye Tracking")
         eyeTrackingToggle.setSelected(true)
         windowPanel.add(JPanel(MigLayout("fillx, insets 0")).apply {
@@ -233,14 +237,8 @@ class SciviewBridgeUIMig(controlledBridge: SciviewBridge, populateThisContainer:
         spots.visible = newState
     }
     val toggleVolumeVisibility = ActionListener {
-        val spots = controlledBridge.volumeNode.getChildrenByName("SpotInstance").first()
-        val spotVis = spots.visible
-        val links = controlledBridge.volumeNode.getChildrenByName("LinkInstance").first()
-        val linksVis = links.visible
         val newState = !controlledBridge.volumeNode.visible
-        controlledBridge.setVisibilityOfVolume(newState)
-        spots.visible = spotVis
-        links.visible = linksVis
+        controlledBridge.setVolumeOnlyVisibility(newState)
     }
     val toggleTrackVisibility = ActionListener {
         val links = controlledBridge.volumeNode.getChildrenByName("LinkInstance").first()
