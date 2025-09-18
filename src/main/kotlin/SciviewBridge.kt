@@ -45,9 +45,9 @@ import org.scijava.ui.behaviour.ClickBehaviour
 import org.scijava.ui.behaviour.DragBehaviour
 import org.scijava.ui.behaviour.util.Actions
 import sc.iview.SciView
-import sc.iview.commands.analysis.CellTrackingBase
-import sc.iview.commands.analysis.EyeTracking
-import sc.iview.commands.analysis.TimepointObserver
+import sc.iview.commands.demo.advanced.CellTrackingBase
+import sc.iview.commands.demo.advanced.EyeTracking
+import sc.iview.commands.demo.advanced.TimepointObserver
 import util.SphereLinkNodes
 import java.util.concurrent.Executors
 import java.util.concurrent.LinkedBlockingQueue

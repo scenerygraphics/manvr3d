@@ -27,11 +27,13 @@ import org.mastodon.mamut.SciviewBridge
 import org.mastodon.mamut.model.Link
 import org.mastodon.mamut.model.Spot
 import org.mastodon.spatial.SpatialIndex
+import org.mastodon.spatial.SpatialIndexImp
+import org.mastodon.spatial.SpatioTemporalIndexImp
 import org.mastodon.ui.coloring.GraphColorGenerator
 import org.mastodon.views.bdv.overlay.util.JamaEigenvalueDecomposition
 import org.scijava.event.EventService
 import sc.iview.SciView
-import sc.iview.commands.analysis.HedgehogAnalysis.SpineGraphVertex
+import sc.iview.commands.demo.advanced.HedgehogAnalysis.SpineGraphVertex
 import spim.fiji.spimdata.interestpoints.InterestPoint
 import util.SphereLinkNodes.ColorMode.LUT
 import util.SphereLinkNodes.ColorMode.SPOT
