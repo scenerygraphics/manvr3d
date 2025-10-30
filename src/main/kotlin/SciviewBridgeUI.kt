@@ -361,7 +361,7 @@ class SciviewBridgeUI(controlledBridge: SciviewBridge, populateThisContainer: Co
             val bridge = this@SciviewBridgeUI.controlledBridge ?: throw IllegalStateException("Bridge is null.")
             val s = changeEvent.source as SpinnerNumberModel
             pushChangeToHere.accept(s.number.toFloat())
-            if (bridge.updateVolAutomatically) bridge.updateSciviewTPfromBDV()
+            if (bridge.updateVolAutomatically) bridge.updateSciviewTimepointFromBDV()
         }
     }
 

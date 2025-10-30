@@ -372,14 +372,14 @@ class SciviewBridge: TimepointObserver {
 
         registerKeyboardHandlers()
 
-        startWorker()
+        submitToTaskExecutor()
     }
 
     val eventService: EventService?
         get() = sciviewWin.scijavaContext?.getService(EventService::class.java)
 
-    /** Launches a worker thread that sequentially executes queued spot and link updates from [SphereLinkNodes]. */
-    private fun startWorker() {
+    /** Launches a worker that sequentially executes queued spot and link updates from [SphereLinkNodes]. */
+    private fun submitToTaskExecutor() {
         workerExecutor.submit {
             while (isRunning && !Thread.currentThread().isInterrupted) {
                 try {
@@ -522,11 +522,11 @@ class SciviewBridge: TimepointObserver {
             //TODO: change MIN and MAX to proper values
             logger.debug("Clamp at ${intensity.clampTop}," +
                     " range min to ${intensity.rangeMin} and range max to ${intensity.rangeMax}")
-            updateSciviewTPfromBDV(force = true)
+            updateSciviewTimepointFromBDV(force = true)
             updateUI()
         } else {
             intensity = intensityBackup.copy()
-            updateSciviewTPfromBDV(force = true)
+            updateSciviewTimepointFromBDV(force = true)
             updateUI()
         }
     }
@@ -663,10 +663,10 @@ class SciviewBridge: TimepointObserver {
             get() = recentColorizer ?: noTSColorizer
     }
 
-    /** Calls [updateSciviewTPfromBDV] and [SphereLinkNodes.showInstancedSpots] to update the current volume and corresponding spots. */
+    /** Calls [updateSciviewTimepointFromBDV] and [SphereLinkNodes.showInstancedSpots] to update the current volume and corresponding spots. */
     fun updateSciviewContent(forThisBdv: DisplayParamsProvider) {
         logger.debug("Called updateSciviewContent")
-        val needsUpdate = updateSciviewTPfromBDV(forThisBdv)
+        val needsUpdate = updateSciviewTimepointFromBDV(forThisBdv)
 //        volumeTPWidget.text = volumeNode.currentTimepoint.toString()
         if (needsUpdate) {
             sphereLinkNodes.showInstancedSpots(forThisBdv.timepoint, forThisBdv.colorizer)
@@ -683,7 +683,7 @@ class SciviewBridge: TimepointObserver {
     }
 
     /** Takes a timepoint and updates the current BDV window's time accordingly. */
-    fun updateBDV_TPfromSciview(tp: Int) {
+    fun updateBDV_TimepointFromSciview(tp: Int) {
         logger.debug("Updated BDV timepoint from sciview")
         if (bdvWinParamsProvider != null) {
             (bdvWinParamsProvider as DPP_BdvAdapter).bdv.viewerPanelMamut.state().currentTimepoint = tp
@@ -698,7 +698,7 @@ class SciviewBridge: TimepointObserver {
     /** Update the sciview content based on the timepoint from the BDV window.
      * Returns true if the content was updated. */
     @JvmOverloads
-    fun updateSciviewTPfromBDV(
+    fun updateSciviewTimepointFromBDV(
         forThisBdv: DisplayParamsProvider = detachedDPP_showsLastTimepoint,
         force: Boolean = false
     ): Boolean {
@@ -1018,7 +1018,7 @@ class SciviewBridge: TimepointObserver {
      *  a timepoint change or plays the animation */
     override fun onTimePointChanged(timepoint: Int) {
         logger.debug("Called onTimepointChanged")
-        updateBDV_TPfromSciview(timepoint)
+        updateBDV_TimepointFromSciview(timepoint)
         showTimepoint(timepoint)
     }
 
