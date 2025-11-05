@@ -769,7 +769,7 @@ class SciviewBridge: TimepointObserver {
         // Clear the selection between time points, otherwise we might run into problems
         sphereLinkNodes.clearSelection()
         updateSciviewContent(detachedDPP_withOwnTime)
-        VRTracking?.volumeTPWidget?.text = detachedDPP_withOwnTime.timepoint.toString()
+        VRTracking?.volumeTimepointWidget?.text = detachedDPP_withOwnTime.timepoint.toString()
     }
 
     private fun registerKeyboardHandlers() {
