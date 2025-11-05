@@ -125,7 +125,7 @@ class SciviewBridge: TimepointObserver {
     private var isRunning = true
     var isVRactive = false
 
-    var VRTracking: CellTrackingBase? = null
+    lateinit var vrTracking: CellTrackingBase
     private var adjacentEdges: MutableList<Link> = ArrayList()
     private var moveInstanceVRInit: (Vector3f) -> Unit
     private var moveInstanceVRDrag: (Vector3f) -> Unit
@@ -769,7 +769,7 @@ class SciviewBridge: TimepointObserver {
         // Clear the selection between time points, otherwise we might run into problems
         sphereLinkNodes.clearSelection()
         updateSciviewContent(detachedDPP_withOwnTime)
-        VRTracking?.volumeTimepointWidget?.text = detachedDPP_withOwnTime.timepoint.toString()
+        vrTracking.volumeTimepointWidget.text = detachedDPP_withOwnTime.timepoint.toString()
     }
 
     private fun registerKeyboardHandlers() {
@@ -912,22 +912,22 @@ class SciviewBridge: TimepointObserver {
         isVRactive = true
 
         thread {
-            VRTracking = if (withEyetracking) {
+            vrTracking = if (withEyetracking) {
                 EyeTracking(sciviewWin)
             } else {
                 CellTrackingBase(sciviewWin)
             }
             sciviewWin.getSceneryRenderer()?.setRenderingQuality(RenderConfigReader.RenderingQuality.Low)
             // Pass track and spot handling callbacks to sciview
-            VRTracking?.trackCreationCallback = sphereLinkNodes.addTrackToMastodon
-            VRTracking?.spotCreateDeleteCallback = sphereLinkNodes.addOrRemoveSpots
-            VRTracking?.spotSelectCallback = sphereLinkNodes.selectClosestSpotsVR
-            VRTracking?.spotMoveInitCallback = moveInstanceVRInit
-            VRTracking?.spotMoveDragCallback = moveInstanceVRDrag
-            VRTracking?.spotMoveEndCallback = moveInstanceVREnd
-            VRTracking?.singleLinkTrackedCallback = sphereLinkNodes.addTrackedPoint
-            VRTracking?.toggleTrackingPreviewCallback = sphereLinkNodes.toggleLinkPreviews
-            VRTracking?.rebuildGeometryCallback = {
+            vrTracking.trackCreationCallback = sphereLinkNodes.addTrackToMastodon
+            vrTracking.spotCreateDeleteCallback = sphereLinkNodes.addOrRemoveSpots
+            vrTracking.spotSelectCallback = sphereLinkNodes.selectClosestSpotsVR
+            vrTracking.spotMoveInitCallback = moveInstanceVRInit
+            vrTracking.spotMoveDragCallback = moveInstanceVRDrag
+            vrTracking.spotMoveEndCallback = moveInstanceVREnd
+            vrTracking.singleLinkTrackedCallback = sphereLinkNodes.addTrackedPoint
+            vrTracking.toggleTrackingPreviewCallback = sphereLinkNodes.toggleLinkPreviews
+            vrTracking.rebuildGeometryCallback = {
                 logger.debug("Called rebuildGeometryCallback")
                 sphereLinkNodes.showInstancedSpots(
                     detachedDPP_showsLastTimepoint.timepoint,
@@ -938,20 +938,20 @@ class SciviewBridge: TimepointObserver {
                     detachedDPP_showsLastTimepoint.colorizer
                 )
             }
-            VRTracking?.predictSpotsCallback = predictSpotsCallback
-            VRTracking?.trainSpotsCallback = trainsSpotsCallback
-            VRTracking?.trainFlowCallback = null
-            VRTracking?.neighborLinkingCallback = neighborLinkingCallback
-            VRTracking?.stageSpotsCallback = stageSpotsCallback
-            VRTracking?.getSelectionCallback = {
+            vrTracking.predictSpotsCallback = predictSpotsCallback
+            vrTracking.trainSpotsCallback = trainsSpotsCallback
+            vrTracking.trainFlowCallback = null
+            vrTracking.neighborLinkingCallback = neighborLinkingCallback
+            vrTracking.stageSpotsCallback = stageSpotsCallback
+            vrTracking.getSelectionCallback = {
                 selectedSpotInstances.toList()
             }
-            VRTracking?.scaleSpotsCallback = {factor, update ->
+            vrTracking.scaleSpotsCallback = { factor, update ->
                 sphereLinkNodes.changeSpotRadius(selectedSpotInstances, factor, update)
             }
 
             var timeSinceUndo = TimeSource.Monotonic.markNow()
-            VRTracking?.mastodonUndoRedoCallback = { undo ->
+            vrTracking.mastodonUndoRedoCallback = { undo ->
                 val now = TimeSource.Monotonic.markNow()
                 if (now.minus(timeSinceUndo) > 0.5.seconds) {
                     if (undo) {
@@ -964,16 +964,16 @@ class SciviewBridge: TimepointObserver {
                 }
             }
 
-            VRTracking?.setSpotVisCallback = { state ->
+            vrTracking.setSpotVisCallback = { state ->
                 sphereLinkNodes.mainSpotInstance?.visible = state
             }
-            VRTracking?.setTrackVisCallback = {state ->
+            vrTracking.setTrackVisCallback = { state ->
                 sphereLinkNodes.mainLinkInstance?.visible = state
             }
-            VRTracking?.setVolumeVisCallback = { state ->
+            vrTracking.setVolumeVisCallback = { state ->
                 setVolumeOnlyVisibility(state)
             }
-            VRTracking?.mergeOverlapsCallback = { tp ->
+            vrTracking.mergeOverlapsCallback = { tp ->
                 sphereLinkNodes.mergeOverlappingSpots(tp)
                 sphereLinkNodes.showInstancedSpots(
                     detachedDPP_showsLastTimepoint.timepoint,
@@ -982,12 +982,12 @@ class SciviewBridge: TimepointObserver {
             }
             // register the bridge as an observer to the timepoint changes by the user in VR,
             // allowing us to get updates via the onTimepointChanged() function
-            VRTracking?.registerObserver(this)
+            vrTracking.registerObserver(this)
 
             if (withEyetracking) {
-                (VRTracking as EyeTracking).run()
+                (vrTracking as EyeTracking).run()
             } else {
-                VRTracking?.run()
+                vrTracking.run()
             }
         }
         return true
@@ -996,19 +996,19 @@ class SciviewBridge: TimepointObserver {
     /** Stop the VR session and clean up the scene. */
     fun stopVR() {
         isVRactive = false
-        VRTracking?.unregisterObserver(this)
+        vrTracking.unregisterObserver(this)
         logger.info("Removed timepoint observer from VR bindings.")
         if (associatedUI!!.eyeTrackingToggle.isSelected) {
-            (VRTracking as EyeTracking).stop()
+            (vrTracking as EyeTracking).stop()
         } else {
-            VRTracking?.stop()
+            vrTracking.stop()
         }
 
         // ensure that the volume is visible again (could be turned invisible during the calibration)
         volumeNode.visible = true
-        logger.info("Requesting prop editor refresh...")
+        logger.info("Requesting property editor refresh...")
         sciviewWin.requestPropEditorRefresh()
-        logger.info("Registering keyboardhandles again...")
+        logger.info("Registering keyboard handles again...")
         registerKeyboardHandlers()
         logger.info("Centering on volume...")
         centerCameraOnVolume()
