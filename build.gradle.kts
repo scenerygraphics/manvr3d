@@ -1,5 +1,5 @@
 plugins {
-    kotlin("kapt") version "1.9.21"
+    kotlin("kapt") version "2.2.10"
     kotlin("jvm") version embeddedKotlinVersion
     application
     id("com.gradleup.shadow") version "8.3.6" apply false
@@ -18,11 +18,9 @@ repositories {
 
 dependencies {
     implementation(platform("org.scijava:pom-scijava:37.0.0"))
-    implementation("org.yaml:snakeyaml:2.3")
 
     implementation("net.imagej:imagej")
 
-    //api("sc.iview:sciview")
     implementation("sc.iview:sciview")
 
     implementation("org.slf4j:slf4j-simple:2.0.16")

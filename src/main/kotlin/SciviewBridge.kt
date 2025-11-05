@@ -5,6 +5,8 @@ package org.mastodon.mamut
 import bdv.viewer.Source
 import bdv.viewer.SourceAndConverter
 import graphics.scenery.*
+import graphics.scenery.backends.RenderConfigReader
+import graphics.scenery.controls.OpenVRHMD
 import graphics.scenery.controls.behaviours.SelectCommand
 import graphics.scenery.controls.behaviours.WithCameraDelegateBase
 import graphics.scenery.primitives.Cylinder
@@ -43,9 +45,9 @@ import org.scijava.ui.behaviour.ClickBehaviour
 import org.scijava.ui.behaviour.DragBehaviour
 import org.scijava.ui.behaviour.util.Actions
 import sc.iview.SciView
-import sc.iview.commands.demo.advanced.CellTrackingBase
-import sc.iview.commands.demo.advanced.EyeTracking
-import sc.iview.commands.demo.advanced.TimepointObserver
+import sc.iview.commands.analysis.CellTrackingBase
+import sc.iview.commands.analysis.TimepointObserver
+import sc.iview.commands.analysis.EyeTracking
 import util.SphereLinkNodes
 import java.util.concurrent.Executors
 import java.util.concurrent.LinkedBlockingQueue
@@ -121,9 +123,9 @@ class SciviewBridge: TimepointObserver {
     var associatedUI: SciviewBridgeUIMig? = null
     var uiFrame: JFrame? = null
     private var isRunning = true
-    private var isVRactive = false
+    var isVRactive = false
 
-    var VRTracking: CellTrackingBase? = null
+    lateinit var vrTracking: CellTrackingBase
     private var adjacentEdges: MutableList<Link> = ArrayList()
     private var moveInstanceVRInit: (Vector3f) -> Unit
     private var moveInstanceVRDrag: (Vector3f) -> Unit
@@ -452,6 +454,15 @@ class SciviewBridge: TimepointObserver {
         return localCoords
     }
 
+    /** Converts a [Vector3f] from sciview scale to Mastodon scale without looking at positions or flipped coordinate systems.
+     * Returns the scale factor itself if called without passing a vector. */
+    fun sciviewToMastodonScale(v: Vector3f = Vector3f(1f)) : Vector3f {
+        val scale = v
+        scale.div(volumeNode.spatial().scale)
+        scale.div(volumeNode.pixelToWorldRatio)
+        return scale
+    }
+
     /** Convert a [Vector3f] from Mastodon's voxel coordinate space into sciview space,
      * taking the volume's transforms into account. This assumes the volume has a centered origin. */
     fun mastodonToSciviewCoords(v: Vector3f) : Vector3f {
@@ -724,13 +735,20 @@ class SciviewBridge: TimepointObserver {
         camSpatial.position = sciviewWin.camera?.forward!!.normalize().mul(-1f * dist)
     }
 
-    fun setVisibilityOfVolume(state: Boolean) {
+    fun setVolumeOnlyVisibility(state: Boolean) {
+        val spots = sphereLinkNodes.mainSpotInstance
+        val spotVis = spots?.visible ?: false
+        val links = sphereLinkNodes.mainLinkInstance
+        val linksVis = links?.visible ?: false
+
         volumeNode.visible = state
         if (state) {
             volumeNode.children.stream()
                 .filter { c: Node -> c.name.startsWith("Bounding") }
                 .forEach { c: Node -> c.visible = false }
         }
+        spots?.visible = spotVis
+        links?.visible = linksVis
     }
 
     /** Sets the detail level of the volume node. */
@@ -751,7 +769,7 @@ class SciviewBridge: TimepointObserver {
         // Clear the selection between time points, otherwise we might run into problems
         sphereLinkNodes.clearSelection()
         updateSciviewContent(detachedDPP_withOwnTime)
-        VRTracking?.volumeTPWidget?.text = detachedDPP_withOwnTime.timepoint.toString()
+        vrTracking.volumeTimepointWidget.text = detachedDPP_withOwnTime.timepoint.toString()
     }
 
     private fun registerKeyboardHandlers() {
@@ -761,8 +779,8 @@ class SciviewBridge: TimepointObserver {
         val handler = sciviewWin.sceneryInputHandler ?: throw IllegalStateException("Could not find input handler!")
 
         val behaviourCollection = arrayOf(
-            BehaviourTriple(desc_DEC_SPH, key_DEC_SPH, { _, _ -> sphereLinkNodes.decreaseSphereScale(); updateUI() }),
-            BehaviourTriple(desc_INC_SPH, key_INC_SPH, { _, _ -> sphereLinkNodes.increaseSphereScale(); updateUI() }),
+            BehaviourTriple(desc_DEC_SPH, key_DEC_SPH, { _, _ -> sphereLinkNodes.decreaseSphereInstanceScale(); updateUI() }),
+            BehaviourTriple(desc_INC_SPH, key_INC_SPH, { _, _ -> sphereLinkNodes.increaseSphereInstanceScale(); updateUI() }),
             BehaviourTriple(desc_DEC_LINK, key_DEC_LINK, { _, _ -> sphereLinkNodes.decreaseLinkScale(); updateUI() }),
             BehaviourTriple(desc_INC_LINK, key_INC_LINK, { _, _ -> sphereLinkNodes.increaseLinkScale(); updateUI() }),
             BehaviourTriple(desc_CTRL_WIN, key_CTRL_WIN, { _, _ -> createAndShowControllingUI() }),
@@ -772,9 +790,9 @@ class SciviewBridge: TimepointObserver {
             BehaviourTriple(desc_NEXT_TP, key_NEXT_TP, { _, _ -> detachedDPP_withOwnTime.nextTimepoint()
                 updateSciviewContent(detachedDPP_withOwnTime) }),
             BehaviourTriple("Scale Instance Up", "ctrl E",
-                {_, _ -> sphereLinkNodes.changeSpotRadius(selectedSpotInstances, true)}),
+                {_, _ -> sphereLinkNodes.changeSpotRadius(selectedSpotInstances, 1.1f)}),
             BehaviourTriple("Scale Instance Down", "ctrl Q",
-                {_, _ -> sphereLinkNodes.changeSpotRadius(selectedSpotInstances, false)}),
+                {_, _ -> sphereLinkNodes.changeSpotRadius(selectedSpotInstances, 0.9f)}),
         )
 
         behaviourCollection.forEach {
@@ -787,7 +805,8 @@ class SciviewBridge: TimepointObserver {
 
         val clickInstance = SelectCommand(
             "Click Instance", renderer, scene, { scene.findObserver() },
-            ignoredObjects = listOf(Volume::class.java, RAIVolume::class.java, BufferedVolume::class.java), action = { result, _, _ ->
+            ignoredObjects = listOf(Volume::class.java, RAIVolume::class.java, BufferedVolume::class.java, Mesh::class.java),
+            action = { result, _, _ ->
                 if (result.matches.isNotEmpty()) {
                     // Try to cast the result to an instance, or clear the existing selection if it fails
                     selectedSpotInstances.add(result.matches.first().node as InstancedNode.Instance)
@@ -880,31 +899,36 @@ class SciviewBridge: TimepointObserver {
 
     /** Starts the sciview VR environment and optionally the eye tracking environment,
      * depending on the user's selection in the UI. Sends spot and track manipulation callbacks to the VR environment. */
-    fun launchVR(withEyetracking: Boolean = true) {
+    fun launchVR(withEyetracking: Boolean = true): Boolean {
+        // Test whether a headset is connected before starting sciview's VR launch routines
+        val hmd = OpenVRHMD(false, true)
+        if (!hmd.initializedAndWorking()) {
+            logger.warn("Could not find VR headset. Aborting launch of VR environment.")
+            hmd.close()
+            return false
+        }
+        hmd.close()
+
         isVRactive = true
 
-
         thread {
-            if (withEyetracking) {
-                VRTracking = EyeTracking(sciviewWin)
-                (VRTracking as EyeTracking).run()
+            vrTracking = if (withEyetracking) {
+                EyeTracking(sciviewWin)
             } else {
-                VRTracking = CellTrackingBase(sciviewWin)
-                VRTracking?.run()
+                CellTrackingBase(sciviewWin)
             }
-
+            sciviewWin.getSceneryRenderer()?.setRenderingQuality(RenderConfigReader.RenderingQuality.Low)
             // Pass track and spot handling callbacks to sciview
-            VRTracking?.trackCreationCallback = sphereLinkNodes.addTrackToMastodon
-            VRTracking?.spotCreateDeleteCallback = sphereLinkNodes.addOrRemoveSpots
-            VRTracking?.spotSelectionCallback = sphereLinkNodes.selectClosestSpotVR
-            VRTracking?.spotMoveInitCallback = moveInstanceVRInit
-            VRTracking?.spotMoveDragCallback = moveInstanceVRDrag
-            VRTracking?.spotMoveEndCallback = moveInstanceVREnd
-            VRTracking?.spotLinkCallback = sphereLinkNodes.mergeSelectedToClosestSpot
-            VRTracking?.singleLinkTrackedCallback = sphereLinkNodes.addTrackedPoint
-            VRTracking?.toggleTrackingPreviewCallback = sphereLinkNodes.toggleLinkPreviews
-            VRTracking?.rebuildGeometryCallback = {
-                logger.info("Called rebuildGeometryCallback")
+            vrTracking.trackCreationCallback = sphereLinkNodes.addTrackToMastodon
+            vrTracking.spotCreateDeleteCallback = sphereLinkNodes.addOrRemoveSpots
+            vrTracking.spotSelectCallback = sphereLinkNodes.selectClosestSpotsVR
+            vrTracking.spotMoveInitCallback = moveInstanceVRInit
+            vrTracking.spotMoveDragCallback = moveInstanceVRDrag
+            vrTracking.spotMoveEndCallback = moveInstanceVREnd
+            vrTracking.singleLinkTrackedCallback = sphereLinkNodes.addTrackedPoint
+            vrTracking.toggleTrackingPreviewCallback = sphereLinkNodes.toggleLinkPreviews
+            vrTracking.rebuildGeometryCallback = {
+                logger.debug("Called rebuildGeometryCallback")
                 sphereLinkNodes.showInstancedSpots(
                     detachedDPP_showsLastTimepoint.timepoint,
                     detachedDPP_showsLastTimepoint.colorizer
@@ -914,45 +938,79 @@ class SciviewBridge: TimepointObserver {
                     detachedDPP_showsLastTimepoint.colorizer
                 )
             }
-            VRTracking?.predictSpotsCallback = predictSpotsCallback
-            VRTracking?.trainSpotsCallback = trainsSpotsCallback
-            VRTracking?.trainFlowCallback = null
-            VRTracking?.neighborLinkingCallback = neighborLinkingCallback
-            VRTracking?.stageSpotsCallback = stageSpotsCallback
+            vrTracking.predictSpotsCallback = predictSpotsCallback
+            vrTracking.trainSpotsCallback = trainsSpotsCallback
+            vrTracking.trainFlowCallback = null
+            vrTracking.neighborLinkingCallback = neighborLinkingCallback
+            vrTracking.stageSpotsCallback = stageSpotsCallback
+            vrTracking.getSelectionCallback = {
+                selectedSpotInstances.toList()
+            }
+            vrTracking.scaleSpotsCallback = { factor, update ->
+                sphereLinkNodes.changeSpotRadius(selectedSpotInstances, factor, update)
+            }
 
             var timeSinceUndo = TimeSource.Monotonic.markNow()
-            VRTracking?.mastodonUndoCallback = {
+            vrTracking.mastodonUndoRedoCallback = { undo ->
                 val now = TimeSource.Monotonic.markNow()
                 if (now.minus(timeSinceUndo) > 0.5.seconds) {
-                    mastodon.model.undo()
+                    if (undo) {
+                        mastodon.model.undo()
+                    } else {
+                        mastodon.model.redo()
+                    }
                     logger.info("Undid last change.")
                     timeSinceUndo = now
                 }
-
             }
 
+            vrTracking.setSpotVisCallback = { state ->
+                sphereLinkNodes.mainSpotInstance?.visible = state
+            }
+            vrTracking.setTrackVisCallback = { state ->
+                sphereLinkNodes.mainLinkInstance?.visible = state
+            }
+            vrTracking.setVolumeVisCallback = { state ->
+                setVolumeOnlyVisibility(state)
+            }
+            vrTracking.mergeOverlapsCallback = { tp ->
+                sphereLinkNodes.mergeOverlappingSpots(tp)
+                sphereLinkNodes.showInstancedSpots(
+                    detachedDPP_showsLastTimepoint.timepoint,
+                    detachedDPP_showsLastTimepoint.colorizer
+                )
+            }
             // register the bridge as an observer to the timepoint changes by the user in VR,
             // allowing us to get updates via the onTimepointChanged() function
-            VRTracking?.registerObserver(this)
+            vrTracking.registerObserver(this)
+
+            if (withEyetracking) {
+                (vrTracking as EyeTracking).run()
+            } else {
+                vrTracking.run()
+            }
         }
+        return true
     }
 
     /** Stop the VR session and clean up the scene. */
     fun stopVR() {
         isVRactive = false
-        VRTracking?.unregisterObserver(this)
+        vrTracking.unregisterObserver(this)
         logger.info("Removed timepoint observer from VR bindings.")
         if (associatedUI!!.eyeTrackingToggle.isSelected) {
-            (VRTracking as EyeTracking).stop()
+            (vrTracking as EyeTracking).stop()
         } else {
-            VRTracking?.stop()
+            vrTracking.stop()
         }
 
         // ensure that the volume is visible again (could be turned invisible during the calibration)
         volumeNode.visible = true
-        sciviewWin.centerOnNode(axesParent)
+        logger.info("Requesting property editor refresh...")
         sciviewWin.requestPropEditorRefresh()
+        logger.info("Registering keyboard handles again...")
         registerKeyboardHandlers()
+        logger.info("Centering on volume...")
         centerCameraOnVolume()
     }
 
@@ -962,6 +1020,27 @@ class SciviewBridge: TimepointObserver {
         logger.debug("Called onTimepointChanged")
         updateBDV_TimepointFromSciview(timepoint)
         showTimepoint(timepoint)
+    }
+
+    /** Quickly flashes the volume's bounding grid to indicate the borders of the volume. */
+    fun flashBoundingGrid(flashColor: Vector3f = Vector3f(0.95f, 0.25f, 0.15f)) {
+        val bg = volumeNode.children.filterIsInstance<BoundingGrid>()
+        bg.firstOrNull()?.let { grid ->
+            val initVisibility = grid.visible
+            val initColor = grid.gridColor
+            thread {
+                grid.gridColor = flashColor
+                var count = 7
+                while (count > 0) {
+                    grid.visible = !grid.visible
+                    grid.spatial().needsUpdate = true
+                    Thread.sleep(100)
+                    count -= 1
+                }
+                grid.visible = initVisibility
+                grid.gridColor = initColor
+            }
+        }
     }
 
     private fun deregisterKeyboardHandlers() {
@@ -1000,11 +1079,8 @@ class SciviewBridge: TimepointObserver {
         logger.info("Stopped bridge worker queue.")
         try {
             // Wait for graceful termination
-            logger.info("Waiting for graph update worker shutdown...")
             if (!workerExecutor.awaitTermination(5, TimeUnit.SECONDS)) {
                 logger.error("Worker thread did not terminate gracefully")
-            } else {
-                logger.info("Properly shut down worker.")
             }
         } catch (e: InterruptedException) {
             Thread.currentThread().interrupt()

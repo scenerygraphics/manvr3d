@@ -1,5 +1,6 @@
 package util
 
+import graphics.scenery.utils.lazyLogger
 import org.mastodon.app.ui.GroupLocksPanel
 import org.mastodon.grouping.GroupHandle
 import org.mastodon.mamut.ProjectModel
@@ -17,6 +18,7 @@ import sc.iview.event.NodeActivatedEvent
 class GroupLocksHandling(//controls sciview via this bridge obj
     private val bridge: SciviewBridge, mastodon: ProjectModel
 ) {
+    val logger by lazyLogger()
     //controls Mastodon
     private val projectModel: ProjectModel = mastodon
     //shortcut to inside of Mastodon
@@ -60,7 +62,7 @@ class GroupLocksHandling(//controls sciview via this bridge obj
         }
 
         override fun timepointChanged() {
-            println("timepointChanged to ${myGroupHandle.getModel(projectModel.TIMEPOINT).timepoint}")
+            logger.debug("timepoint changed to ${myGroupHandle.getModel(projectModel.TIMEPOINT).timepoint}")
             bridge.showTimepoint(myGroupHandle.getModel(projectModel.TIMEPOINT).timepoint)
         }
     }

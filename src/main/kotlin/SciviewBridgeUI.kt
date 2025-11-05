@@ -399,7 +399,7 @@ class SciviewBridgeUI(controlledBridge: SciviewBridge, populateThisContainer: Co
         val links = controlledBridge.volumeNode.getChildrenByName("LinkInstance").first()
         val linksVis = links.visible
         val newState = !controlledBridge.volumeNode.visible
-        controlledBridge.setVisibilityOfVolume(newState)
+        controlledBridge.setVolumeOnlyVisibility(newState)
         spots.visible = spotVis
         links.visible = linksVis
     }
