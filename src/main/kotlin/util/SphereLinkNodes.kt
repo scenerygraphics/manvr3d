@@ -634,6 +634,7 @@ class SphereLinkNodes(
                     }
                 }
                 logger.debug("Selecting spots in range took ${TimeSource.Monotonic.markNow() - start}")
+                mainSpotInstance?.metadata["MaxInstanceUpdateCount"] = AtomicInteger(1)
                 // Return the first spot if we found one
                 Pair(spots.firstOrNull(), true)
             } else {
@@ -642,10 +643,9 @@ class SphereLinkNodes(
                     clearSelection()
                     mastodonData.model.graph.notifyGraphChanged()
                 }
+                mainSpotInstance?.metadata["MaxInstanceUpdateCount"] = AtomicInteger(1)
                 Pair(spots.firstOrNull(), false)
             }
-
-
         }
 
     private fun selectSpot(spot: Spot) {
@@ -1214,6 +1214,8 @@ class SphereLinkNodes(
             setLinkTransform(trackPointList.last().first, localPos, inst)
             val link = LinkPreview(inst, trackPointList.last().first, localPos, tp)
             linkPreviewList.add(link)
+            mainLinkInstance?.metadata["MaxInstanceUpdateCount"] = AtomicInteger(1)
+            mainSpotInstance?.metadata["MaxInstanceUpdateCount"] = AtomicInteger(1)
             logger.debug("Added a new preview link from ${link.from} to ${link.to}. Visibility is $preview")
         }
         trackPointList.add(Triple(localPos, tp, radius))
