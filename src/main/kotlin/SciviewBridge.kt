@@ -52,6 +52,7 @@ import util.SphereLinkNodes
 import java.util.concurrent.Executors
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
 import javax.swing.Action
 import javax.swing.JFrame
 import javax.swing.JPanel
@@ -66,7 +67,7 @@ class SciviewBridge: TimepointObserver {
     //data source stuff
     val mastodon: ProjectModel
     var sourceID = 0
-    var sourceResLevel = 0
+    var volumeMipmapLevel = 0
     /** default intensity parameters */
     var intensity = Intensity()
 
@@ -85,7 +86,7 @@ class SciviewBridge: TimepointObserver {
     override fun toString(): String {
         val sb = StringBuilder("Mastodon-sciview bridge internal settings:\n")
         sb.append("   SOURCE_ID = $sourceID\n")
-        sb.append("   SOURCE_USED_RES_LEVEL = $sourceResLevel\n")
+        sb.append("   SOURCE_USED_RES_LEVEL = $volumeMipmapLevel\n")
         sb.append("   INTENSITY_CONTRAST = ${intensity.contrast}\n")
         sb.append("   INTENSITY_SHIFT = ${intensity.shift}\n")
         sb.append("   INTENSITY_CLAMP_AT_TOP = ${intensity.clampTop}\n")
@@ -151,7 +152,7 @@ class SciviewBridge: TimepointObserver {
     constructor(
         mastodonMainWindow: ProjectModel,
         sourceID: Int,
-        sourceResLevel: Int,
+        volumeMipmapLevel: Int,
         targetSciviewWindow: SciView
     ) {
         mastodon = mastodonMainWindow
@@ -164,7 +165,7 @@ class SciviewBridge: TimepointObserver {
 
         //adjust the default scene's settings
         sciviewWin.applicationName = ("sciview for Mastodon: " + mastodon.projectName)
-        sciviewWin.toggleSidebar()
+//        sciviewWin.toggleSidebar()
         sciviewWin.floor?.visible = false
         sciviewWin.lights?.forEach { l: PointLight ->
             if (l.name.startsWith("headli")) adjustHeadLight(l)
@@ -180,13 +181,13 @@ class SciviewBridge: TimepointObserver {
 
         //get necessary metadata - from image data
         this.sourceID = sourceID
-        this.sourceResLevel = sourceResLevel
+        this.volumeMipmapLevel = volumeMipmapLevel
         sac = mastodon.sharedBdvData.sources[this.sourceID]
         spimSource = sac.spimSource
         // number of pixels for each dimension at the highest res level
         val volumeDims = spimSource.getSource(0, 0).dimensionsAsLongArray()    // TODO rename to something more meaningful
         // number of pixels for each dimension of the volume at current res level
-        val volumeNumPixels = spimSource.getSource(0, this.sourceResLevel).dimensionsAsLongArray()
+        val volumeNumPixels = spimSource.getSource(0, this.volumeMipmapLevel).dimensionsAsLongArray()
         val volumeDownscale = Vector3f(
             volumeDims[0].toFloat() / volumeNumPixels[0].toFloat(),
             volumeDims[1].toFloat() / volumeNumPixels[1].toFloat(),
@@ -207,7 +208,7 @@ class SciviewBridge: TimepointObserver {
             Thread.sleep(20)
         }
 
-        setMipmapLevel(this.sourceResLevel)
+        setMipmapLevel(this.volumeMipmapLevel)
         setVolumeRanges(
             volumeNode,
             "Grays.lut",
@@ -285,6 +286,8 @@ class SciviewBridge: TimepointObserver {
             }
             sphereLinkNodes.updateLinkTransforms(adjacentEdges)
             currentControllerPos = newPos
+            sphereLinkNodes.mainLinkInstance?.metadata["MaxInstanceUpdateCount"] = AtomicInteger(1)
+            sphereLinkNodes.mainSpotInstance?.metadata["MaxInstanceUpdateCount"] = AtomicInteger(1)
         }
 
         moveInstanceVREnd = fun (pos: Vector3f) {
@@ -298,7 +301,7 @@ class SciviewBridge: TimepointObserver {
 
         predictSpotsAction = pluginActions.actionMap.get("[elephant] predict spots")
         predictSpotsCallback = { predictAll ->
-            predictSpotsAction?.let {
+            predictSpotsAction.let {
                 // Limitation of Elephant: we can only predict X number of frames in the past
                 // So we have to temporarily move to the last TP and set the time range to the size of all TPs
                 val settings = ElephantMainSettingsManager.getInstance().forwardDefaultStyle
@@ -326,7 +329,7 @@ class SciviewBridge: TimepointObserver {
 
         trainSpotsAction = pluginActions.actionMap.get("[elephant] train detection model (all timepoints)")
         trainsSpotsCallback = {
-            trainSpotsAction?.let {
+            trainSpotsAction.let {
                 val start = TimeSource.Monotonic.markNow()
                 logger.info("Training spots from all timepoints...")
                 (it as TrainDetectionAction).run()
@@ -337,7 +340,7 @@ class SciviewBridge: TimepointObserver {
 
         neighborLinkingAction = pluginActions.actionMap.get("[elephant] nearest neighbor linking")
         neighborLinkingCallback = {
-            neighborLinkingAction?.let {
+            neighborLinkingAction.let {
                 logger.info("Linking nearest neighbors...")
                 // Setting the NN linking range to always include the whole time range
                 val settings = ElephantMainSettingsManager.getInstance().forwardDefaultStyle
@@ -514,7 +517,7 @@ class SciviewBridge: TimepointObserver {
 
         if (isVolumeAutoAdjust) {
             var maxVal = 0.0f
-            val srcImg = spimSource.getSource(0, sourceResLevel) as RandomAccessibleInterval<UnsignedShortType>
+            val srcImg = spimSource.getSource(0, spimSource.numMipmapLevels - 1) as RandomAccessibleInterval<UnsignedShortType>
             Views.iterable(srcImg).forEach { px -> maxVal = maxVal.coerceAtLeast(px.realFloat) }
             intensity.clampTop = 0.9f * maxVal //very fake 90% percentile...
             intensity.rangeMin = maxVal * 0.15f
@@ -572,7 +575,7 @@ class SciviewBridge: TimepointObserver {
 
     /** Overload that implicitly uses the existing [spimSource] for [volumeIntensityProcessing] */
     fun volumeIntensityProcessing() {
-        val srcImg = spimSource.getSource(detachedDPP_withOwnTime.timepoint, sourceResLevel) as RandomAccessibleInterval<UnsignedShortType>
+        val srcImg = spimSource.getSource(detachedDPP_withOwnTime.timepoint, volumeMipmapLevel) as RandomAccessibleInterval<UnsignedShortType>
         volumeIntensityProcessing(srcImg)
     }
 
@@ -667,7 +670,6 @@ class SciviewBridge: TimepointObserver {
     fun updateSciviewContent(forThisBdv: DisplayParamsProvider) {
         logger.debug("Called updateSciviewContent")
         val needsUpdate = updateSciviewTimepointFromBDV(forThisBdv)
-//        volumeTPWidget.text = volumeNode.currentTimepoint.toString()
         if (needsUpdate) {
             sphereLinkNodes.showInstancedSpots(forThisBdv.timepoint, forThisBdv.colorizer)
             sphereLinkNodes.updateLinkVisibility(forThisBdv.timepoint)
@@ -808,6 +810,8 @@ class SciviewBridge: TimepointObserver {
             ignoredObjects = listOf(Volume::class.java, RAIVolume::class.java, BufferedVolume::class.java, Mesh::class.java),
             action = { result, _, _ ->
                 if (result.matches.isNotEmpty()) {
+                    // Remove previous selections first
+                    sphereLinkNodes.clearSelection()
                     // Try to cast the result to an instance, or clear the existing selection if it fails
                     selectedSpotInstances.add(result.matches.first().node as InstancedNode.Instance)
                     logger.debug("selected instance {}", selectedSpotInstances)
@@ -880,6 +884,7 @@ class SciviewBridge: TimepointObserver {
                             val newPos = position + movement / worldScale() / volumeNode.spatial().scale / 1.7f
                             it.spatialOrNull()?.position = newPos
                             currentHit = newHit
+                            it.instancedParent.metadata["MaxInstanceUpdateCount"] = AtomicInteger(1)
                         }
                         sphereLinkNodes.moveSpotInBDV(it, movement)
                         sphereLinkNodes.updateLinkTransforms(edges)
