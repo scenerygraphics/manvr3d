@@ -165,7 +165,7 @@ class SciviewBridge: TimepointObserver {
 
         //adjust the default scene's settings
         sciviewWin.applicationName = ("sciview for Mastodon: " + mastodon.projectName)
-//        sciviewWin.toggleSidebar()
+
         sciviewWin.floor?.visible = false
         sciviewWin.lights?.forEach { l: PointLight ->
             if (l.name.startsWith("headli")) adjustHeadLight(l)
@@ -970,10 +970,16 @@ class SciviewBridge: TimepointObserver {
             }
 
             vrTracking.setSpotVisCallback = { state ->
-                sphereLinkNodes.mainSpotInstance?.visible = state
+                sphereLinkNodes.mainSpotInstance?.let {
+                    it.visible = state
+                    it.metadata["MaxInstanceUpdateCount"] = AtomicInteger(1)
+                }
             }
             vrTracking.setTrackVisCallback = { state ->
-                sphereLinkNodes.mainLinkInstance?.visible = state
+                sphereLinkNodes.mainLinkInstance?.let {
+                    it.visible = state
+                    it.metadata["MaxInstanceUpdateCount"] = AtomicInteger(1)
+                }
             }
             vrTracking.setVolumeVisCallback = { state ->
                 setVolumeOnlyVisibility(state)
