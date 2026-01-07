@@ -40,6 +40,7 @@ import java.lang.Math
 import java.util.*
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.LinkedBlockingQueue
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.math.pow
 import kotlin.math.sqrt
 import kotlin.time.TimeSource
@@ -185,6 +186,7 @@ class SphereLinkNodes(
                 }
 
                 sv.addNode(mainSpot, parent = sphereParentNode, activePublish = false)
+                mainSpot.metadata["MaxInstanceUpdateCount"] = AtomicInteger(1)
                 mainSpotInstance = mainSpot
             }
 
@@ -270,6 +272,9 @@ class SphereLinkNodes(
             while (i < spotPool.size) {
                 spotPool[i++].visible = false
             }
+
+            mainSpot.metadata["MaxInstanceUpdateCount"] = AtomicInteger(1)
+
             val tElapsed = TimeSource.Monotonic.markNow() - tStart
             logger.debug("Spot updates took $tElapsed")
         }
@@ -474,8 +479,6 @@ class SphereLinkNodes(
         // if one accidentally clicks a link instance and triggers this function, don't continue
         val selectedSpot = findSpotFromInstance(instance)
         selectedSpot?.let {
-            // Remove previous selections first
-            clearSelection()
             mastodonData.focusModel.focusVertex(it)
             mastodonData.highlightModel.highlightVertex(it)
             mastodonData.selectionModel.setSelected(it, true)
@@ -649,6 +652,7 @@ class SphereLinkNodes(
         findInstanceFromSpot(spot)?.let {
             bridge.selectedSpotInstances.add(it)
             it.instancedProperties["Color"] = { selectedColor }
+            it.parent?.metadata["MaxInstanceUpdateCount"] = AtomicInteger(1)
             mastodonData.selectionModel.setSelected(spot, true)
         }
     }
@@ -761,6 +765,7 @@ class SphereLinkNodes(
     private fun adjustSpotInstanceScale(inst: InstancedNode.Instance) {
         findSpotFromInstance(inst)?.let { spot ->
             inst.spatial().scale = Vector3f(sphereScaleFactor * getSpotRadius(spot))
+            inst.instancedParent.metadata["MaxInstanceUpdateCount"] = AtomicInteger(1)
         }
     }
 
@@ -784,6 +789,7 @@ class SphereLinkNodes(
             }
             it.spatial().scale *= Vector3f(sqrt(factor))
         }
+        mainLinkInstance?.metadata["MaxInstanceUpdateCount"] = AtomicInteger(1)
     }
 
     /** Takes a list of Mastodon [Link]s, tries to find their corresponding instances and updates their transforms. */
@@ -890,6 +896,8 @@ class SphereLinkNodes(
                 }
                 logger.debug("initialized mainLinkInstance")
                 sv.addNode(mainLink, parent = linkParentNode, activePublish = false)
+                mainLink.metadata["MaxInstanceUpdateCount"] = AtomicInteger(1)
+
                 mainLinkInstance = mainLink
             }
 
@@ -952,6 +960,8 @@ class SphereLinkNodes(
             // first update the link colors without providing a colorizer, because no BDV window has been opened yet
             updateLinkColors(colorizer)
 
+            mainLink.metadata["MaxInstanceUpdateCount"] = AtomicInteger(1)
+
             val tElapsed = TimeSource.Monotonic.markNow() - tStart
             logger.debug("Total link updates (with coloring) took $tElapsed")
 
@@ -995,14 +1005,14 @@ class SphereLinkNodes(
     ) {
         val start = TimeSource.Monotonic.markNow()
         when (cm) {
-            ColorMode.LUT -> {
+            LUT -> {
                 links.forEach {link ->
                     val factor = link.value.tp / numTimePoints.toDouble()
                     val color = unpackRGB(lut.lookupARGB(0.0, 1.0, factor))
                     link.value.instance.instancedProperties["Color"] = { color }
                 }
             }
-            ColorMode.SPOT -> {
+            SPOT -> {
                 if (colorizer != null) {
                     for (tp in 0 .. numTimePoints) {
                         val spots = mastodonData.model.spatioTemporalIndex.getSpatialIndex(tp)
@@ -1014,6 +1024,7 @@ class SphereLinkNodes(
             }
         }
         val end = TimeSource.Monotonic.markNow()
+        mainLinkInstance?.metadata["MaxInstanceUpdateCount"] = AtomicInteger(1)
         logger.debug("Updating link colors took ${end - start}.")
     }
 
@@ -1022,6 +1033,7 @@ class SphereLinkNodes(
             // turns the link on if it is within range, otherwise turns it off
             link.value.instance.visible = link.value.tp in currentTP - linkBackwardRange..currentTP + linkForwardRange
         }
+        mainLinkInstance?.metadata["MaxInstanceUpdateCount"] = AtomicInteger(1)
     }
 
     /** Passed as callback to sciview to send a list of vertices from sciview to Mastodon.
@@ -1213,6 +1225,7 @@ class SphereLinkNodes(
             it.instance.visible = state
             logger.debug("set instance ${it.instance.name} to $state")
         }
+        mainLinkInstance?.metadata["MaxInstanceUpdateCount"] = AtomicInteger(1)
     }
 
     val linkSize = 2.0
