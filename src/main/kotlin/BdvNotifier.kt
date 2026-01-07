@@ -16,17 +16,16 @@ import java.beans.PropertyChangeEvent
 import java.beans.PropertyChangeListener
 
 /**
- * Runs the updateContentProcessor() when an event occurs on the given
- * BDV window, an event that is worth rebuilding the scene content. Similarly,
- * runs the updateViewProcessor() when an event occurs on the given BDV
- * window, an event that is worth moving the scene's camera. A shortcut
- * reference (to the underlying Mastodon data that the BDV window
+ * Event handler loop that listens to possible updates from view changes or timepoint, vertex or graph events.
+ * A shortcut reference (to the underlying Mastodon data that the BDV window
  * operates over) must be provided.
  *
  * @param updateTimepointProcessor  handler of the scene rebuilding event
  * @param updateViewProcessor  handler of the scene viewing-angle event
+ * @param updateVertexProcessor handler of individual spot updates
+ * @param updateGraphProcessor handler that rebuilds the whole graph
  * @param mastodon  the underlying Mastodon data
- * @param bdvWindow  BDV window that operated on the underlying Mastodon data
+ * @param bdvWindow  BDV window that operates on the underlying Mastodon data
  */
 class BdvNotifier(
     updateTimepointProcessor: Runnable,
