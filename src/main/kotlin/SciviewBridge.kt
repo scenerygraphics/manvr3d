@@ -49,10 +49,10 @@ import sc.iview.commands.analysis.CellTrackingBase
 import sc.iview.commands.analysis.TimepointObserver
 import sc.iview.commands.analysis.EyeTracking
 import util.SphereLinkNodes
+import util.updateInstanceBuffers
 import java.util.concurrent.Executors
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
-import java.util.concurrent.atomic.AtomicInteger
 import javax.swing.Action
 import javax.swing.JFrame
 import javax.swing.JPanel
@@ -286,8 +286,8 @@ class SciviewBridge: TimepointObserver {
             }
             sphereLinkNodes.updateLinkTransforms(adjacentEdges)
             currentControllerPos = newPos
-            sphereLinkNodes.mainLinkInstance?.metadata["MaxInstanceUpdateCount"] = AtomicInteger(1)
-            sphereLinkNodes.mainSpotInstance?.metadata["MaxInstanceUpdateCount"] = AtomicInteger(1)
+            sphereLinkNodes.mainLinkInstance?.updateInstanceBuffers()
+            sphereLinkNodes.mainSpotInstance?.updateInstanceBuffers()
         }
 
         moveInstanceVREnd = fun (pos: Vector3f) {
@@ -884,7 +884,7 @@ class SciviewBridge: TimepointObserver {
                             val newPos = position + movement / worldScale() / volumeNode.spatial().scale / 1.7f
                             it.spatialOrNull()?.position = newPos
                             currentHit = newHit
-                            it.instancedParent.metadata["MaxInstanceUpdateCount"] = AtomicInteger(1)
+                            it.instancedParent.updateInstanceBuffers()
                         }
                         sphereLinkNodes.moveSpotInBDV(it, movement)
                         sphereLinkNodes.updateLinkTransforms(edges)
@@ -972,13 +972,13 @@ class SciviewBridge: TimepointObserver {
             vrTracking.setSpotVisCallback = { state ->
                 sphereLinkNodes.mainSpotInstance?.let {
                     it.visible = state
-                    it.metadata["MaxInstanceUpdateCount"] = AtomicInteger(1)
+                    it.updateInstanceBuffers()
                 }
             }
             vrTracking.setTrackVisCallback = { state ->
                 sphereLinkNodes.mainLinkInstance?.let {
                     it.visible = state
-                    it.metadata["MaxInstanceUpdateCount"] = AtomicInteger(1)
+                    it.updateInstanceBuffers()
                 }
             }
             vrTracking.setVolumeVisCallback = { state ->

@@ -41,6 +41,7 @@ import java.util.*
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.atomic.AtomicInteger
+import kotlin.collections.set
 import kotlin.math.pow
 import kotlin.math.sqrt
 import kotlin.time.TimeSource
@@ -186,7 +187,7 @@ class SphereLinkNodes(
                 }
 
                 sv.addNode(mainSpot, parent = sphereParentNode, activePublish = false)
-                mainSpot.metadata["MaxInstanceUpdateCount"] = AtomicInteger(1)
+                mainSpot.updateInstanceBuffers()
                 mainSpotInstance = mainSpot
             }
 
@@ -273,7 +274,7 @@ class SphereLinkNodes(
                 spotPool[i++].visible = false
             }
 
-            mainSpot.metadata["MaxInstanceUpdateCount"] = AtomicInteger(1)
+            mainSpot.updateInstanceBuffers()
 
             val tElapsed = TimeSource.Monotonic.markNow() - tStart
             logger.debug("Spot updates took $tElapsed")
@@ -634,7 +635,7 @@ class SphereLinkNodes(
                     }
                 }
                 logger.debug("Selecting spots in range took ${TimeSource.Monotonic.markNow() - start}")
-                mainSpotInstance?.metadata["MaxInstanceUpdateCount"] = AtomicInteger(1)
+                mainSpotInstance?.updateInstanceBuffers()
                 // Return the first spot if we found one
                 Pair(spots.firstOrNull(), true)
             } else {
@@ -643,7 +644,7 @@ class SphereLinkNodes(
                     clearSelection()
                     mastodonData.model.graph.notifyGraphChanged()
                 }
-                mainSpotInstance?.metadata["MaxInstanceUpdateCount"] = AtomicInteger(1)
+                mainSpotInstance?.updateInstanceBuffers()
                 Pair(spots.firstOrNull(), false)
             }
         }
@@ -652,7 +653,7 @@ class SphereLinkNodes(
         findInstanceFromSpot(spot)?.let {
             bridge.selectedSpotInstances.add(it)
             it.instancedProperties["Color"] = { selectedColor }
-            it.parent?.metadata["MaxInstanceUpdateCount"] = AtomicInteger(1)
+            it.instancedParent.updateInstanceBuffers()
             mastodonData.selectionModel.setSelected(spot, true)
         }
     }
@@ -765,7 +766,7 @@ class SphereLinkNodes(
     private fun adjustSpotInstanceScale(inst: InstancedNode.Instance) {
         findSpotFromInstance(inst)?.let { spot ->
             inst.spatial().scale = Vector3f(sphereScaleFactor * getSpotRadius(spot))
-            inst.instancedParent.metadata["MaxInstanceUpdateCount"] = AtomicInteger(1)
+            inst.instancedParent.updateInstanceBuffers()
         }
     }
 
@@ -789,7 +790,7 @@ class SphereLinkNodes(
             }
             it.spatial().scale *= Vector3f(sqrt(factor))
         }
-        mainLinkInstance?.metadata["MaxInstanceUpdateCount"] = AtomicInteger(1)
+        mainLinkInstance?.updateInstanceBuffers()
     }
 
     /** Takes a list of Mastodon [Link]s, tries to find their corresponding instances and updates their transforms. */
@@ -896,7 +897,7 @@ class SphereLinkNodes(
                 }
                 logger.debug("initialized mainLinkInstance")
                 sv.addNode(mainLink, parent = linkParentNode, activePublish = false)
-                mainLink.metadata["MaxInstanceUpdateCount"] = AtomicInteger(1)
+                mainLink.updateInstanceBuffers()
 
                 mainLinkInstance = mainLink
             }
@@ -960,7 +961,7 @@ class SphereLinkNodes(
             // first update the link colors without providing a colorizer, because no BDV window has been opened yet
             updateLinkColors(colorizer)
 
-            mainLink.metadata["MaxInstanceUpdateCount"] = AtomicInteger(1)
+            mainLink.updateInstanceBuffers()
 
             val tElapsed = TimeSource.Monotonic.markNow() - tStart
             logger.debug("Total link updates (with coloring) took $tElapsed")
@@ -1024,7 +1025,7 @@ class SphereLinkNodes(
             }
         }
         val end = TimeSource.Monotonic.markNow()
-        mainLinkInstance?.metadata["MaxInstanceUpdateCount"] = AtomicInteger(1)
+        mainLinkInstance?.updateInstanceBuffers()
         logger.debug("Updating link colors took ${end - start}.")
     }
 
@@ -1033,7 +1034,7 @@ class SphereLinkNodes(
             // turns the link on if it is within range, otherwise turns it off
             link.value.instance.visible = link.value.tp in currentTP - linkBackwardRange..currentTP + linkForwardRange
         }
-        mainLinkInstance?.metadata["MaxInstanceUpdateCount"] = AtomicInteger(1)
+        mainLinkInstance?.updateInstanceBuffers()
     }
 
     /** Passed as callback to sciview to send a list of vertices from sciview to Mastodon.
@@ -1214,8 +1215,8 @@ class SphereLinkNodes(
             setLinkTransform(trackPointList.last().first, localPos, inst)
             val link = LinkPreview(inst, trackPointList.last().first, localPos, tp)
             linkPreviewList.add(link)
-            mainLinkInstance?.metadata["MaxInstanceUpdateCount"] = AtomicInteger(1)
-            mainSpotInstance?.metadata["MaxInstanceUpdateCount"] = AtomicInteger(1)
+            mainLinkInstance?.updateInstanceBuffers()
+            mainSpotInstance?.updateInstanceBuffers()
             logger.debug("Added a new preview link from ${link.from} to ${link.to}. Visibility is $preview")
         }
         trackPointList.add(Triple(localPos, tp, radius))
@@ -1227,7 +1228,7 @@ class SphereLinkNodes(
             it.instance.visible = state
             logger.debug("set instance ${it.instance.name} to $state")
         }
-        mainLinkInstance?.metadata["MaxInstanceUpdateCount"] = AtomicInteger(1)
+        mainLinkInstance?.updateInstanceBuffers()
     }
 
     val linkSize = 2.0
@@ -1246,3 +1247,9 @@ class SphereLinkNodes(
 }
 
 data class LinkNode (val instance: InstancedNode.Instance, val from: Spot, val to: Spot, val tp: Int)
+
+/** This extension function pushes updated instance buffers to the GPU.
+ * Without calling this function, instances will not update in the renderer. */
+fun InstancedNode.updateInstanceBuffers() {
+    this.metadata["MaxInstanceUpdateCount"] = AtomicInteger(1)
+}
