@@ -41,6 +41,7 @@ import java.util.*
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.atomic.AtomicInteger
+import kotlin.collections.plus
 import kotlin.collections.set
 import kotlin.math.pow
 import kotlin.math.sqrt
@@ -73,7 +74,6 @@ class SphereLinkNodes(
     var currentColorMode: ColorMode
     val spotPool: MutableList<InstancedNode.Instance> = ArrayList(10000)
     val linkPool: MutableList<InstancedNode.Instance> = ArrayList(10000)
-    private var spotRef: Spot? = null
     var events: EventService? = null
 
     val sphere = Icosphere(1f, 2)
@@ -195,7 +195,6 @@ class SphereLinkNodes(
             val mainSpot =
                 mainSpotInstance ?: throw IllegalStateException("InstancedSpot is null, instance was not initialized.")
 
-            if (spotRef == null) spotRef = mastodonData.model.graph.vertexRef()
             val selectedSpotRef = mastodonData.selectionModel.selectedVertices
             spots = mastodonData.model.spatioTemporalIndex.getSpatialIndex(timepoint)
             sv.blockOnNewNodes = false
@@ -446,6 +445,7 @@ class SphereLinkNodes(
      * It does that by filtering through the names of the spots.
      * @return either a [Spot] or null. */
     fun findSpotFromInstance(instance: InstancedNode.Instance): Spot? {
+        // TODO Refactor this to be faster with hashmaps instead of using strings
         if (instance.name.startsWith("spot")) {
             val name = instance.name.removePrefix("spot_")
             val selectedSpot = spots.find { it.internalPoolIndex == name.toInt() }
@@ -463,14 +463,13 @@ class SphereLinkNodes(
     }
 
     /** Tries to find a link instance for the given [link].
-     * It does that by filtering through the names, which contain the internalPoolIndex.
      * @return either an [InstancedNode.Instance] or null. */
     fun findInstanceFromLink(link: Link): InstancedNode.Instance? {
-        val results = links.filterValues { it.instance.name.toInt() == link.internalPoolIndex }
-        return if (results.isNotEmpty()) {
-            results.entries.first().value.instance
+        val results = links[link.internalPoolIndex]
+        return if (results != null) {
+            results.instance
         } else {
-            logger.info("Couldnt find an instance for link ${link.internalPoolIndex}")
+            logger.info("Couldnt find an instance for $link")
             null
         }
     }
@@ -545,12 +544,13 @@ class SphereLinkNodes(
     /** Iterates over all spots of a given timepoint [tp], checks whether there are overlapping spots and merges them. */
     fun mergeOverlappingSpots(tp: Int) {
         updateQueue.offer {
+            val graph = mastodonData.model.graph
             mastodonData.model.setUndoPoint()
             bridge.bdvNotifier?.lockUpdates = true
             val spatialIndex = mastodonData.model.spatioTemporalIndex.getSpatialIndex(tp)
-            val queue = RefCollections.createRefDeque(mastodonData.model.graph.vertices())
+            val queue = RefCollections.createRefDeque(graph.vertices())
             queue.addAll(spatialIndex)
-            val currentSpot = mastodonData.model.graph.vertexRef()
+            val currentSpot = graph.vertexRef()
             val pos = FloatArray(3)
             var overlaps: RefList<Spot>
             while (queue.isNotEmpty()) {
@@ -560,7 +560,10 @@ class SphereLinkNodes(
                 // The target spot is going to be the first in the overlap list, so we remove it
                 overlaps.removeFirstOrNull()
                 if (overlaps.isNotEmpty()) {
-                    mergeWithTargetSpot(currentSpot, overlaps)
+                    val spotList = RefCollections.createRefList(graph.vertices())
+                    spotList.addAll(overlaps)
+                    spotList.add(currentSpot)
+                    mergeSpots(spotList)
                     // This would have been easier by simply writing queue.removeAll(overlaps), but this always
                     // missed the spot with index 0 for whatever reason.
                     val overlapIndices = overlaps.map { it.internalPoolIndex }.toSet()
@@ -574,35 +577,73 @@ class SphereLinkNodes(
         }
     }
 
-    /** Merges a list of spots into a target spot that remains part of Mastodon's data structure,
-     * while the other spots are removed. Positions and radii are averaged. */
-    private fun mergeWithTargetSpot(target: Spot, other: List<Spot>) {
+    /** Merges a list of spots together while keeping the connected edges.
+     * Original spots will be removed from the graph and a new merged spot is created.
+     * Positions and radii are averaged. */
+    fun mergeSpots(spots: RefList<Spot>) {
+        bridge.bdvNotifier?.lockUpdates = true
         val graph = mastodonData.model.graph
-        val spotRef = graph.vertexRef()
+        val sourceRef = graph.vertexRef()
+        val targetRef = graph.vertexRef()
         val meanPos = Vector3f()
-        var meanRadius = 0f
+        var meanRadius = 0.0
         val pos = FloatArray(3)
+
+        val incomingSpots = RefCollections.createRefList(graph.vertices())
+        val outgoingSpots = RefCollections.createRefList(graph.vertices())
+
+        // Collect incoming and outgoing spots from the other spots.
+        // Handle events where A and B are connected to C, and A and B are merged -> only create one edge
+        spots.forEach { spot ->
+            incomingSpots.addAll(spot.incomingEdges().map { it.source }.distinctBy { it.internalPoolIndex })
+            outgoingSpots.addAll(spot.outgoingEdges().map { it.target }.distinctBy { it.internalPoolIndex })
+        }
         // Accumulate positions and radii
-        logger.info("Merging spots ${other.map { it.internalPoolIndex }} into spot ${target.internalPoolIndex}.")
-        (other + target).forEach { spot ->
-            spotRef.refTo(spot)
-            spotRef.localize(pos)
+        logger.info("Merging spots ${spots.map { it.internalPoolIndex }}...")
+        logger.info("Incoming spots: $incomingSpots, outgoing spots: $outgoingSpots")
+        spots.forEach { spot ->
+            targetRef.refTo(spot)
+            targetRef.localize(pos)
             meanPos.add(Vector3f(pos))
-            meanRadius += getSpotRadius(spotRef)
+            meanRadius += getSpotRadius(targetRef)
         }
         // Get the mean values
-        meanPos /= (other.size + 1f)
-        meanRadius /= (other.size + 1f)
+        meanPos /= spots.size.toFloat()
+        meanRadius /= spots.size.toDouble()
         graph.lock.writeLock().lock()
-        // Now update the target
-        target.setPosition(meanPos.toFloatArray())
-        target.setRadius(meanRadius)
-        // Remove the rest
-        other.forEach {
+
+        // Create a new spot that we reconnect before deleting the old ones
+        val newSpot = graph.addVertex()
+        newSpot.init(spots.first().timepoint, meanPos.toDoubleArray(), meanRadius)
+
+        // Incoming edges
+        incomingSpots.forEach { spot ->
+            sourceRef.refTo(spot)
+            targetRef.refTo(newSpot)
+            val e = graph.addEdge(sourceRef, targetRef)
+            e.init()
+            logger.info("Initialized edge $e with source $sourceRef and target $targetRef")
+        }
+        // Outgoing edges
+        outgoingSpots.forEach { spot ->
+            sourceRef.refTo(newSpot)
+            targetRef.refTo(spot)
+            val e = graph.addEdge(sourceRef, targetRef)
+            e.init()
+            logger.info("Initialized edge $e with source $sourceRef and target $targetRef")
+        }
+
+        // Remove all old spots
+        spots.forEach {
             graph.remove(it)
         }
+        logger.info("Newly merged spot now has incoming edges ${newSpot.incomingEdges().map { it.internalPoolIndex }}" +
+                "and outgoing edges ${newSpot.outgoingEdges().map { it.internalPoolIndex }}")
+
         graph.lock.writeLock().unlock()
-        graph.releaseRef(spotRef)
+        graph.releaseRef(sourceRef)
+        graph.releaseRef(targetRef)
+        bridge.bdvNotifier?.lockUpdates = false
     }
 
     /** Extension function that allows setting [Spot] covariances via passing a [radius]. */
@@ -753,11 +794,16 @@ class SphereLinkNodes(
             scale = Vector3f(sphereScaleFactor * getSpotRadius(spot))
         }
         val edges = spot.incomingEdges() + spot.outgoingEdges()
-        for (edge in edges) {
-            findInstanceFromLink(edge)?.let {
-                setLinkTransform(edge.source, edge.target, it)
+        val edgeRef = mastodonData.model.graph.edgeRef()
+        edges.forEach { edge ->
+            edgeRef.refTo(edge)
+            findInstanceFromLink(edgeRef)?.let {
+                setLinkTransform(edgeRef.source, edgeRef.target, it)
             }
         }
+        mastodonData.model.graph.releaseRef(edgeRef)
+        mainSpotInstance?.updateInstanceBuffers()
+        mainLinkInstance?.updateInstanceBuffers()
     }
 
     /** THIS IS A PURELY COSMETIC SETTING AND DOESN'T AFFECT THE TRUE RADIUS.
@@ -794,19 +840,29 @@ class SphereLinkNodes(
     }
 
     /** Takes a list of Mastodon [Link]s, tries to find their corresponding instances and updates their transforms. */
-    fun updateLinkTransforms(edges: MutableList<Link>) {
+    fun updateLinkTransforms(edgeIndices: List<Int>) {
         val graph = mastodonData.model.graph
+        val edgeRef = graph.edgeRef()
         val sourceRef = graph.vertexRef()
         val targetRef = graph.vertexRef()
-        for (edge in edges) {
-            findInstanceFromLink(edge)?.let {
+
+        for (edgeIdx in edgeIndices) {
+            val edge = graph.edges().find { it.internalPoolIndex == edgeIdx }
+            if (edge != null ) {
                 sourceRef.refTo(edge.source)
                 targetRef.refTo(edge.target)
-                setLinkTransform(sourceRef, targetRef, it)
+
+                links[edgeIdx]?.let {
+                    setLinkTransform(sourceRef, targetRef, it.instance)
+                }
+            } else {
+                logger.warn("Couldn't find edge with index $edgeIdx")
             }
         }
+        mainLinkInstance?.updateInstanceBuffers()
         graph.releaseRef(sourceRef)
         graph.releaseRef(targetRef)
+        graph.releaseRef(edgeRef)
     }
 
     /** Sort a list of instances by their distance to a given [origin] position (e.g. of the camera)
@@ -935,7 +991,7 @@ class SphereLinkNodes(
                 inst.name = "${edge.internalPoolIndex}"
                 inst.parent = linkParentNode
                 // add a new key-value pair to the hash map
-                links[to.hashCode()] = LinkNode(inst, from, to, to.timepoint)
+                links[edge.internalPoolIndex] = LinkNode(inst, from, to, to.timepoint)
 
                 index++
             }
@@ -972,7 +1028,6 @@ class SphereLinkNodes(
     /** Takes a cylinder instance [inst] and two spots, [from] and [to], and positions the cylinder between them.
      * This function has an overload that takes vectors instead of spots. */
     private fun setLinkTransform(from: Spot, to: Spot, inst: InstancedNode.Instance) {
-
         // temporary container to get the position as array
         val pos = FloatArray(3)
         from.localize(pos)
@@ -1100,9 +1155,7 @@ class SphereLinkNodes(
             graph.releaseRef(prevVertex)
             bridge.bdvNotifier?.lockUpdates = false
             // Once we send the new track to Mastodon, we can assume we no longer need the previews and can clear them
-            logger.info("instances before deletion: ${mainLinkInstance?.instances?.size}")
             mainLinkInstance?.instances?.removeAll(linkPreviewList.map { it.instance }.toSet())
-            logger.info("instances after deletion: ${mainLinkInstance?.instances?.size}")
             linkPreviewList.clear()
             trackPointList.clear()
             clearSelection()
@@ -1204,7 +1257,7 @@ class SphereLinkNodes(
     val addTrackedPoint: (pos: Vector3f, tp: Int, rawRadius: Float, preview: Boolean) -> Unit = { pos, tp, radius, preview ->
         val localPos = bridge.sciviewToMastodonCoords(pos)
         // Once we tracked the first point, we can start adding link previews
-        if (trackPointList.size > 0 && mainLinkInstance != null) {
+        if (trackPointList.isNotEmpty() && mainLinkInstance != null) {
             val inst = mainLinkInstance!!.addInstance()
             val color = Vector4f(0.65f, 1f, 0.22f, 1f)
 //            val localFrom = bridge.sciviewToMastodonCoords(from)
@@ -1217,7 +1270,7 @@ class SphereLinkNodes(
             linkPreviewList.add(link)
             mainLinkInstance?.updateInstanceBuffers()
             mainSpotInstance?.updateInstanceBuffers()
-            logger.debug("Added a new preview link from ${link.from} to ${link.to}. Visibility is $preview")
+            logger.debug("Added a new preview link from {} to {}. Visibility is {}", link.from, link.to, preview)
         }
         trackPointList.add(Triple(localPos, tp, radius))
     }

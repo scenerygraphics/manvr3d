@@ -33,6 +33,7 @@ import org.joml.Matrix4f
 import org.joml.Quaternionf
 import org.joml.Vector3f
 import org.mastodon.adapter.TimepointModelAdapter
+import org.mastodon.collection.RefCollections
 import org.mastodon.mamut.model.Link
 import org.mastodon.mamut.model.Spot
 import org.mastodon.mamut.views.bdv.MamutViewBdv
@@ -127,7 +128,7 @@ class SciviewBridge: TimepointObserver {
     var isVRactive = false
 
     lateinit var vrTracking: CellTrackingBase
-    private var adjacentEdges: MutableList<Link> = ArrayList()
+    private var adjacentEdges = mutableListOf<Int>()
     private var moveInstanceVRInit: (Vector3f) -> Unit
     private var moveInstanceVRDrag: (Vector3f) -> Unit
     private var moveInstanceVREnd: (Vector3f) -> Unit
@@ -249,11 +250,9 @@ class SciviewBridge: TimepointObserver {
                 selectedSpotInstances.clear()
                 return
             } else {
+                bdvNotifier?.lockUpdates = true
                 selectedSpotInstances.forEach { inst ->
                     logger.debug("selected spot instance is $inst")
-                    if (inst == null) {
-                        return@forEach
-                    }
                     val spot = sphereLinkNodes.findSpotFromInstance(inst)
                     val selectedTP = spot?.timepoint ?: -1
                     if (selectedTP != volumeNode.currentTimepoint) {
@@ -264,11 +263,8 @@ class SciviewBridge: TimepointObserver {
                         bdvNotifier?.lockUpdates = true
                         currentControllerPos = sciviewToMastodonCoords(pos)
                         spot?.let { s ->
-                            adjacentEdges.addAll(s.incomingEdges())
-                            adjacentEdges.addAll(s.outgoingEdges())
-                            logger.debug("Moving ${s.incomingEdges().map { it.internalPoolIndex }.joinToString { ", " }}" +
-                                    "incoming and ${s.outgoingEdges().map { it.internalPoolIndex }.joinToString { ", " }}" +
-                                    "outgoing edges for spot $s.")
+                            adjacentEdges.addAll(s.edges().map { it.internalPoolIndex })
+                            logger.debug("Moving edges $adjacentEdges for spot ${spot.internalPoolIndex}.")
                         }
                     }
                 }
@@ -284,10 +280,9 @@ class SciviewBridge: TimepointObserver {
                 }
                 sphereLinkNodes.moveSpotInBDV(it, movement)
             }
+            sphereLinkNodes.mainSpotInstance?.updateInstanceBuffers()
             sphereLinkNodes.updateLinkTransforms(adjacentEdges)
             currentControllerPos = newPos
-            sphereLinkNodes.mainLinkInstance?.updateInstanceBuffers()
-            sphereLinkNodes.mainSpotInstance?.updateInstanceBuffers()
         }
 
         moveInstanceVREnd = fun (pos: Vector3f) {
@@ -295,6 +290,7 @@ class SciviewBridge: TimepointObserver {
             sphereLinkNodes.showInstancedSpots(detachedDPP_showsLastTimepoint.timepoint,
                 detachedDPP_showsLastTimepoint.colorizer)
             adjacentEdges.clear()
+            bdvNotifier?.lockUpdates = false
         }
 
         pluginActions = mastodon.plugins.pluginActions
@@ -846,7 +842,7 @@ class SciviewBridge: TimepointObserver {
 
         private var currentHit: Vector3f = Vector3f()
         private var distance: Float = 0f
-        private var edges: MutableList<Link> = ArrayList()
+        private var edges = mutableListOf<Int>()
 
         override fun init(x: Int, y: Int) {
             bdvNotifier?.lockUpdates = true
@@ -857,11 +853,8 @@ class SciviewBridge: TimepointObserver {
                     distance = cam.spatial().position.distance(selectedSpotInstances.first().spatial().position)
                     currentHit = rayStart + rayDir * distance
                     val spot = sphereLinkNodes.findSpotFromInstance(selectedSpotInstances.first())
-                    mastodon.model.graph.vertexRef().refTo(spot).incomingEdges()?.forEach {
-                        edges.add(it)
-                    }
-                    mastodon.model.graph.vertexRef().refTo(spot).outgoingEdges()?.forEach {
-                        edges.add(it)
+                    spot?.let {
+                        edges.addAll(it.edges().map { it.internalPoolIndex })
                     }
                 }
             }
@@ -896,6 +889,7 @@ class SciviewBridge: TimepointObserver {
         }
 
         override fun end(x: Int, y: Int) {
+            edges.clear()
             bdvNotifier?.lockUpdates = false
             sphereLinkNodes.showInstancedSpots(detachedDPP_showsLastTimepoint.timepoint,
                 detachedDPP_showsLastTimepoint.colorizer)
@@ -986,6 +980,15 @@ class SciviewBridge: TimepointObserver {
             }
             vrTracking.mergeOverlapsCallback = { tp ->
                 sphereLinkNodes.mergeOverlappingSpots(tp)
+                sphereLinkNodes.showInstancedSpots(
+                    detachedDPP_showsLastTimepoint.timepoint,
+                    detachedDPP_showsLastTimepoint.colorizer
+                )
+            }
+            vrTracking.mergeSelectedCallback = {
+                val spots = RefCollections.createRefList<Spot>(mastodon.model.graph.vertices())
+                spots.addAll(selectedSpotInstances.map { sphereLinkNodes.findSpotFromInstance(it) })
+                sphereLinkNodes.mergeSpots(spots)
                 sphereLinkNodes.showInstancedSpots(
                     detachedDPP_showsLastTimepoint.timepoint,
                     detachedDPP_showsLastTimepoint.colorizer
