@@ -126,13 +126,14 @@ class SciviewBridge: TimepointObserver {
     var uiFrame: JFrame? = null
     private var isRunning = true
     var isVRactive = false
+    /** Factor to scale the native headset resolution by. Useful to increase performance at little visual impact. */
+    var vrResolutionScale = 0.75f
 
     lateinit var vrTracking: CellTrackingBase
     private var adjacentEdges = mutableListOf<Int>()
     private var moveInstanceVRInit: (Vector3f) -> Unit
     private var moveInstanceVRDrag: (Vector3f) -> Unit
     private var moveInstanceVREnd: (Vector3f) -> Unit
-//    private var resetControllerTrack: () -> Unit
 
     private val pluginActions: Actions
     private val predictSpotsAction: Action
@@ -914,15 +915,15 @@ class SciviewBridge: TimepointObserver {
         thread {
 
             vrTracking = if (useEyeTrackers) {
-                val eyeTracking = EyeTracking(sciviewWin)
+                val eyeTracking = EyeTracking(sciviewWin, vrResolutionScale)
                 if (eyeTracking.establishEyeTrackerConnection()) {
                     eyeTracking
                 } else {
                     useEyeTrackers = false
-                    CellTrackingBase(sciviewWin)
+                    CellTrackingBase(sciviewWin, vrResolutionScale)
                 }
             } else {
-                CellTrackingBase(sciviewWin)
+                CellTrackingBase(sciviewWin, vrResolutionScale)
             }
             sciviewWin.getSceneryRenderer()?.setRenderingQuality(RenderConfigReader.RenderingQuality.Low)
             // Pass track and spot handling callbacks to sciview
