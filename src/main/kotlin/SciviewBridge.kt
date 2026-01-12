@@ -898,7 +898,8 @@ class SciviewBridge: TimepointObserver {
 
     /** Starts the sciview VR environment and optionally the eye tracking environment,
      * depending on the user's selection in the UI. Sends spot and track manipulation callbacks to the VR environment. */
-    fun launchVR(withEyetracking: Boolean = true): Boolean {
+    fun launchVR(wantEyeTracking: Boolean = true): Boolean {
+        var useEyeTrackers = wantEyeTracking
         // Test whether a headset is connected before starting sciview's VR launch routines
         val hmd = OpenVRHMD(false, true)
         if (!hmd.initializedAndWorking()) {
@@ -911,8 +912,15 @@ class SciviewBridge: TimepointObserver {
         isVRactive = true
 
         thread {
-            vrTracking = if (withEyetracking) {
-                EyeTracking(sciviewWin)
+
+            vrTracking = if (useEyeTrackers) {
+                val eyeTracking = EyeTracking(sciviewWin)
+                if (eyeTracking.establishEyeTrackerConnection()) {
+                    eyeTracking
+                } else {
+                    useEyeTrackers = false
+                    CellTrackingBase(sciviewWin)
+                }
             } else {
                 CellTrackingBase(sciviewWin)
             }
@@ -994,11 +1002,25 @@ class SciviewBridge: TimepointObserver {
                     detachedDPP_showsLastTimepoint.colorizer
                 )
             }
+            vrTracking.deleteGraphCallback = {
+                val spots = RefCollections.createRefSet<Spot>(mastodon.model.graph.vertices())
+                spots.addAll(mastodon.model.graph.vertices())
+                sphereLinkNodes.deleteSpots(spots)
+                vrTracking.rebuildGeometryCallback?.invoke()
+            }
+            vrTracking.deleteTimepointCallback = {
+                val tp = mastodon.model.spatioTemporalIndex.getSpatialIndex(detachedDPP_showsLastTimepoint.timepoint)
+                val spots = RefCollections.createRefSet<Spot>(mastodon.model.graph.vertices())
+                spots.addAll(tp)
+                sphereLinkNodes.deleteSpots(spots)
+                vrTracking.rebuildGeometryCallback?.invoke()
+            }
+
             // register the bridge as an observer to the timepoint changes by the user in VR,
             // allowing us to get updates via the onTimepointChanged() function
             vrTracking.registerObserver(this)
 
-            if (withEyetracking) {
+            if (useEyeTrackers) {
                 (vrTracking as EyeTracking).run()
             } else {
                 vrTracking.run()
