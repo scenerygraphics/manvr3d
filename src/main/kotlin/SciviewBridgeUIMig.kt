@@ -175,7 +175,7 @@ class SciviewBridgeUIMig(controlledBridge: SciviewBridge, populateThisContainer:
             }
         }
         eyeTrackingToggle = JCheckBox("Launch with Eye Tracking")
-        eyeTrackingToggle.setSelected(true)
+        eyeTrackingToggle.setSelected(false)
         windowPanel.add(JPanel(MigLayout("fillx, insets 0")).apply {
             add(toggleVR, "growx")
             add(eyeTrackingToggle, "dock east, gapleft 8px")
