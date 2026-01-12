@@ -7,7 +7,7 @@ plugins {
 }
 
 group = "org.mastodon"
-version = "0.2"
+version = "0.3"
 
 repositories {
     mavenCentral()
@@ -17,7 +17,7 @@ repositories {
 }
 
 dependencies {
-    implementation(platform("org.scijava:pom-scijava:37.0.0"))
+    implementation(platform("org.scijava:pom-scijava:43.0.0"))
 
     implementation("net.imagej:imagej")
 
