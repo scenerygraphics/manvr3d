@@ -593,11 +593,13 @@ class SphereLinkNodes(
         val outgoingSpots = RefCollections.createRefList(graph.vertices())
 
         // Collect incoming and outgoing spots from the other spots.
-        // Handle events where A and B are connected to C, and A and B are merged -> only create one edge
-        spots.forEach { spot ->
-            incomingSpots.addAll(spot.incomingEdges().map { it.source }.distinctBy { it.internalPoolIndex })
-            outgoingSpots.addAll(spot.outgoingEdges().map { it.target }.distinctBy { it.internalPoolIndex })
-        }
+        // Prevent duplicates when A and B are connected to C, and A and B are merged
+        incomingSpots.addAll(spots.flatMap { it.incomingEdges().map { it.source } }
+            .distinctBy { it.internalPoolIndex })
+
+        outgoingSpots.addAll(spots.flatMap { it.outgoingEdges().map { it.target } }
+            .distinctBy { it.internalPoolIndex })
+
         // Accumulate positions and radii
         logger.info("Merging spots ${spots.map { it.internalPoolIndex }}...")
         logger.info("Incoming spots: $incomingSpots, outgoing spots: $outgoingSpots")
