@@ -22,6 +22,7 @@ import org.joml.Vector3i
 import org.joml.Vector4f
 import org.mastodon.collection.RefCollections
 import org.mastodon.collection.RefList
+import org.mastodon.collection.RefSet
 import org.mastodon.mamut.ProjectModel
 import org.mastodon.mamut.SciviewBridge
 import org.mastodon.mamut.model.Link
@@ -80,7 +81,7 @@ class SphereLinkNodes(
     val cylinder = Cylinder(0.2f, 1f, 6, true, true)
     var mainSpotInstance: InstancedNode? = null
     var mainLinkInstance: InstancedNode? = null
-    lateinit var spots: SpatialIndex<Spot>
+    lateinit var visibleSpots: SpatialIndex<Spot>
     var linkForwardRange: Int
     var linkBackwardRange: Int
 
@@ -196,7 +197,7 @@ class SphereLinkNodes(
                 mainSpotInstance ?: throw IllegalStateException("InstancedSpot is null, instance was not initialized.")
 
             val selectedSpotRef = mastodonData.selectionModel.selectedVertices
-            spots = mastodonData.model.spatioTemporalIndex.getSpatialIndex(timepoint)
+            visibleSpots = mastodonData.model.spatioTemporalIndex.getSpatialIndex(timepoint)
             sv.blockOnNewNodes = false
 
             // Pre-allocate memory to prevent recreation of variables inside the loop
@@ -211,11 +212,11 @@ class SphereLinkNodes(
             var axisLengths: Vector3f
 
             var index = 0
-            logger.debug("we have ${spots.size()} spots in this Mastodon time point.")
+            logger.debug("we have ${visibleSpots.size()} spots in this Mastodon time point.")
             bridge.bdvNotifier?.lockUpdates = true
             val vertexRef = mastodonData.model.graph.vertexRef()
             mastodonData.model.graph.lock.readLock().lock()
-            for (spot in spots) {
+            for (spot in visibleSpots) {
                 vertexRef.refTo(spot)
                 // reuse a spot instance from the pool if the pool is large enough
                 if (index < spotPool.size) {
@@ -448,7 +449,7 @@ class SphereLinkNodes(
         // TODO Refactor this to be faster with hashmaps instead of using strings
         if (instance.name.startsWith("spot")) {
             val name = instance.name.removePrefix("spot_")
-            val selectedSpot = spots.find { it.internalPoolIndex == name.toInt() }
+            val selectedSpot = visibleSpots.find { it.internalPoolIndex == name.toInt() }
             return selectedSpot
         } else {
             return null
@@ -711,15 +712,18 @@ class SphereLinkNodes(
     }
 
     /** Deletes the currently selected Spots from the graph. */
-    private val deleteSelectedSpots: (() -> Unit) = {
+    val deleteSpots: ((spots: RefSet<Spot>) -> Unit) = { spots ->
         updateQueue.offer {
+            bridge.bdvNotifier?.lockUpdates = true
+            mastodonData.model.setUndoPoint()
             mastodonData.model.graph.lock.writeLock().lock()
-            mastodonData.selectionModel.selectedVertices.forEach {
+            spots.forEach {
                 mastodonData.model.graph.remove(it)
                 logger.debug("Deleted spot {}", it)
             }
             mastodonData.model.graph.lock.writeLock().unlock()
             bridge.selectedSpotInstances.clear()
+            bridge.bdvNotifier?.lockUpdates = false
         }
     }
 
@@ -838,7 +842,7 @@ class SphereLinkNodes(
             }
             it.spatial().scale *= Vector3f(sqrt(factor))
         }
-        mainLinkInstance?.updateInstanceBuffers()
+        mainSpotInstance?.updateInstanceBuffers()
     }
 
     /** Takes a list of Mastodon [Link]s, tries to find their corresponding instances and updates their transforms. */
@@ -1175,7 +1179,7 @@ class SphereLinkNodes(
             val selected = mastodonData.selectionModel.selectedVertices
             if (!selected.isEmpty()) {
                 if (!deleteBranch) {
-                    deleteSelectedSpots.invoke()
+                    deleteSpots.invoke(selected)
                 } else {
                     logger.info("Deleting the whole branch...")
                     val spotList = mutableListOf<Spot>()
