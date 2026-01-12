@@ -5,6 +5,8 @@ package org.mastodon.mamut
 import bdv.viewer.Source
 import bdv.viewer.SourceAndConverter
 import graphics.scenery.*
+import graphics.scenery.attribute.spatial.DefaultSpatial
+import graphics.scenery.attribute.spatial.Spatial
 import graphics.scenery.backends.RenderConfigReader
 import graphics.scenery.controls.OpenVRHMD
 import graphics.scenery.controls.behaviours.SelectCommand
@@ -128,6 +130,10 @@ class SciviewBridge: TimepointObserver {
     var isVRactive = false
     /** Factor to scale the native headset resolution by. Useful to increase performance at little visual impact. */
     var vrResolutionScale = 0.75f
+    /** Default transforms for the volume. Can be reverted to when needing to reset the view. */
+    var defaultVolumePosition: Vector3f
+    var defaultVolumeScale: Vector3f
+    var defaultVolumeRotation: Quaternionf
 
     lateinit var vrTracking: CellTrackingBase
     private var adjacentEdges = mutableListOf<Int>()
@@ -241,6 +247,10 @@ class SciviewBridge: TimepointObserver {
                 sphereLinkNodes.findInstanceFromSpot(spot)?.let { selectedSpotInstances.add(it) }
                 sphereLinkNodes.moveAndScaleSpotInSciview(spot) }
         }
+
+        defaultVolumePosition = volumeNode.spatial().position
+        defaultVolumeScale = volumeNode.spatial().scale
+        defaultVolumeRotation = volumeNode.spatial().rotation
 
         var currentControllerPos = Vector3f()
 
@@ -400,7 +410,7 @@ class SciviewBridge: TimepointObserver {
 
     /** Centers the camera on the volume and adjusts its distance to fully fit the volume into the camera's FOV. */
     private fun centerCameraOnVolume() {
-        // get the extend of the volume in sciview coordinates
+        // get the extent of the volume in sciview coordinates
         val volSize = (volumeNode.boundingBox!!.max - volumeNode.boundingBox!!.min) * volumeNode.pixelToWorldRatio * sceneScale
         val hFOVRad = Math.toRadians((sciviewWin.camera?.fov ?: 70f).toDouble())
         val aspectRatio = sciviewWin.camera?.aspectRatio() ?: 1f
@@ -1014,6 +1024,19 @@ class SciviewBridge: TimepointObserver {
                 val spots = RefCollections.createRefSet<Spot>(mastodon.model.graph.vertices())
                 spots.addAll(tp)
                 sphereLinkNodes.deleteSpots(spots)
+                vrTracking.rebuildGeometryCallback?.invoke()
+            }
+            vrTracking.resetViewCallback = {
+                volumeNode.spatial {
+                    position = Vector3f(0f)
+                    scale = defaultVolumeScale
+                    rotation = defaultVolumeRotation
+                    needsUpdate = true
+                    needsUpdateWorld = true
+                }
+                centerCameraOnVolume()
+                // TODO this is a hacky workaround for the geometry not updating properly when resetting the volume
+                vrTracking.rebuildGeometryCallback?.invoke()
                 vrTracking.rebuildGeometryCallback?.invoke()
             }
 
