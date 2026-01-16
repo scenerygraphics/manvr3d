@@ -128,8 +128,9 @@ class SciviewBridge: TimepointObserver {
     var uiFrame: JFrame? = null
     private var isRunning = true
     var isVRactive = false
-    /** Factor to scale the native headset resolution by. Useful to increase performance at little visual impact. */
-    var vrResolutionScale = 0.75f
+    /** Factor to scale the native headset resolution by. Useful to increase performance at little visual impact.
+     * Can only be changed through the UI, and is only applied when VR is started. */
+    private var vrResolutionScale = 0.75f
     /** Default transforms for the volume. Can be reverted to when needing to reset the view. */
     var defaultVolumePosition: Vector3f
     var defaultVolumeScale: Vector3f
@@ -308,46 +309,41 @@ class SciviewBridge: TimepointObserver {
 
         predictSpotsAction = pluginActions.actionMap.get("[elephant] predict spots")
         predictSpotsCallback = { predictAll ->
-            predictSpotsAction.let {
-                // Limitation of Elephant: we can only predict X number of frames in the past
-                // So we have to temporarily move to the last TP and set the time range to the size of all TPs
-                val settings = ElephantMainSettingsManager.getInstance().forwardDefaultStyle
-                settings.timeRange = if (predictAll) volumeNode.timepointCount else 1
-                logger.info("Elephant settings.timeRange was set to ${settings.timeRange}.")
-                val start = TimeSource.Monotonic.markNow()
-                val currentTP = detachedDPP_showsLastTimepoint.timepoint
-                val groupHandle = mastodon.groupManager.createGroupHandle()
-                groupHandle.groupId = 0
-                val tpAdapter = TimepointModelAdapter(groupHandle.getModel(mastodon.TIMEPOINT))
+            // Limitation of Elephant: we can only predict X number of frames in the past
+            // So we have to temporarily move to the last TP and set the time range to the size of all TPs
+            val settings = ElephantMainSettingsManager.getInstance().forwardDefaultStyle
+            settings.timeRange = if (predictAll) volumeNode.timepointCount else 1
+            logger.info("Elephant settings.timeRange was set to ${settings.timeRange}.")
+            val start = TimeSource.Monotonic.markNow()
+            val currentTP = detachedDPP_showsLastTimepoint.timepoint
+            val groupHandle = mastodon.groupManager.createGroupHandle()
+            groupHandle.groupId = 0
+            val tpAdapter = TimepointModelAdapter(groupHandle.getModel(mastodon.TIMEPOINT))
 
-                if (predictAll) {
-                    tpAdapter.timepoint = volumeNode.timepointCount
-                }
-                (it as PredictSpotsAction).run()
-                logger.info("Predicting spots took ${start.elapsedNow()} ms")
-                if (predictAll) {
-                    tpAdapter.timepoint = currentTP
-                }
-                sphereLinkNodes.showInstancedSpots(detachedDPP_showsLastTimepoint.timepoint,
-                    detachedDPP_showsLastTimepoint.colorizer)
-                sciviewWin.camera?.showMessage("Prediction took ${start.elapsedNow()} ms", 2f, 0.2f, centered = true)
+            if (predictAll) {
+                tpAdapter.timepoint = volumeNode.timepointCount
             }
+            (predictSpotsAction as PredictSpotsAction).run()
+            logger.info("Predicting spots took ${start.elapsedNow()} ms")
+            if (predictAll) {
+                tpAdapter.timepoint = currentTP
+            }
+            sphereLinkNodes.showInstancedSpots(detachedDPP_showsLastTimepoint.timepoint,
+                detachedDPP_showsLastTimepoint.colorizer)
+            sciviewWin.camera?.showMessage("Prediction took ${start.elapsedNow()} ms", 2f, 0.2f, centered = true)
         }
 
         trainSpotsAction = pluginActions.actionMap.get("[elephant] train detection model (all timepoints)")
         trainsSpotsCallback = {
-            trainSpotsAction.let {
                 val start = TimeSource.Monotonic.markNow()
                 logger.info("Training spots from all timepoints...")
-                (it as TrainDetectionAction).run()
+                (trainSpotsAction as TrainDetectionAction).run()
                 logger.info("Training spots took ${start.elapsedNow()} ms")
                 sciviewWin.camera?.showMessage("Training took ${start.elapsedNow()} ms", 2f, 0.2f, centered = true)
-            }
         }
 
         neighborLinkingAction = pluginActions.actionMap.get("[elephant] nearest neighbor linking")
         neighborLinkingCallback = {
-            neighborLinkingAction.let {
                 logger.info("Linking nearest neighbors...")
                 // Setting the NN linking range to always include the whole time range
                 val settings = ElephantMainSettingsManager.getInstance().forwardDefaultStyle
@@ -359,11 +355,10 @@ class SciviewBridge: TimepointObserver {
                 groupHandle.groupId = 0
                 val tpAdapter = TimepointModelAdapter(groupHandle.getModel(mastodon.TIMEPOINT))
                 tpAdapter.timepoint = volumeNode.timepointCount
-                (it as NearestNeighborLinkingAction).run()
+                (neighborLinkingAction as NearestNeighborLinkingAction).run()
                 // Revert to the previous TP
                 tpAdapter.timepoint = currentTP
                 sciviewWin.camera?.showMessage("Linked nearest neighbors.", 2f, 0.2f, centered = true)
-            }
         }
 
         stageSpotsCallback = {
@@ -387,6 +382,11 @@ class SciviewBridge: TimepointObserver {
 
     val eventService: EventService?
         get() = sciviewWin.scijavaContext?.getService(EventService::class.java)
+
+    /** Sets the [vrResolutionScale]. Changes are only applied once [SciviewBridge.launchVR] is executed. */
+    fun setVrResolutionScale(scale: Float) {
+        vrResolutionScale = scale
+    }
 
     /** Launches a worker that sequentially executes queued spot and link updates from [SphereLinkNodes]. */
     private fun submitToTaskExecutor() {
