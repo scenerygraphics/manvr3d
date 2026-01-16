@@ -470,7 +470,7 @@ class SphereLinkNodes(
         return if (results != null) {
             results.instance
         } else {
-            logger.info("Couldnt find an instance for $link")
+            logger.info("Couldn't find an instance for $link")
             null
         }
     }

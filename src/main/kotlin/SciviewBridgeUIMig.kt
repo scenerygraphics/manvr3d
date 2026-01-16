@@ -14,10 +14,6 @@ class SciviewBridgeUIMig(controlledBridge: SciviewBridge, populateThisContainer:
     val windowPanel: JPanel
     private val logger by lazyLogger(System.getProperty("scenery.LogLevel", "info"))
 
-//    lateinit var intensityContrastSpinner: SpinnerModel
-//    lateinit var intensityShiftSpinner: SpinnerModel
-//    lateinit var intensityClampTopSpinner: SpinnerModel
-//    lateinit var intensityGammaSpinner: SpinnerModel
     lateinit var intensityRangeSlider: AdjustableBoundsRangeSlider
     lateinit var mipmapSpinner: SpinnerNumberModel
     lateinit var visToggleSpots: JButton
@@ -47,33 +43,6 @@ class SciviewBridgeUIMig(controlledBridge: SciviewBridge, populateThisContainer:
             addActionListener { bridge.openSyncedBDV() }
         }
         windowPanel.add(openBdvBtn, "growx, wrap")
-
-        // Intensity controls
-//        windowPanel.add(
-//            JLabel("Volume pixel values 'v' are processed linearly, normalized, gamma, scaled back:"),
-//            "span, growx"
-//        )
-//        windowPanel.add(JLabel("   pow( min(contrast*v + shift, not_above)/not_above, gamma ) *not_above"), "span")
-
-//        intensityContrastSpinner = addLabeledSpinner(
-//            "Apply on Volume this contrast factor:",
-//            SpinnerNumberModel(1.0, -100.0, 100.0, 0.5)
-//        ) { value -> bridge.intensity.contrast = value.toFloat() }
-
-//        intensityShiftSpinner = addLabeledSpinner(
-//            "Apply on Volume this shifting bias:",
-//            SpinnerNumberModel(0.0, -65535.0, 65535.0, 50.0)
-//        ) { value -> bridge.intensity.shift = value.toFloat() }
-
-//        intensityGammaSpinner = addLabeledSpinner(
-//            "Apply on Volume this gamma level:",
-//            SpinnerNumberModel(1.0, 0.1, 3.0, 0.1)
-//        ) { value -> bridge.intensity.gamma = value.toFloat() }
-
-//        intensityClampTopSpinner = addLabeledSpinner(
-//            "Clamp all voxels so that their values are not above:",
-//            SpinnerNumberModel(700.0, 0.0, 65535.0, 50.0)
-//        ) { value -> bridge.intensity.clampTop = value.toFloat() }
 
         // MIPMAP Level
         mipmapSpinner = addLabeledSpinner("Choose Mipmap Level", SpinnerNumberModel(0, 0, 6, 1)) { level ->
@@ -122,7 +91,7 @@ class SciviewBridgeUIMig(controlledBridge: SciviewBridge, populateThisContainer:
             "VR Resolution scale",
             SpinnerNumberModel(0.75f, 0.1f, 2f, 0.1f)
         ) { value ->
-            bridge.vrResolutionScale = value.toFloat()
+            bridge.setVrResolutionScale(value.toFloat())
         }
 
         // Adding dropdowns for link LUTs and volume colors
@@ -263,12 +232,8 @@ class SciviewBridgeUIMig(controlledBridge: SciviewBridge, populateThisContainer:
         val updVolAutoBackup = bridge.updateVolAutomatically
         //temporarily disable because setting the controls trigger their listeners
         //that trigger (not all of them) the expensive volume updating
-
         bridge.updateVolAutomatically = false
-//        intensityContrastSpinner.value = bridge.intensity.contrast
-//        intensityShiftSpinner.value = bridge.intensity.shift
-//        intensityClampTopSpinner.value = bridge.intensity.clampTop
-//        intensityGammaSpinner.value = bridge.intensity.gamma
+
         spotScaleFactor.value = bridge.sphereLinkNodes.sphereScaleFactor
         val upperValBackup = bridge.intensity.rangeMax
 
