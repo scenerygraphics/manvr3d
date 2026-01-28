@@ -3,7 +3,7 @@
 This project aims to bridge the cell tracking software [Mastodon](https://github.com/mastodon-sc) with interactive 3D visualization in [sciview (and scenery)](https://github.com/scenerygraphics/sciview)
 and extends it with [eye tracking](https://link.springer.com/chapter/10.1007/978-3-030-66415-2_18)-based cell tracking and other VR tracking/editing/exploration modalities. It is a reincarnation of [an earlier project `mastodon-sciview`](https://github.com/mastodon-sc/mastodon-sciview/) by [`xulman`](https://github.com/xulman) and [`RuoshanLan`](https://github.com/ruoshanlan).
 
-Manvr3d is published in https://doi.org/10.48550/arXiv.2505.03440.
+Manvr3d is published in https://doi.org/10.1109/VIS60296.2025.00077. (Arxiv: https://doi.org/10.48550/arXiv.2505.03440)
 
 The repository was started during the [scenery and sciview hackathon](https://imagesc.zulipchat.com/#narrow/stream/391996-Zzz.3A-.5B2023-06.5D-scenery.2Bsciview-hackathon-dresden)
 in Dresden (Germany) in June 2023, where most of the code was contributed by [`xulman`](https://github.com/xulman). Samuel Pantze ([`smlpt`](https://github.com/smlpt/)) is the current maintainer
@@ -15,6 +15,8 @@ to create an interactive human-in-the-loop cell tracking system.
 > or open an issue.
 
 ![](doc/msbt2_overview3.jpg)
+
+> For the latest changes, visit the [Changelog](CHANGELOG.md).
 
 ## The standard view
 Here's an example of data inspection that can be made possible via this project. It features volumetric rendering overlaid with colored spheres.
@@ -40,7 +42,7 @@ With a project open, you can launch a new manvr3d instance by going to `Window >
 
 Setting up ELEPHANT is optional. To configure ELEPHANT, please follow the official [ELEPHANT Docs](https://elephant-track.github.io/). It needs to be set up with docker either locally or running on a remote server (recommended). You will also need to give individual dataset names for each dataset in the ELEPHANT preferences panel found in `Plugins > ELEPHANT > Preferences`. There, you can also configure the remote server connection you want to use. Also make sure to click both of the lock icons for group 1 found in the top left of the linked BDV window and the manvr3d GUI.
 
-VR is currently only tested to work on Windows systems. To launch a VR session, you need a SteamVR-compatible headset connected to your computer, and Steam needs to be opened. Eye tracking support is highly experimental and currently relies on hardware from Pupil Labs and running the Pupil service on your system. We recommend trying out VR on a mainstream headset like the Meta Quest 2 for now and disabling the option `Launch with Eye Tracking` in the GUI.
+VR is currently only tested to work on Windows systems. To launch a VR session, you need a SteamVR-compatible headset connected to your computer, and Steam needs to be opened. Eye tracking support is highly experimental and currently relies on hardware from Pupil Labs and running the Pupil service on your system. We recommend trying out VR on a mainstream headset like the Meta Quest 2 for now and keeping the option `Launch with Eye Tracking` in the GUI disabled.
 
 ## Opening
 Two dialog windows shall pop up.
@@ -66,14 +68,14 @@ tracks  (consisting of cylinders, also called _links_) and orientation axes
 (with the meaning that red, green, and blue point in the positive directions of the *Mastodon* x-, y-, and z-axis, respectively).
 
 One can (temporarily) hide some of the displayed content or alter its appearance by using
-the toggles in the bridge UI.
+the toggles in the bridge UI or via the VR buttons.
 
 ## Viewing options
 However, controls relevant to the tracking context (plus convenience shortcut controls) are put together in the controls panel.
 The panel, for example, summarizes [how (copies of the) pixel data are additionally processed in order to improve their appearance](doc/CONTROLS.md),
 and allows to adjust parameters of it:
 
-![The controls panel dialog window](doc/UI.jpg)
+![The controls panel dialog window](doc/UI_v0.3.jpg)
 
 The control panel allows for setting different LUTs for both the volume and the tracks.
 The visible range of track segments (aka links) can be configured both for a forward and a backward range.
@@ -97,10 +99,10 @@ Sometimes, it is necessary to (right) mouse click into the main viewing pane of 
 
 > Use of eye trackers is currently only tested to work with a pair of Pupil eye trackers that require running Pupil Service alongside the bridge.
 
-> Controller tracking should work with any modern headset, but the control scheme was only tested to work with a Meta Quest 2 and HTC Vive.
+> Controller tracking should work with any modern headset, but the control scheme was only tested to work with a Meta Quest 2 and HTC Vive for now.
 
-You can launch a VR session by clicking "Start VR" in the control panel. Deselect the "Launch with Eye Tracking" toggle
-if you only want to use controller tracking and don't have compatible eye tracking hardware (recommended).
+You can launch a VR session by clicking "Start VR" in the control panel. Only select the "Launch with Eye Tracking" toggle
+if you want to use eye tracking and have compatible eye tracking hardware.
 
 Currently, the controller scheme looks like this:
 ![controller_layout_manvr3d_0.3.png](doc/controller_layout_manvr3d_0.3.png)
@@ -118,16 +120,18 @@ The **right joystick** allows you to cycle through the timepoints (left/right). 
 
 ### Eye Tracking
 
-This feature is subject to change. The algorithm is explained in [the manvr3d paper](https://doi.org/10.48550/arXiv.2505.03440) and in [Bionic Tracking](https://link.springer.com/chapter/10.1007/978-3-030-66415-2_18). When a compatible headset is connected and the Pupil service is running, you can start an eye track by pressing the **left trigger button**. This will automatically start playback backwards from the current timepoint, and all gaze directions from this point on will be recorded until either the tracking is aborted by clicking the left trigger button again or until the first timepoint is reached.
+This feature is subject to change. The algorithm is explained in [the manvr3d paper](https://doi.org/10.1109/VIS60296.2025.00077) and in [Bionic Tracking](https://link.springer.com/chapter/10.1007/978-3-030-66415-2_18). When a compatible headset is connected and the Pupil service is running, you can start an eye track by pressing the **left trigger button**. This will automatically start playback backwards from the current timepoint, and all gaze directions from this point on will be recorded until either the tracking is aborted by clicking the left trigger button again or until the first timepoint is reached.
+
+Starting from manvr3d v0.3, you can switch to an experimental "annotation by gaze clustering" method with a VR menu button. This is a breadth-first annotation algorithm, in contrast to the depth-first Bionic Tracking appriach. This allows you to record your gaze while you simply "count" the cells in the current timepoint. After you finish the recording by clicking the left trigger button again, the gazes will be clustered and the cluster centers are used to find the likeliest cell candidates by sampling the volume analogous to the Bionic Tracking method.
 
 ### VR Editing
-- You can click into existing cells to start tracking **from** them. This will automatically extend the existing track.
+- You can click into existing cells with the right trigger button to start tracking **from** them. This will automatically extend the existing track.
 - Clicking into an existing cell **while tracking is active** will merge the active track into the existing track and create a cell division.
-- Select or deselect cells by moving the 3D cursor into them and press the **A** button. If you press it in thin air, it will clear the current selection. You can also hold and drag the **A** button to draw selections of several cells at once (you can select large areas at once by increasing the cursor size).
+- Select or deselect cells by moving the 3D cursor into them and press the **A** button. If you press it in thin air, it will clear the current selection. You can also hold and drag the **A** button to draw selections of several cells at once (you can select large areas at once by increasing the cursor size with the right joystick).
 - Selected cells can be moved around by holding the **right grab button**.
 - Selected cells can be deleted by pressing the **B** button. You can hold **B** for half a second to delete the whole track with all connected branches.
 - Selected cells can be scaled up or down by moving the **right joystick** up or down.
-- You can add new cells at any timepoint with the **B** button. This works as long as no selection is active (otherwise **B** will delete the selected cells).
+- You can add new cells in the current timepoint with the **B** button. This works as long as no selection is active (otherwise **B** will delete the selected cells).
 
 ### Cursor Colors
 - Blue: default
@@ -142,14 +146,6 @@ This feature is subject to change. The algorithm is explained in [the manvr3d pa
 
 - manvr3d currently only works with 16bit images [↗](https://github.com/scenerygraphics/manvr3d/issues/19).
 
-- The following volume processing input fields are currently not functional: contrast changing factor, shifting bias, gamma level and clamping. These fields will be reactivated once we support images with different bit depths [↗](https://github.com/scenerygraphics/manvr3d/issues/20).
-
-- The close button in the manvr3d GUI is currently not functional. Close the Fiji window instead [↗](https://github.com/scenerygraphics/manvr3d/issues/21).
-
-- Scene clean-up after closing a VR session is not complete. Camera behavior in the sciview window [switches to first person](https://github.com/scenerygraphics/sciview/issues/612) input instead of arcball control. This will be addressed in a future update.
-
 - Spot editing events can trigger a full graph redraw. This is not a problem for small to medium-sized datasets. ([↗](https://github.com/scenerygraphics/manvr3d/issues/23))
 
-- Spot scaling in sciview can be inconsistent with the spots rendered in BDV. This applies also to spots added by ELEPHANT (they tend to be too small) [↗](https://github.com/scenerygraphics/manvr3d/issues/22).
-
-- A freshly opened sciview window can have black borders in the bottom right area. This is caused by Windows scaling set to something other than 100%. Resizing the sciview window fixes it. [This issue](https://github.com/scenerygraphics/sciview/issues/553) will be addressed in a future update.
+- Selecting a mipmap level in the popup during the manvr3d initialization phase doesn't apply that mipmap level correctly to the volume (likely because the volume wasn't fully loaded yet). For now, use the mipmap spinner in the GUI. ([↗](https://github.com/scenerygraphics/manvr3d/issues/28))

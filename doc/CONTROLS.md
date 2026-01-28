@@ -1,6 +1,8 @@
 # The mangling of pixels before they are displayed in sciview
 
-> Note: part of the volume transformations described here are currently non-functional,
+> The controls in this document are outdated. Please refer to the controls documentation in the main [Readme](../README.md) instead.
+
+> Note: part of the volume transformations described here are not supported anymore,
 > because I need to figure out how update the data in real-time even for larger datasets.
 
 What originally was a technical necessity, the full copy of the relevant pixel data (that is, pixels
