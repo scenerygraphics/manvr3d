@@ -17,11 +17,16 @@ repositories {
 }
 
 dependencies {
-    implementation(platform("org.scijava:pom-scijava:43.0.0"))
-
     implementation("net.imagej:imagej")
 
-    implementation("sc.iview:sciview")
+    implementation("sc.iview:sciview") {
+        exclude(group = "sc.fiji", module = "bigvolumeviewer")
+    }
+
+    implementation("sc.fiji:bigvolumeviewer:0.3.3") {
+        exclude("org.jogamp.gluegen", "gluegen-rt")
+        exclude("org.jogamp.jogl", "jogl-all")
+    }
 
     implementation("org.slf4j:slf4j-simple:2.0.16")
 
