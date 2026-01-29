@@ -38,6 +38,7 @@ dependencies {
 
     testImplementation(platform("org.junit:junit-bom:5.9.1"))
     testImplementation("org.junit.jupiter:junit-jupiter")
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 
     val scijavaCommonVersion = "2.97.1"                 //TODO: shouldn't be updated?? look how this is done in scenery/sciview
     kapt("org.scijava:scijava-common:$scijavaCommonVersion") {
