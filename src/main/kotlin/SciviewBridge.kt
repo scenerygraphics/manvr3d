@@ -1008,6 +1008,7 @@ class SciviewBridge: TimepointObserver {
                 val spots = RefCollections.createRefList<Spot>(mastodon.model.graph.vertices())
                 spots.addAll(selectedSpotInstances.map { sphereLinkNodes.findSpotFromInstance(it) })
                 sphereLinkNodes.mergeSpots(spots)
+                sphereLinkNodes.clearSelection()
                 sphereLinkNodes.showInstancedSpots(
                     detachedDPP_showsLastTimepoint.timepoint,
                     detachedDPP_showsLastTimepoint.colorizer
