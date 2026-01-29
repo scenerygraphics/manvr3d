@@ -1,4 +1,4 @@
-rootProject.name = "mastodon-sciview-bridge"
+rootProject.name = "manvr3d"
 
 includeBuild("../sciview")
 includeBuild("../scenery")
