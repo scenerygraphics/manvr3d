@@ -37,6 +37,7 @@ import org.mastodon.collection.RefCollections
 import org.mastodon.mamut.model.Link
 import org.mastodon.mamut.model.Spot
 import org.mastodon.mamut.ui.Manvr3dUIMig
+import org.mastodon.mamut.util.DataAxes
 import org.mastodon.mamut.views.bdv.MamutViewBdv
 import org.mastodon.model.tag.TagSetStructure
 import org.mastodon.ui.coloring.DefaultGraphColorGenerator
@@ -102,7 +103,7 @@ class Manvr3dMain: TimepointObserver {
     val sciviewWin: SciView
     val sphereLinkNodes: SphereLinkNodes
     //sink scene graph structuring nodes
-    val axesParent: Node?
+    val axesParent: DataAxes
 
     // Worker queue for async 3D updating
     private val updateQueue = LinkedBlockingQueue<() -> Unit>()
@@ -184,7 +185,7 @@ class Manvr3dMain: TimepointObserver {
         sciviewWin.addNode(AmbientLight(0.05f, Vector3f(1f, 1f, 1f)))
 
         //add "root" with data axes
-        axesParent = constructDataAxes()
+        axesParent = DataAxes()
         sciviewWin.addNode(axesParent, activePublish = false)
 
         //get necessary metadata - from image data
@@ -416,7 +417,7 @@ class Manvr3dMain: TimepointObserver {
         stopAndDetachUI()
         deregisterKeyboardHandlers()
         logger.info("Manvr3d closing procedure: UI and keyboard handlers are removed now")
-        sciviewWin.setActiveNode(axesParent)
+//        sciviewWin.setActiveNode(axesParent)
         logger.info("Manvr3d closing procedure: focus shifted away from our nodes")
         val updateGraceTime = 100L // in ms
         try {
@@ -427,7 +428,7 @@ class Manvr3dMain: TimepointObserver {
             logger.debug("Manvr3d closing procedure: spots were removed")
         } catch (e: InterruptedException) { /* do nothing */
         }
-        sciviewWin.deleteNode(axesParent, true)
+//        sciviewWin.deleteNode(axesParent, true)
     }
 
     /** Convert a [Vector3f] from sciview space into Mastodon's voxel coordinate space,
@@ -1149,35 +1150,6 @@ class Manvr3dMain: TimepointObserver {
         fun adjustHeadLight(hl: PointLight) {
             hl.intensity = 1.5f
             hl.spatial().rotation = Quaternionf().rotateY(Math.PI.toFloat())
-        }
-
-        fun constructDataAxes(): Node {
-            //add the data axes
-            val AXES_LINE_WIDTHS = 0.01f
-            val AXES_LINE_LENGTHS = 0.1f
-            //
-            val axesParent = Group()
-            axesParent.name = "Data Axes"
-            //
-            var c = Cylinder(AXES_LINE_WIDTHS / 2.0f, AXES_LINE_LENGTHS, 12)
-            c.name = "Data x axis"
-            c.material().diffuse = Vector3f(1f, 0f, 0f)
-            val halfPI = Math.PI.toFloat() / 2.0f
-            c.spatial().rotation = Quaternionf().rotateLocalZ(-halfPI)
-            axesParent.addChild(c)
-            //
-            c = Cylinder(AXES_LINE_WIDTHS / 2.0f, AXES_LINE_LENGTHS, 12)
-            c.name = "Data y axis"
-            c.material().diffuse = Vector3f(0f, 1f, 0f)
-            c.spatial().rotation = Quaternionf().rotateLocalZ(Math.PI.toFloat())
-            axesParent.addChild(c)
-            //
-            c = Cylinder(AXES_LINE_WIDTHS / 2.0f, AXES_LINE_LENGTHS, 12)
-            c.name = "Data z axis"
-            c.material().diffuse = Vector3f(0f, 0f, 1f)
-            c.spatial().rotation = Quaternionf().rotateLocalX(-halfPI)
-            axesParent.addChild(c)
-            return axesParent
         }
 
         // --------------------------------------------------------------------------
