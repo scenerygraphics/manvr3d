@@ -392,15 +392,6 @@ class SphereLinkNodes(
         return quaternion
     }
 
-    // stretch color channels
-    private fun Vector3f.stretchColor(): Vector3f {
-        this.x.coerceIn(0f, 1f)
-        this.y.coerceIn(0f, 1f)
-        this.z.coerceIn(0f, 1f)
-        val max = this.max()
-        return this + Vector3f(1 - max)
-    }
-
     /** Extension function that takes a spot and colors the corresponding instance according to the [colorizer]. */
     private fun InstancedNode.Instance.setColorFromSpot(
         s: Spot,
