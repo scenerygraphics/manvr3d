@@ -401,10 +401,6 @@ class SphereLinkNodes(
         return this + Vector3f(1 - max)
     }
 
-    private fun Vector3f.toDoubleArray(): DoubleArray {
-        return this.toFloatArray().map { it.toDouble() }.toDoubleArray()
-    }
-
     /** Extension function that takes a spot and colors the corresponding instance according to the [colorizer]. */
     private fun InstancedNode.Instance.setColorFromSpot(
         s: Spot,
