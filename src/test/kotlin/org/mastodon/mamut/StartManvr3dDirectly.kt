@@ -9,7 +9,7 @@ import sc.iview.SciView.Companion.create
 import java.io.IOException
 import javax.swing.WindowConstants
 
-object StartSciviewBridgeDirectly {
+object StartManvr3dDirectly {
     private val logger by lazyLogger()
 
     @Throws(IOException::class, SpimDataException::class)
@@ -43,12 +43,11 @@ object StartSciviewBridgeDirectly {
             // --------------->>  <<---------------
             val sv = createSciview()
             val mastodon = giveMeMastodonOfThisProject(sv.scijavaContext, projectPath)
-            val bridge = SciviewBridge(mastodon, targetSciviewWindow = sv)
-            bridge.createAndShowControllingUI()
-//            bridge.openSyncedBDV();
+            val manvr3dContext = Manvr3dMain(mastodon, targetSciviewWindow = sv)
+            manvr3dContext.createAndShowControllingUI()
             mastodon.projectClosedListeners().add(CloseListener {
                 logger.debug("Mastodon project was closed, cleaning up in sciview:")
-                bridge.close() //calls also bridge.detachControllingUI();
+                manvr3dContext.close() //calls also manvr3dMain.detachControllingUI();
             })
         } catch (e: Exception) {
             throw e

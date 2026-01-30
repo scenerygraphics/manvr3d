@@ -3,11 +3,10 @@ package plugins.scijava
 import graphics.scenery.utils.lazyLogger
 import org.mastodon.mamut.CloseListener
 import org.mastodon.mamut.ProjectModel
-import org.mastodon.mamut.SciviewBridge
+import org.mastodon.mamut.Manvr3dMain
 import org.scijava.command.Command
 import org.scijava.command.CommandService
 import org.scijava.command.DynamicCommand
-import org.scijava.log.LogService
 import org.scijava.plugin.Parameter
 import org.scijava.plugin.Plugin
 import sc.iview.SciViewService
@@ -21,7 +20,7 @@ class MastodonSidePlugin : DynamicCommand() {
     var tryToReuseExistingSciviewWindow = true
 
     @Parameter(label = "Also open the controlling window right away:")
-    var openBridgeUI = true
+    var openManvr3dUI = true
 
     @Parameter(label = "Choose image data channel:", choices = [], initializer = "volumeParams")
     var useThisChannel = "default first channel"
@@ -50,7 +49,7 @@ class MastodonSidePlugin : DynamicCommand() {
             "mastodon", mastodon,
             "channelIdx", chosenChannel,
             "tryToReuseExistingSciviewWindow", tryToReuseExistingSciviewWindow,
-            "openBridgeUI", openBridgeUI
+            "openManvr3dUI", this@MastodonSidePlugin.openManvr3dUI
         )
     }
 
@@ -72,7 +71,7 @@ class MastodonSidePlugin : DynamicCommand() {
         var tryToReuseExistingSciviewWindow = true
 
         @Parameter(persist = false)
-        var openBridgeUI = true
+        var openManvr3dUI = true
 
         @Parameter(label = "Choose resolution level:", choices = [], initializer = "levelParams")
         var useThisResolutionDownscale = "[1,1,1]"
@@ -107,11 +106,11 @@ class MastodonSidePlugin : DynamicCommand() {
             try {
                 if (!tryToReuseExistingSciviewWindow) sciViewService.createSciView()
                 val sv = sciViewService.getOrCreateActiveSciView()
-                val bridge = SciviewBridge(mastodon, channelIdx, chosenLevel, sv)
-                if (openBridgeUI) bridge.createAndShowControllingUI()
+                val manvr3d = Manvr3dMain(mastodon, channelIdx, chosenLevel, sv)
+                if (openManvr3dUI) manvr3d.createAndShowControllingUI()
                 mastodon.projectClosedListeners().add(CloseListener {
                     logger.debug("Mastodon project was closed, cleaning up in sciview:")
-                    bridge.close() //calls also bridge.detachControllingUI();
+                    manvr3d.close() //calls also manvr3dMain.detachControllingUI();
                 })
             } catch (e: Exception) {
                 logger.error("MastodonSciview plugin error: " + e.message)

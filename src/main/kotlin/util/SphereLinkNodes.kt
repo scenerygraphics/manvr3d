@@ -24,7 +24,7 @@ import org.mastodon.collection.RefCollections
 import org.mastodon.collection.RefList
 import org.mastodon.collection.RefSet
 import org.mastodon.mamut.ProjectModel
-import org.mastodon.mamut.SciviewBridge
+import org.mastodon.mamut.Manvr3dMain
 import org.mastodon.mamut.model.Link
 import org.mastodon.mamut.model.Spot
 import org.mastodon.spatial.SpatialIndex
@@ -52,14 +52,14 @@ import kotlin.time.TimeSource
  * in the form of instanced geometry. Spots are represented as spheres, and track segments (links) are represented as cylinders.
  * It handles initialization, updates and actions like addition, deletion and movement of spots.
  * @param sv The sciview instance to use.
- * @param bridge And instance of the mastodon-sciview bridge.
+ * @param manvr3d An instance of manvr3d.
  * @param updateQueue Queue that executues scene updates sequentially in its own thread.
  * @param mastodonData Instance of the Mastodon ProjectModel
  * @param sphereParentNode Parent node for the instanced spheres
  * @param linkParentNode Parent node for the instanced links */
 class SphereLinkNodes(
     val sv: SciView,
-    val bridge: SciviewBridge,
+    val manvr3d: Manvr3dMain,
     val updateQueue: LinkedBlockingQueue<() -> Unit>,
     val mastodonData: ProjectModel,
     val sphereParentNode: Node,
@@ -213,7 +213,7 @@ class SphereLinkNodes(
 
             var index = 0
             logger.debug("we have ${visibleSpots.size()} spots in this Mastodon time point.")
-            bridge.bdvNotifier?.lockUpdates = true
+            manvr3d.bdvNotifier?.lockUpdates = true
             val vertexRef = mastodonData.model.graph.vertexRef()
             mastodonData.model.graph.lock.readLock().lock()
             for (spot in visibleSpots) {
@@ -266,7 +266,7 @@ class SphereLinkNodes(
 
                 index++
             }
-            bridge.bdvNotifier?.lockUpdates = false
+            manvr3d.bdvNotifier?.lockUpdates = false
             mastodonData.model.graph.lock.readLock().unlock()
             // turn all leftover spots from the pool invisible
             var i = index
@@ -534,7 +534,7 @@ class SphereLinkNodes(
         updateQueue.offer {
             val graph = mastodonData.model.graph
             mastodonData.model.setUndoPoint()
-            bridge.bdvNotifier?.lockUpdates = true
+            manvr3d.bdvNotifier?.lockUpdates = true
             val spatialIndex = mastodonData.model.spatioTemporalIndex.getSpatialIndex(tp)
             val queue = RefCollections.createRefDeque(graph.vertices())
             queue.addAll(spatialIndex)
@@ -561,7 +561,7 @@ class SphereLinkNodes(
             }
             mastodonData.model.graph.releaseRef(currentSpot)
             clearSelection()
-            bridge.bdvNotifier?.lockUpdates = false
+            manvr3d.bdvNotifier?.lockUpdates = false
         }
     }
 
@@ -569,7 +569,7 @@ class SphereLinkNodes(
      * Original spots will be removed from the graph and a new merged spot is created.
      * Positions and radii are averaged. */
     fun mergeSpots(spots: RefList<Spot>) {
-        bridge.bdvNotifier?.lockUpdates = true
+        manvr3d.bdvNotifier?.lockUpdates = true
         val graph = mastodonData.model.graph
         val sourceRef = graph.vertexRef()
         val targetRef = graph.vertexRef()
@@ -633,7 +633,7 @@ class SphereLinkNodes(
         graph.lock.writeLock().unlock()
         graph.releaseRef(sourceRef)
         graph.releaseRef(targetRef)
-        bridge.bdvNotifier?.lockUpdates = false
+        manvr3d.bdvNotifier?.lockUpdates = false
     }
 
     /** Extension function that allows setting [Spot] covariances via passing a [radius]. */
@@ -653,8 +653,8 @@ class SphereLinkNodes(
     val selectClosestSpotsVR: ((pos: Vector3f, tp: Int, radius: Float, addOnly: Boolean) -> Pair<Spot?, Boolean>) =
         { pos, tp, radius, addOnly ->
             val start = TimeSource.Monotonic.markNow()
-            val localPos = bridge.sciviewToMastodonCoords(pos)
-            val localRadius = bridge.sciviewToMastodonScale().max() * radius
+            val localPos = manvr3d.sciviewToMastodonCoords(pos)
+            val localRadius = manvr3d.sciviewToMastodonScale().max() * radius
             val spots = findSpotsInRange(tp, localPos, localRadius)
             // only proceed if we found at least one spot
             if (spots.isNotEmpty()) {
@@ -682,7 +682,7 @@ class SphereLinkNodes(
 
     private fun selectSpot(spot: Spot) {
         findInstanceFromSpot(spot)?.let {
-            bridge.selectedSpotInstances.add(it)
+            manvr3d.selectedSpotInstances.add(it)
             it.instancedProperties["Color"] = { selectedColor }
             it.instancedParent.updateInstanceBuffers()
             mastodonData.selectionModel.setSelected(spot, true)
@@ -691,7 +691,7 @@ class SphereLinkNodes(
 
     private fun deselectSpot(spot: Spot) {
         findInstanceFromSpot(spot)?.let {
-            bridge.selectedSpotInstances.remove(it)
+            manvr3d.selectedSpotInstances.remove(it)
             it.setColorFromSpot(spot, currentColorizer)
             mastodonData.selectionModel.setSelected(spot, false)
         }
@@ -701,7 +701,7 @@ class SphereLinkNodes(
     /** Deletes the currently selected Spots from the graph. */
     val deleteSpots: ((spots: RefSet<Spot>) -> Unit) = { spots ->
         updateQueue.offer {
-            bridge.bdvNotifier?.lockUpdates = true
+            manvr3d.bdvNotifier?.lockUpdates = true
             mastodonData.model.setUndoPoint()
             mastodonData.model.graph.lock.writeLock().lock()
             spots.forEach {
@@ -709,8 +709,8 @@ class SphereLinkNodes(
                 logger.debug("Deleted spot {}", it)
             }
             mastodonData.model.graph.lock.writeLock().unlock()
-            bridge.selectedSpotInstances.clear()
-            bridge.bdvNotifier?.lockUpdates = false
+            this@SphereLinkNodes.manvr3d.selectedSpotInstances.clear()
+            manvr3d.bdvNotifier?.lockUpdates = false
         }
     }
 
@@ -733,7 +733,7 @@ class SphereLinkNodes(
             logger.info("Trying to merge spot $nearestRef into $selectedRef")
             // Now that we found the nearest spot, let's merge it into the selected one
             nearestRef?.let {
-                bridge.bdvNotifier?.lockUpdates = true
+                manvr3d.bdvNotifier?.lockUpdates = true
                 val sourceRef = graph.vertexRef()
                 val targetRef = graph.vertexRef()
 
@@ -755,14 +755,14 @@ class SphereLinkNodes(
                     logger.debug("Merge event: added outgoing edge {}, deleted old edge {}", e, edge)
                 }
                 graph.remove(nearestRef)
-                bridge.bdvNotifier?.lockUpdates = false
+                manvr3d.bdvNotifier?.lockUpdates = false
                 graph.notifyGraphChanged()
             }
         }
     }
 
     fun clearSelection() {
-        bridge.selectedSpotInstances.clear()
+        manvr3d.selectedSpotInstances.clear()
         mastodonData.focusModel.focusVertex(null)
         mastodonData.selectionModel.clearSelection()
         mastodonData.highlightModel.clearHighlight()
@@ -885,13 +885,13 @@ class SphereLinkNodes(
         sphereScaleFactor -= 0.1f
         if (sphereScaleFactor < 0.1f) sphereScaleFactor = 0.1f
         updateSphereInstanceScales()
-        bridge.associatedUI?.updatePaneValues()
+        manvr3d.associatedUI?.updatePaneValues()
     }
 
     fun increaseSphereInstanceScale() {
         sphereScaleFactor += 0.1f
         updateSphereInstanceScales()
-        bridge.associatedUI?.updatePaneValues()
+        manvr3d.associatedUI?.updatePaneValues()
     }
 
     fun increaseLinkScale() {
@@ -1092,12 +1092,12 @@ class SphereLinkNodes(
         updateQueue.offer {
             val graph = mastodonData.model.graph
             var prevVertex = graph.vertexRef()
-            bridge.bdvNotifier?.lockUpdates = true
+            manvr3d.bdvNotifier?.lockUpdates = true
             // If the list isn't null, it was passed from eyetracking, and we have to treat it accordingly
             if (list != null) {
                 list.forEachIndexed { index, (pos, vertex) ->
                     val v = graph.addVertex()
-                    val r = (bridge.sciviewToMastodonScale().max() * cursorRadius).toDouble()
+                    val r = (manvr3d.sciviewToMastodonScale().max() * cursorRadius).toDouble()
                     v.init(vertex.timepoint, pos.toDoubleArray(), r)
                     logger.debug("added {}", v)
                     // start adding edges once the first vertex was added
@@ -1114,7 +1114,7 @@ class SphereLinkNodes(
                 var localRadius: Float
                 trackPointList.forEachIndexed { index, (pos, tp, pointRadius) ->
                     // Calculate the equivalent radius in Mastodon from the raw radius from the cursor in sciview scale
-                    localRadius = bridge.sciviewToMastodonScale().max() * pointRadius
+                    localRadius = manvr3d.sciviewToMastodonScale().max() * pointRadius
                     // If we reached the last spot in the list and a mergeSpot was passed, use it instead of the spot in the list
                     if (index == trackPointList.size - 1 && mergeSpot != null) {
                         graph.addEdge(mergeSpot, prevVertex)
@@ -1124,7 +1124,7 @@ class SphereLinkNodes(
                             v = startWithExisting
                         } else {
                             v = graph.addVertex()
-                            // val localPos = if (isWorldSpace) bridge.sciviewToMastodonCoords(pos) else pos
+                            // val localPos = if (isWorldSpace) manvr3d.sciviewToMastodonCoords(pos) else pos
                             v.init(tp, pos.toDoubleArray(), localRadius.toDouble())
                             logger.debug("added {}", v)
                         }
@@ -1139,7 +1139,7 @@ class SphereLinkNodes(
                 }
             }
             graph.releaseRef(prevVertex)
-            bridge.bdvNotifier?.lockUpdates = false
+            manvr3d.bdvNotifier?.lockUpdates = false
             // Once we send the new track to Mastodon, we can assume we no longer need the previews and can clear them
             mainLinkInstance?.instances?.removeAll(linkPreviewList.map { it.instance }.toSet())
             linkPreviewList.clear()
@@ -1154,7 +1154,7 @@ class SphereLinkNodes(
     val addOrRemoveSpots: (tp: Int, sciviewPos: Vector3f, radius: Float, deleteBranch: Boolean, isWorldSpace: Boolean) -> Unit =
         { tp, sciviewPos, radius, deleteBranch, isWorldSpace ->
         updateQueue.offer {
-            bridge.bdvNotifier?.lockUpdates = true
+            manvr3d.bdvNotifier?.lockUpdates = true
             // Check if a spot is selected, and perform deletion if true
             val selected = mastodonData.selectionModel.selectedVertices
             if (!selected.isEmpty()) {
@@ -1179,27 +1179,27 @@ class SphereLinkNodes(
             } else {
                 // If no spot is selected, add a new one
                 val pos = if (isWorldSpace) {
-                    bridge.sciviewToMastodonCoords(sciviewPos)
+                    manvr3d.sciviewToMastodonCoords(sciviewPos)
                 } else {
                     sciviewPos
                 }
-                val bb = bridge.volumeNode.boundingBox
+                val bb = manvr3d.volumeNode.boundingBox
                 if (bb != null) {
                     if (bb.isInside(pos)) {
-                        val localRadius = bridge.sciviewToMastodonScale().max() * radius
+                        val localRadius = manvr3d.sciviewToMastodonScale().max() * radius
                         val v = mastodonData.model.graph.addVertex()
                         v.init(tp, pos.toDoubleArray(), localRadius.toDouble())
                         logger.info("Added new spot at position $pos, radius is $localRadius")
                         logger.debug("we now have ${mastodonData.model.graph.vertices().size} spots in total")
                     } else {
                         logger.warn("Not adding new spot, $pos is outside the volume!")
-                        bridge.flashVolumeGrid()
+                        manvr3d.flashVolumeGrid()
                     }
                 } else {
                     logger.warn("Not adding new spot, volume has no bounding box!")
                 }
             }
-            bridge.bdvNotifier?.lockUpdates = false
+            manvr3d.bdvNotifier?.lockUpdates = false
         }
     }
 
@@ -1241,12 +1241,12 @@ class SphereLinkNodes(
     /** Adds a single link instance to the scene for visual feedback during controller based tracking.
      * No data are sent to Mastodon yet, but we keep track of the points in local space in a [trackPointList]. */
     val addTrackedPoint: (pos: Vector3f, tp: Int, rawRadius: Float, preview: Boolean) -> Unit = { pos, tp, radius, preview ->
-        val localPos = bridge.sciviewToMastodonCoords(pos)
+        val localPos = manvr3d.sciviewToMastodonCoords(pos)
         // Once we tracked the first point, we can start adding link previews
         if (trackPointList.isNotEmpty() && mainLinkInstance != null) {
             val inst = mainLinkInstance!!.addInstance()
             val color = Vector4f(0.65f, 1f, 0.22f, 1f)
-//            val localFrom = bridge.sciviewToMastodonCoords(from)
+//            val localFrom = manvr3d.sciviewToMastodonCoords(from)
             inst.instancedProperties["Color"] = { color }
             inst.name = "${tp}_${localPos}"
             inst.parent = linkParentNode
