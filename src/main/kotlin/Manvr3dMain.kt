@@ -409,20 +409,7 @@ class Manvr3dMain: TimepointObserver {
 
     /** Centers the camera on the volume and adjusts its distance to fully fit the volume into the camera's FOV. */
     private fun centerCameraOnVolume() {
-        // get the extent of the volume in sciview coordinates
-        val volSize = (volumeNode.boundingBox!!.max - volumeNode.boundingBox!!.min) * volumeNode.pixelToWorldRatio * sceneScale
-        val hFOVRad = Math.toRadians((sciviewWin.camera?.fov ?: 70f).toDouble())
-        val aspectRatio = sciviewWin.camera?.aspectRatio() ?: 1f
-        val vFOVRad = 2 * atan(tan(hFOVRad / 2.0) / aspectRatio)
-        // calculate the maximum distances for vertical and horizontal FOV
-        val distanceHeight = (volSize.y / 2f) / tan(vFOVRad / 2.0)
-        val distanceWidth = (volSize.x / 2f) / tan(hFOVRad / 2.0)
-        val maxDistance = max(distanceWidth, distanceHeight) * 1.2f // add a little margin
-
-        sciviewWin.camera?.spatial {
-            rotation = Quaternionf().lookAlong(Vector3f(0f, 0f, 1f), Vector3f(0f, 1f, 0f))
-            position = Vector3f(0f, 0f, maxDistance.toFloat())
-        }
+        sciviewWin.camera?.centerOnNode(node = volumeNode, sceneScale = volumeNode.pixelToWorldRatio * sceneScale)
     }
 
     fun close() {
