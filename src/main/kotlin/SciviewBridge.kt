@@ -5,8 +5,6 @@ package org.mastodon.mamut
 import bdv.viewer.Source
 import bdv.viewer.SourceAndConverter
 import graphics.scenery.*
-import graphics.scenery.attribute.spatial.DefaultSpatial
-import graphics.scenery.attribute.spatial.Spatial
 import graphics.scenery.backends.RenderConfigReader
 import graphics.scenery.controls.OpenVRHMD
 import graphics.scenery.controls.behaviours.SelectCommand
@@ -1084,24 +1082,9 @@ class SciviewBridge: TimepointObserver {
     }
 
     /** Quickly flashes the volume's bounding grid to indicate the borders of the volume. */
-    fun flashBoundingGrid(flashColor: Vector3f = Vector3f(0.95f, 0.25f, 0.15f)) {
+    fun flashVolumeGrid() {
         val bg = volumeNode.children.filterIsInstance<BoundingGrid>()
-        bg.firstOrNull()?.let { grid ->
-            val initVisibility = grid.visible
-            val initColor = grid.gridColor
-            thread {
-                grid.gridColor = flashColor
-                var count = 7
-                while (count > 0) {
-                    grid.visible = !grid.visible
-                    grid.spatial().needsUpdate = true
-                    Thread.sleep(100)
-                    count -= 1
-                }
-                grid.visible = initVisibility
-                grid.gridColor = initColor
-            }
-        }
+        bg.firstOrNull()?.flashGrid()
     }
 
     private fun deregisterKeyboardHandlers() {

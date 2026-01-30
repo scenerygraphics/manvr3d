@@ -1213,7 +1213,7 @@ class SphereLinkNodes(
                         logger.debug("we now have ${mastodonData.model.graph.vertices().size} spots in total")
                     } else {
                         logger.warn("Not adding new spot, $pos is outside the volume!")
-                        bridge.flashBoundingGrid()
+                        bridge.flashVolumeGrid()
                     }
                 } else {
                     logger.warn("Not adding new spot, volume has no bounding box!")
