@@ -1,6 +1,6 @@
 package plugins
 
-import org.mastodon.mamut.SciviewBridge
+import org.mastodon.mamut.Manvr3dMain
 import org.scijava.command.Command
 import org.scijava.plugin.Menu
 import org.scijava.plugin.Plugin
@@ -16,11 +16,11 @@ import javax.swing.JLabel
 @Plugin(
     type = Command::class,
     menuRoot = "SciView",
-    menu = [Menu(label = "Help", weight = HELP), Menu(label = "Mastodon Bridge", weight = HELP_HELP)]
+    menu = [Menu(label = "Help", weight = HELP), Menu(label = "manvr3d", weight = HELP_HELP)]
 )
 class SciviewPlugin : Command {
     override fun run() {
-        val panel = JFrame("Mastodon-sciview Bridge Keys Overview")
+        val panel = JFrame("manvr3d Keys Overview")
         panel.setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE)
         val gridBagLayout = GridBagLayout()
         panel.layout = gridBagLayout
@@ -58,12 +58,12 @@ class SciviewPlugin : Command {
 
     private fun collectRowsOfText(): Collection<Array<String?>> {
         val rows: MutableCollection<Array<String?>> = ArrayList(15)
-        rows.add(arrayOf(SciviewBridge.key_DEC_SPH, SciviewBridge.desc_DEC_SPH))
-        rows.add(arrayOf(SciviewBridge.key_INC_SPH, SciviewBridge.desc_INC_SPH))
-        rows.add(arrayOf(SciviewBridge.key_PREV_TP, SciviewBridge.desc_PREV_TP))
-        rows.add(arrayOf(SciviewBridge.key_NEXT_TP, SciviewBridge.desc_NEXT_TP))
-        rows.add(arrayOf(SciviewBridge.key_CTRL_WIN, SciviewBridge.desc_CTRL_WIN))
-        rows.add(arrayOf(SciviewBridge.key_CTRL_INFO, SciviewBridge.desc_CTRL_INFO))
+        rows.add(arrayOf(Manvr3dMain.key_DEC_SPH, Manvr3dMain.desc_DEC_SPH))
+        rows.add(arrayOf(Manvr3dMain.key_INC_SPH, Manvr3dMain.desc_INC_SPH))
+        rows.add(arrayOf(Manvr3dMain.key_PREV_TP, Manvr3dMain.desc_PREV_TP))
+        rows.add(arrayOf(Manvr3dMain.key_NEXT_TP, Manvr3dMain.desc_NEXT_TP))
+        rows.add(arrayOf(Manvr3dMain.key_CTRL_WIN, Manvr3dMain.desc_CTRL_WIN))
+        rows.add(arrayOf(Manvr3dMain.key_CTRL_INFO, Manvr3dMain.desc_CTRL_INFO))
         return rows
     }
 }
