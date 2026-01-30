@@ -36,7 +36,7 @@ import org.mastodon.adapter.TimepointModelAdapter
 import org.mastodon.collection.RefCollections
 import org.mastodon.mamut.model.Link
 import org.mastodon.mamut.model.Spot
-import org.mastodon.mamut.ui.SciviewBridgeUIMig
+import org.mastodon.mamut.ui.Manvr3dUIMig
 import org.mastodon.mamut.views.bdv.MamutViewBdv
 import org.mastodon.model.tag.TagSetStructure
 import org.mastodon.ui.coloring.DefaultGraphColorGenerator
@@ -64,7 +64,7 @@ import kotlin.time.Duration.Companion.seconds
 import kotlin.time.TimeSource
 
 
-class SciviewBridge: TimepointObserver {
+class Manvr3dMain: TimepointObserver {
     private val logger by lazyLogger(System.getProperty("scenery.LogLevel", "info"))
     //data source stuff
     val mastodon: ProjectModel
@@ -86,7 +86,7 @@ class SciviewBridge: TimepointObserver {
     var updateVolAutomatically = true
 
     override fun toString(): String {
-        val sb = StringBuilder("Mastodon-sciview bridge internal settings:\n")
+        val sb = StringBuilder("Manvr3d internal settings:\n")
         sb.append("   SOURCE_ID = $sourceID\n")
         sb.append("   SOURCE_USED_RES_LEVEL = $volumeMipmapLevel\n")
         sb.append("   INTENSITY_CONTRAST = ${intensity.contrast}\n")
@@ -123,7 +123,7 @@ class SciviewBridge: TimepointObserver {
     // triggering the event watcher while a spot is edited in Sciview
     var bdvNotifier: BdvNotifier? = null
     var moveSpotInSciview: (Spot?) -> Unit?
-    var associatedUI: SciviewBridgeUIMig? = null
+    var associatedUI: Manvr3dUIMig? = null
     var uiFrame: JFrame? = null
     private var isRunning = true
     var isVRactive = false
@@ -382,7 +382,7 @@ class SciviewBridge: TimepointObserver {
     val eventService: EventService?
         get() = sciviewWin.scijavaContext?.getService(EventService::class.java)
 
-    /** Sets the [vrResolutionScale]. Changes are only applied once [SciviewBridge.launchVR] is executed. */
+    /** Sets the [vrResolutionScale]. Changes are only applied once [Manvr3dMain.launchVR] is executed. */
     fun setVrResolutionScale(scale: Float) {
         vrResolutionScale = scale
     }
@@ -428,16 +428,16 @@ class SciviewBridge: TimepointObserver {
     fun close() {
         stopAndDetachUI()
         deregisterKeyboardHandlers()
-        logger.info("Mastodon-sciview Bridge closing procedure: UI and keyboard handlers are removed now")
+        logger.info("Manvr3d closing procedure: UI and keyboard handlers are removed now")
         sciviewWin.setActiveNode(axesParent)
-        logger.info("Mastodon-sciview Bridge closing procedure: focus shifted away from our nodes")
+        logger.info("Manvr3d closing procedure: focus shifted away from our nodes")
         val updateGraceTime = 100L // in ms
         try {
             sciviewWin.deleteNode(volumeNode, true)
-            logger.debug("Mastodon-sciview Bridge closing procedure: red volume removed")
+            logger.debug("Manvr3d closing procedure: red volume removed")
             Thread.sleep(updateGraceTime)
 //            sciviewWin.deleteNode(sphereParent, true)
-            logger.debug("Mastodon-sciview Bridge closing procedure: spots were removed")
+            logger.debug("Manvr3d closing procedure: spots were removed")
         } catch (e: InterruptedException) { /* do nothing */
         }
         sciviewWin.deleteNode(axesParent, true)
@@ -1040,7 +1040,7 @@ class SciviewBridge: TimepointObserver {
                 vrTracking.rebuildGeometryCallback?.invoke()
             }
 
-            // register the bridge as an observer to the timepoint changes by the user in VR,
+            // register manvr3d as an observer to the timepoint changes by the user in VR,
             // allowing us to get updates via the onTimepointChanged() function
             vrTracking.registerObserver(this)
 
@@ -1112,7 +1112,7 @@ class SciviewBridge: TimepointObserver {
             val panel = JPanel()
             add(panel)
             setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE)
-            associatedUI = SciviewBridgeUIMig(this@SciviewBridge, panel)
+            associatedUI = Manvr3dUIMig(this@Manvr3dMain, panel)
             pack()
             isVisible = true
         }
@@ -1121,7 +1121,7 @@ class SciviewBridge: TimepointObserver {
     fun stopAndDetachUI() {
         isRunning = false
         workerExecutor.shutdownNow()
-        logger.info("Stopped bridge worker queue.")
+        logger.info("Stopped manvr3d worker queue.")
         try {
             // Wait for graceful termination
             if (!workerExecutor.awaitTermination(5, TimeUnit.SECONDS)) {
