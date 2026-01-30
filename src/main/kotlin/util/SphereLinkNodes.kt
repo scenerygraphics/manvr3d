@@ -414,7 +414,7 @@ class SphereLinkNodes(
         }
         if (!isPartyMode) {
             if (!randomColors) {
-                val col = unpackRGB(intColor)
+                val col = intColor.unpackRGB()
                 this.instancedProperties["Color"] = { col }
             } else {
                 val col = Random.random3DVectorFromRange(0f, 1f).stretchColor()
@@ -880,13 +880,6 @@ class SphereLinkNodes(
         return sortedSpots
     }
 
-    /** Takes an integer-encoded RGB value and returns it as [Vector4f] where alpha is 1.0f. */
-    private fun unpackRGB(intColor: Int): Vector4f {
-        val r = (intColor shr 16 and 0x000000FF) / 255f
-        val g = (intColor shr 8 and 0x000000FF) / 255f
-        val b = (intColor and 0x000000FF) / 255f
-        return Vector4f(r, g, b, 1.0f)
-    }
 
     fun updateSphereInstanceScales() {
         val tStart = TimeSource.Monotonic.markNow()
@@ -1066,7 +1059,7 @@ class SphereLinkNodes(
             LUT -> {
                 links.forEach {link ->
                     val factor = link.value.tp / numTimePoints.toDouble()
-                    val color = unpackRGB(lut.lookupARGB(0.0, 1.0, factor))
+                    val color = lut.lookupARGB(0.0, 1.0, factor).unpackRGB()
                     link.value.instance.instancedProperties["Color"] = { color }
                 }
             }
@@ -1297,7 +1290,7 @@ class SphereLinkNodes(
         val v = value / 100.0f
 
         val rgbInt = Color.HSBtoRGB(h, s, v)
-        return unpackRGB(rgbInt)
+        return rgbInt.unpackRGB()
     }
 }
 
