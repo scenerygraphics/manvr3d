@@ -1,13 +1,29 @@
-package org.mastodon.mamut
+package org.mastodon.mamut.ui
 
 import graphics.scenery.utils.lazyLogger
+import org.mastodon.mamut.SciviewBridge
 import util.AdjustableBoundsRangeSlider
 import util.GroupLocksHandling
 import util.SphereLinkNodes
-import java.awt.*
+import java.awt.Container
+import java.awt.Dimension
+import java.awt.GridBagConstraints
+import java.awt.GridBagLayout
+import java.awt.Insets
+import java.awt.Label
 import java.awt.event.ActionListener
 import java.util.function.Consumer
-import javax.swing.*
+import javax.swing.JButton
+import javax.swing.JCheckBox
+import javax.swing.JComboBox
+import javax.swing.JComponent
+import javax.swing.JLabel
+import javax.swing.JPanel
+import javax.swing.JSeparator
+import javax.swing.JSpinner
+import javax.swing.JToggleButton
+import javax.swing.SpinnerModel
+import javax.swing.SpinnerNumberModel
 import javax.swing.event.ChangeEvent
 import javax.swing.event.ChangeListener
 
@@ -135,7 +151,7 @@ class SciviewBridgeUI(controlledBridge: SciviewBridge, populateThisContainer: Co
         c.gridwidth = 2
         controlsWindowPanel.add(sliderBarPlaceHolder, c)
         //
-        INTENSITY_RANGE_MINMAX_CTRL_GUI_ELEM = AdjustableBoundsRangeSlider.createAndPlaceHere(
+        INTENSITY_RANGE_MINMAX_CTRL_GUI_ELEM = AdjustableBoundsRangeSlider.Companion.createAndPlaceHere(
             sliderBarPlaceHolder,
             bridge.intensity.rangeMin.toInt(),
             bridge.intensity.rangeMax.toInt(),

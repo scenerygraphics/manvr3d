@@ -1,12 +1,21 @@
-package org.mastodon.mamut
+package org.mastodon.mamut.ui
 
 import graphics.scenery.utils.lazyLogger
 import net.miginfocom.swing.MigLayout
+import org.mastodon.mamut.SciviewBridge
 import util.AdjustableBoundsRangeSlider
 import util.GroupLocksHandling
 import util.SphereLinkNodes
 import java.awt.event.ActionListener
-import javax.swing.*
+import javax.swing.JButton
+import javax.swing.JCheckBox
+import javax.swing.JComboBox
+import javax.swing.JLabel
+import javax.swing.JPanel
+import javax.swing.JSpinner
+import javax.swing.JToggleButton
+import javax.swing.SpinnerModel
+import javax.swing.SpinnerNumberModel
 import javax.swing.event.ChangeListener
 
 class SciviewBridgeUIMig(controlledBridge: SciviewBridge, populateThisContainer: JPanel) {
@@ -53,7 +62,7 @@ class SciviewBridgeUIMig(controlledBridge: SciviewBridge, populateThisContainer:
         }
 
         // Range Slider
-        intensityRangeSlider = AdjustableBoundsRangeSlider.createAndPlaceHere(
+        intensityRangeSlider = AdjustableBoundsRangeSlider.Companion.createAndPlaceHere(
             windowPanel,
             bridge.intensity.rangeMin.toInt(),
             bridge.intensity.rangeMax.toInt(),
@@ -194,13 +203,16 @@ class SciviewBridgeUIMig(controlledBridge: SciviewBridge, populateThisContainer:
                 controlledBridge.sphereLinkNodes.currentColorMode = SphereLinkNodes.ColorMode.SPOT
                 logger.info("Coloring links by spot color")
             }
+
             else -> {
                 controlledBridge.sphereLinkNodes.currentColorMode = SphereLinkNodes.ColorMode.LUT
                 controlledBridge.sphereLinkNodes.setLUT("${linkColorSelector.selectedItem}.lut")
                 logger.info("Coloring links with LUT ${linkColorSelector.selectedItem}")
             }
         }
-        controlledBridge.sphereLinkNodes.updateLinkColors(controlledBridge.recentColorizer ?: controlledBridge.noTSColorizer)
+        controlledBridge.sphereLinkNodes.updateLinkColors(
+            controlledBridge.recentColorizer ?: controlledBridge.noTSColorizer
+        )
     }
 
     val chooseVolumeColormap = ActionListener {
