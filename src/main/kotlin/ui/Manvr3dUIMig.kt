@@ -3,7 +3,7 @@ package org.mastodon.mamut.ui
 import graphics.scenery.utils.lazyLogger
 import net.miginfocom.swing.MigLayout
 import org.mastodon.mamut.Manvr3dMain
-import util.AdjustableBoundsRangeSlider
+import ui.AdjustableBoundsRangeSlider
 import util.GroupLocksHandling
 import util.SphereLinkNodes
 import java.awt.event.ActionListener
