@@ -1,11 +1,10 @@
-package org.mastodon.mamut
-
 import bdv.viewer.TimePointListener
 import bdv.viewer.TransformListener
 import graphics.scenery.utils.lazyLogger
 import net.imglib2.realtransform.AffineTransform3D
 import org.mastodon.graph.GraphChangeListener
 import org.mastodon.graph.GraphListener
+import org.mastodon.mamut.ProjectModel
 import org.mastodon.mamut.model.Link
 import org.mastodon.mamut.model.Spot
 import org.mastodon.mamut.views.bdv.MamutViewBdv

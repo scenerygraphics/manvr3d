@@ -1,5 +1,6 @@
 package org.mastodon.mamut
 
+import Manvr3dMain
 import graphics.scenery.utils.lazyLogger
 import mpicbg.spim.data.SpimDataException
 import org.mastodon.mamut.io.ProjectLoader

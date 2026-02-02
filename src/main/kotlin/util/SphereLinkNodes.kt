@@ -24,7 +24,7 @@ import org.mastodon.collection.RefCollections
 import org.mastodon.collection.RefList
 import org.mastodon.collection.RefSet
 import org.mastodon.mamut.ProjectModel
-import org.mastodon.mamut.Manvr3dMain
+import Manvr3dMain
 import org.mastodon.mamut.model.Link
 import org.mastodon.mamut.model.Spot
 import org.mastodon.spatial.SpatialIndex
@@ -32,7 +32,7 @@ import org.mastodon.ui.coloring.GraphColorGenerator
 import org.mastodon.views.bdv.overlay.util.JamaEigenvalueDecomposition
 import org.scijava.event.EventService
 import sc.iview.SciView
-import sc.iview.commands.analysis.HedgehogAnalysis.SpineGraphVertex
+import analysis.HedgehogAnalysis.SpineGraphVertex
 import spim.fiji.spimdata.interestpoints.InterestPoint
 import util.SphereLinkNodes.ColorMode.LUT
 import util.SphereLinkNodes.ColorMode.SPOT

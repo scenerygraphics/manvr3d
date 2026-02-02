@@ -3,7 +3,7 @@ package plugins.scijava
 import graphics.scenery.utils.lazyLogger
 import org.mastodon.mamut.CloseListener
 import org.mastodon.mamut.ProjectModel
-import org.mastodon.mamut.Manvr3dMain
+import Manvr3dMain
 import org.scijava.command.Command
 import org.scijava.command.CommandService
 import org.scijava.command.DynamicCommand
