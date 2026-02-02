@@ -1,15 +1,17 @@
 package util
 
 import graphics.scenery.controls.OpenVRHMD
+import graphics.scenery.controls.OpenVRHMD.OpenVRButton
+import graphics.scenery.controls.OpenVRHMD.Manufacturer
 import graphics.scenery.controls.TrackerRole
 import graphics.scenery.utils.lazyLogger
 import org.scijava.ui.behaviour.Behaviour
 
 /** This input mapping manager provides several preconfigured profiles for different VR controller layouts.
  * The active profile is stored in [currentProfile].
- * To change profile, call [loadProfile] with the new [graphics.scenery.controls.OpenVRHMD.Manufacturer] type.
- * Note that for Quest-like layouts, the lower button always equals [graphics.scenery.controls.OpenVRHMD.OpenVRButton.A]
- * and the upper button is always [graphics.scenery.controls.OpenVRHMD.OpenVRButton.Menu]. */
+ * To change profile, call [loadProfile] with the new [Manufacturer] type.
+ * Note that for Quest-like layouts, the lower button always equals [OpenVRButton.A]
+ * and the upper button is always [OpenVRButton.Menu]. */
 object CellTrackingButtonMapper {
 
     var eyeTracking: ButtonConfig? = null
@@ -31,60 +33,60 @@ object CellTrackingButtonMapper {
     var radiusIncrease: ButtonConfig? = null
     var radiusDecrease: ButtonConfig? = null
 
-    private var currentProfile: OpenVRHMD.Manufacturer = OpenVRHMD.Manufacturer.Oculus
+    private var currentProfile: Manufacturer = Manufacturer.Oculus
 
     val logger by lazyLogger(System.getProperty("scenery.LogLevel", "info"))
 
     private val profiles = mapOf(
-        OpenVRHMD.Manufacturer.HTC to mapOf(
-            "eyeTracking" to ButtonConfig(TrackerRole.LeftHand, OpenVRHMD.OpenVRButton.Trigger),
-            "controllerTracking" to ButtonConfig(TrackerRole.RightHand, OpenVRHMD.OpenVRButton.Trigger),
-            "grabObserver" to ButtonConfig(TrackerRole.LeftHand, OpenVRHMD.OpenVRButton.Side),
-            "grabSpot" to ButtonConfig(TrackerRole.RightHand, OpenVRHMD.OpenVRButton.Side),
-            "playback" to ButtonConfig(TrackerRole.RightHand, OpenVRHMD.OpenVRButton.Menu),
-            "cycleMenu" to ButtonConfig(TrackerRole.LeftHand, OpenVRHMD.OpenVRButton.Menu),
+        Manufacturer.HTC to mapOf(
+            "eyeTracking" to ButtonConfig(TrackerRole.LeftHand, OpenVRButton.Trigger),
+            "controllerTracking" to ButtonConfig(TrackerRole.RightHand, OpenVRButton.Trigger),
+            "grabObserver" to ButtonConfig(TrackerRole.LeftHand, OpenVRButton.Side),
+            "grabSpot" to ButtonConfig(TrackerRole.RightHand, OpenVRButton.Side),
+            "playback" to ButtonConfig(TrackerRole.RightHand, OpenVRButton.Menu),
+            "cycleMenu" to ButtonConfig(TrackerRole.LeftHand, OpenVRButton.Menu),
             "faster" to null,
             "slower" to null,
             "radiusIncrease" to null,
             "radiusDecrease" to null,
-            "stepFwd" to ButtonConfig(TrackerRole.RightHand, OpenVRHMD.OpenVRButton.Left),
-            "stepBwd" to ButtonConfig(TrackerRole.RightHand, OpenVRHMD.OpenVRButton.Right),
-            "addDeleteReset" to ButtonConfig(TrackerRole.RightHand, OpenVRHMD.OpenVRButton.Up),
-            "select" to ButtonConfig(TrackerRole.LeftHand, OpenVRHMD.OpenVRButton.Down),
-            "move_forward_fast" to ButtonConfig(TrackerRole.LeftHand, OpenVRHMD.OpenVRButton.Up),
-            "move_back_fast" to ButtonConfig(TrackerRole.LeftHand, OpenVRHMD.OpenVRButton.Down),
-            "move_left_fast" to ButtonConfig(TrackerRole.LeftHand, OpenVRHMD.OpenVRButton.Left),
-            "move_right_fast" to ButtonConfig(TrackerRole.LeftHand, OpenVRHMD.OpenVRButton.Right),
+            "stepFwd" to ButtonConfig(TrackerRole.RightHand, OpenVRButton.Left),
+            "stepBwd" to ButtonConfig(TrackerRole.RightHand, OpenVRButton.Right),
+            "addDeleteReset" to ButtonConfig(TrackerRole.RightHand, OpenVRButton.Up),
+            "select" to ButtonConfig(TrackerRole.LeftHand, OpenVRButton.Down),
+            "move_forward_fast" to ButtonConfig(TrackerRole.LeftHand, OpenVRButton.Up),
+            "move_back_fast" to ButtonConfig(TrackerRole.LeftHand, OpenVRButton.Down),
+            "move_left_fast" to ButtonConfig(TrackerRole.LeftHand, OpenVRButton.Left),
+            "move_right_fast" to ButtonConfig(TrackerRole.LeftHand, OpenVRButton.Right),
         ),
 
-        OpenVRHMD.Manufacturer.Oculus to mapOf(
-            "eyeTracking" to ButtonConfig(TrackerRole.LeftHand, OpenVRHMD.OpenVRButton.Trigger),
-            "controllerTracking" to ButtonConfig(TrackerRole.RightHand, OpenVRHMD.OpenVRButton.Trigger),
-            "grabObserver" to ButtonConfig(TrackerRole.LeftHand, OpenVRHMD.OpenVRButton.Side),
-            "grabSpot" to ButtonConfig(TrackerRole.RightHand, OpenVRHMD.OpenVRButton.Side),
-            "playback" to ButtonConfig(TrackerRole.LeftHand, OpenVRHMD.OpenVRButton.A),
-            "cycleMenu" to ButtonConfig(TrackerRole.LeftHand, OpenVRHMD.OpenVRButton.Menu),
+        Manufacturer.Oculus to mapOf(
+            "eyeTracking" to ButtonConfig(TrackerRole.LeftHand, OpenVRButton.Trigger),
+            "controllerTracking" to ButtonConfig(TrackerRole.RightHand, OpenVRButton.Trigger),
+            "grabObserver" to ButtonConfig(TrackerRole.LeftHand, OpenVRButton.Side),
+            "grabSpot" to ButtonConfig(TrackerRole.RightHand, OpenVRButton.Side),
+            "playback" to ButtonConfig(TrackerRole.LeftHand, OpenVRButton.A),
+            "cycleMenu" to ButtonConfig(TrackerRole.LeftHand, OpenVRButton.Menu),
 //            "faster" to ButtonConfig(TrackerRole.RightHand, OpenVRButton.Up),
 //            "slower" to ButtonConfig(TrackerRole.RightHand, OpenVRButton.Down),
-            "stepFwd" to ButtonConfig(TrackerRole.RightHand, OpenVRHMD.OpenVRButton.Left),
-            "stepBwd" to ButtonConfig(TrackerRole.RightHand, OpenVRHMD.OpenVRButton.Right),
-            "addDeleteReset" to ButtonConfig(TrackerRole.RightHand, OpenVRHMD.OpenVRButton.Menu),
-            "select" to ButtonConfig(TrackerRole.RightHand, OpenVRHMD.OpenVRButton.A),
-            "move_forward_fast" to ButtonConfig(TrackerRole.LeftHand, OpenVRHMD.OpenVRButton.Up),
-            "move_back_fast" to ButtonConfig(TrackerRole.LeftHand, OpenVRHMD.OpenVRButton.Down),
-            "move_left_fast" to ButtonConfig(TrackerRole.LeftHand, OpenVRHMD.OpenVRButton.Left),
-            "move_right_fast" to ButtonConfig(TrackerRole.LeftHand, OpenVRHMD.OpenVRButton.Right),
-            "radiusIncrease" to ButtonConfig(TrackerRole.RightHand, OpenVRHMD.OpenVRButton.Up),
-            "radiusDecrease" to ButtonConfig(TrackerRole.RightHand, OpenVRHMD.OpenVRButton.Down),
+            "stepFwd" to ButtonConfig(TrackerRole.RightHand, OpenVRButton.Left),
+            "stepBwd" to ButtonConfig(TrackerRole.RightHand, OpenVRButton.Right),
+            "addDeleteReset" to ButtonConfig(TrackerRole.RightHand, OpenVRButton.Menu),
+            "select" to ButtonConfig(TrackerRole.RightHand, OpenVRButton.A),
+            "move_forward_fast" to ButtonConfig(TrackerRole.LeftHand, OpenVRButton.Up),
+            "move_back_fast" to ButtonConfig(TrackerRole.LeftHand, OpenVRButton.Down),
+            "move_left_fast" to ButtonConfig(TrackerRole.LeftHand, OpenVRButton.Left),
+            "move_right_fast" to ButtonConfig(TrackerRole.LeftHand, OpenVRButton.Right),
+            "radiusIncrease" to ButtonConfig(TrackerRole.RightHand, OpenVRButton.Up),
+            "radiusDecrease" to ButtonConfig(TrackerRole.RightHand, OpenVRButton.Down),
         )
     )
 
     init {
-        loadProfile(OpenVRHMD.Manufacturer.Oculus)
+        loadProfile(Manufacturer.Oculus)
     }
 
     /** Load the current profile's button mapping */
-    fun loadProfile(p: OpenVRHMD.Manufacturer): Boolean {
+    fun loadProfile(p: Manufacturer): Boolean {
         currentProfile = p
         val profile = profiles[currentProfile] ?: return false
         eyeTracking = profile["eyeTracking"]
@@ -155,6 +157,6 @@ object CellTrackingButtonMapper {
 data class ButtonConfig (
     /** The [TrackerRole] of this button configuration. */
     var r: TrackerRole,
-    /** The [OpenVRHMD.OpenVRButton] of this button configuration. */
-    var b: OpenVRHMD.OpenVRButton
+    /** The [OpenVRButton] of this button configuration. */
+    var b: OpenVRButton
 )
