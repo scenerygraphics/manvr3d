@@ -1,7 +1,5 @@
 @file:Suppress("UNCHECKED_CAST")
 
-package org.mastodon.mamut
-
 import bdv.viewer.Source
 import bdv.viewer.SourceAndConverter
 import graphics.scenery.*
@@ -9,7 +7,6 @@ import graphics.scenery.backends.RenderConfigReader
 import graphics.scenery.controls.OpenVRHMD
 import graphics.scenery.controls.behaviours.SelectCommand
 import graphics.scenery.controls.behaviours.WithCameraDelegateBase
-import graphics.scenery.primitives.Cylinder
 import graphics.scenery.primitives.TextBoard
 import graphics.scenery.utils.extensions.minus
 import graphics.scenery.utils.extensions.plus
@@ -48,11 +45,12 @@ import org.scijava.ui.behaviour.ClickBehaviour
 import org.scijava.ui.behaviour.DragBehaviour
 import org.scijava.ui.behaviour.util.Actions
 import sc.iview.SciView
-import sc.iview.commands.analysis.CellTrackingBase
+import org.mastodon.mamut.ProjectModel
 import sc.iview.commands.analysis.TimepointObserver
-import sc.iview.commands.analysis.EyeTracking
+import vr.EyeTracking
 import util.SphereLinkNodes
 import util.updateInstanceBuffers
+import vr.CellTrackingBase
 import java.util.concurrent.Executors
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit

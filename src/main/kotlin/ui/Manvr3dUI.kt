@@ -1,7 +1,7 @@
 package org.mastodon.mamut.ui
 
 import graphics.scenery.utils.lazyLogger
-import org.mastodon.mamut.Manvr3dMain
+import Manvr3dMain
 import ui.AdjustableBoundsRangeSlider
 import util.GroupLocksHandling
 import util.SphereLinkNodes

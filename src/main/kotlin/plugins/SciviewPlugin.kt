@@ -1,6 +1,6 @@
 package plugins
 
-import org.mastodon.mamut.Manvr3dMain
+import Manvr3dMain
 import org.scijava.command.Command
 import org.scijava.plugin.Menu
 import org.scijava.plugin.Plugin

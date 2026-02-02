@@ -4,7 +4,7 @@ import graphics.scenery.utils.lazyLogger
 import org.mastodon.app.ui.GroupLocksPanel
 import org.mastodon.grouping.GroupHandle
 import org.mastodon.mamut.ProjectModel
-import org.mastodon.mamut.Manvr3dMain
+import Manvr3dMain
 import org.mastodon.mamut.model.Link
 import org.mastodon.mamut.model.Spot
 import org.mastodon.model.NavigationListener
