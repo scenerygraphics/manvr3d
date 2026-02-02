@@ -24,9 +24,10 @@ import analysis.HedgehogAnalysis.SpineGraphVertex
 import graphics.scenery.controls.behaviours.MultiButtonManager
 import graphics.scenery.controls.behaviours.VR2HandNodeTransform
 import graphics.scenery.controls.behaviours.VRGrabTheWorld
+import graphics.scenery.utils.TimepointObservable
 import util.CellTrackingButtonMapper
 import util.SpineMetadata
-import sc.iview.commands.analysis.TimepointObserver
+import graphics.scenery.utils.TimepointObserver
 import java.io.BufferedWriter
 import java.io.FileWriter
 import java.nio.file.Path
@@ -43,7 +44,7 @@ import kotlin.concurrent.thread
 open class CellTrackingBase(
     open var sciview: SciView,
     val resolutionScale: Float = 1f
-) {
+): TimepointObservable() {
     val logger by lazyLogger(System.getProperty("scenery.LogLevel", "info"))
 
     lateinit var sessionId: String
@@ -167,8 +168,6 @@ open class CellTrackingBase(
 
     val mapper = CellTrackingButtonMapper
 
-    private val observers = mutableListOf<TimepointObserver>()
-
     open fun run() {
         sciview.toggleVRRendering(resolutionScale = resolutionScale)
         hmd = sciview.hub.getWorkingHMD() as? OpenVRHMD ?: throw IllegalStateException("Could not find headset")
@@ -235,21 +234,6 @@ open class CellTrackingBase(
         cellTrackingActive = true
         rebuildGeometryCallback?.invoke()
         launchUpdaterThread()
-    }
-
-    /** Registers a new observer that will get updated whenever the VR user triggers a timepoint update. */
-    fun registerObserver(observer: TimepointObserver) {
-        observers.add(observer)
-    }
-
-    /** Unregisters the timepoint observer. */
-    fun unregisterObserver(observer: TimepointObserver) {
-        observers.remove(observer)
-    }
-
-    /** Notifies all active observers of a change of timepoint. */
-    private fun notifyObservers(timepoint: Int) {
-        observers.forEach { it.onTimePointChanged(timepoint) }
     }
 
     /** Attaches a column of [Gui3DElement]s to the left VR controller and adds the column to [leftMenuList]. */

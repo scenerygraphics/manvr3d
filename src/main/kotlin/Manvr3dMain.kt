@@ -46,7 +46,7 @@ import org.scijava.ui.behaviour.DragBehaviour
 import org.scijava.ui.behaviour.util.Actions
 import sc.iview.SciView
 import org.mastodon.mamut.ProjectModel
-import sc.iview.commands.analysis.TimepointObserver
+import graphics.scenery.utils.TimepointObserver
 import vr.EyeTracking
 import util.SphereLinkNodes
 import util.updateInstanceBuffers
