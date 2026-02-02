@@ -1,6 +1,10 @@
-package util
+package ui
 
-import java.awt.*
+import java.awt.Container
+import java.awt.Font
+import java.awt.GridBagConstraints
+import java.awt.GridBagLayout
+import java.awt.Insets
 import javax.swing.JLabel
 import javax.swing.JSlider
 import javax.swing.JSpinner

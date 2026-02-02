@@ -1,7 +1,7 @@
 
 import bdv.ui.rangeslider.RangeSlider
-import util.AbstractAdjustableSliderBasedControl
-import util.AdjustableBoundsRangeSlider
+import ui.AbstractAdjustableSliderBasedControl
+import ui.AdjustableBoundsRangeSlider
 import java.awt.GridBagConstraints
 import java.awt.GridBagLayout
 import java.awt.Insets

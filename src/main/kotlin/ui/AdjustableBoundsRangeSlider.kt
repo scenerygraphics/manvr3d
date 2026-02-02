@@ -1,9 +1,13 @@
-package util
+package ui
 
 import bdv.ui.rangeslider.RangeSlider
 import net.miginfocom.swing.MigLayout
-import java.awt.*
-import javax.swing.*
+import java.awt.Font
+import javax.swing.JLabel
+import javax.swing.JPanel
+import javax.swing.JSpinner
+import javax.swing.SpinnerNumberModel
+import javax.swing.UIManager
 import kotlin.math.max
 import kotlin.math.min
 
