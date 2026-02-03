@@ -156,7 +156,9 @@ open class CellTrackingBase(
     var leftVRController: TrackedDevice? = null
     var rightVRController: TrackedDevice? = null
 
-    var cursor = CursorTool
+    var cursor = CursorTool()
+    val cursorSelectColor = Vector3f(1f, 0.25f, 0.25f)
+    val cursorTrackingColor = Vector3f(0.65f, 1f, 0.22f)
     var leftElephantColumn: Column? = null
     var generalMenu: Column? = null
     var enableTrackingPreview = true
@@ -276,7 +278,7 @@ open class CellTrackingBase(
     val trackCellsWithController = ClickBehaviour { _, _ ->
         if (!controllerTrackingActive) {
             controllerTrackingActive = true
-            cursor.activateTrackingColor()
+            cursor.setColor(cursorTrackingColor)
             // we dont want animation, because we track step by step
             playing = false
             // Assume the user didn't click on an existing spot to start the track.
@@ -568,66 +570,9 @@ open class CellTrackingBase(
         }
 
         rightVRController?.model?.let {
-            cursor.attachCursor(sciview, it)
+            cursor.attachCursor(it)
             sciview.addNode(volumeTimepointWidget, activePublish = false, parent = it)
         }
-    }
-
-    /** Object that represents the 3D cursor in form of a sphere. It needs to be attached to a VR controller via [attachCursor].
-     * The current cursor position can be obtained with [getPosition]. The current radius is stored in [radius].
-     * The tool can be scaled up and down with [scaleByFactor].
-     * [resetColor], [activateSelectColor] and [activateTrackingColor] allow changing the cursor's color to reflect the currently active operation. */
-    object CursorTool {
-        private val logger by lazyLogger()
-        var radius: Float = 0.007f
-            private set
-        val cursor = Sphere(radius)
-        private val initPos = Vector3f(-0.01f, -0.05f, -0.03f)
-
-        fun getPosition() = cursor.spatial().worldPosition()
-
-        fun attachCursor(sciview: SciView, parent: Node, debug: Boolean = false) {
-            cursor.name = "VR Cursor"
-            cursor.material {
-                diffuse = Vector3f(0.15f, 0.2f, 1f)
-            }
-            cursor.spatial().position = initPos
-            sciview.addNode(cursor, parent = parent)
-
-            if (debug) {
-                val bb = BoundingGrid()
-                bb.node = cursor
-                bb.name = "Cursor BB"
-                bb.lineWidth = 2f
-                bb.gridColor = Vector3f(1f, 0.3f, 0.25f)
-                sciview.addNode(bb, parent = parent)
-            }
-            logger.info("Attached cursor to controller.")
-        }
-
-        fun scaleByFactor(factor: Float) {
-            var clampedFac = 1f
-            // Only apply the factor if we are in the radius range 0.001f - 0.1f
-            if ((factor < 1f && radius > 0.001f) || (factor > 1f && radius < 0.15f)) {
-                clampedFac = factor
-            }
-            radius *= clampedFac
-            cursor.spatial().scale = Vector3f(radius/0.007f)
-            cursor.spatial().position = Vector3f(initPos) + Vector3f(initPos).normalize().times(radius - 0.007f)
-        }
-
-        fun resetColor() {
-            cursor.material().diffuse = Vector3f(0.15f, 0.2f, 1f)
-        }
-
-        fun activateSelectColor() {
-            cursor.material().diffuse = Vector3f(1f, 0.25f, 0.25f)
-        }
-
-        fun activateTrackingColor() {
-            cursor.material().diffuse = Vector3f(0.65f, 1f, 0.22f)
-        }
-
     }
 
     open fun inputSetup()
@@ -823,7 +768,7 @@ open class CellTrackingBase(
             override fun init(x: Int, y: Int) {
                 time = System.currentTimeMillis()
                 val p = cursor.getPosition()
-                cursor.activateSelectColor()
+                cursor.setColor(cursorSelectColor)
                 spotSelectCallback?.invoke(p, volume.currentTimepoint, cursor.radius, false)
             }
             override fun drag(x: Int, y: Int) {
