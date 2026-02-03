@@ -569,6 +569,9 @@ class SphereLinkNodes(
      * Original spots will be removed from the graph and a new merged spot is created.
      * Positions and radii are averaged. */
     fun mergeSpots(spots: RefList<Spot>) {
+        if (spots.isEmpty()) {
+            return
+        }
         manvr3d.bdvNotifier?.lockUpdates = true
         val graph = mastodonData.model.graph
         val sourceRef = graph.vertexRef()
@@ -628,7 +631,7 @@ class SphereLinkNodes(
             graph.remove(it)
         }
         logger.info("Newly merged spot now has incoming edges ${newSpot.incomingEdges().map { it.internalPoolIndex }}" +
-                "and outgoing edges ${newSpot.outgoingEdges().map { it.internalPoolIndex }}")
+                " and outgoing edges ${newSpot.outgoingEdges().map { it.internalPoolIndex }}")
 
         graph.lock.writeLock().unlock()
         graph.releaseRef(sourceRef)
