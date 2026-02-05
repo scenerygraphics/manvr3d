@@ -45,7 +45,6 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.TimeoutException
 import javax.imageio.ImageIO
 import kotlin.concurrent.thread
-import kotlin.invoke
 import kotlin.math.PI
 import kotlin.time.TimeSource
 
@@ -243,7 +242,7 @@ class EyeTracking(
             eyeTrackingActive = !eyeTrackingActive
         }
 
-        mapper.setKeyBindAndBehavior(hmd, "eyeTracking", toggleTracking)
+        buttonMapper.setKeyBindAndBehavior(hmd, "eyeTracking", toggleTracking)
     }
 
     private fun calibrateEyeTrackers(force: Boolean = false) {
@@ -354,14 +353,13 @@ class EyeTracking(
 
     private fun setupEyeTrackingMenu() {
 
-        val calibrateButton = Button(
-            "Calibrate",
-            command = { calibrateEyeTrackers() },
-            byTouch = true, depressDelay = 500
+        leftWristMenu.addColumn("Eye Tracking")
+        leftWristMenu.addButton(
+            "Eye Tracking", "Calibrate",
+            command = { calibrateEyeTrackers() }, depressDelay = 500
         )
-
-        val toggleHedgehogsBtn = ToggleButton(
-            "Hedgehogs Off",
+        leftWristMenu.addToggleButton(
+            "Eye Tracking", "Hedgehogs Off",
             "Hedgehogs On",
             command = {
                 hedgehogVisibility = if (hedgehogVisibility == HedgehogVisibility.Hidden) {
@@ -369,12 +367,9 @@ class EyeTracking(
                 } else {
                     HedgehogVisibility.Hidden
                 }
-            },
-            byTouch = true
-        )
-
-        val toggleTrackTypeBtn = ToggleButton(
-            "Follow Cell",
+            })
+        leftWristMenu.addToggleButton(
+            "Eye Tracking", "Follow Cell",
             "Count Cells",
             command = {
                 currentTrackingType = if (currentTrackingType == TrackingType.Follow) {
@@ -382,15 +377,9 @@ class EyeTracking(
                 } else {
                     TrackingType.Follow
                 }
-            },
-            byTouch = true,
-            color = Vector3f(0.65f, 1f, 0.22f),
+            }, color = Vector3f(0.65f, 1f, 0.22f),
             pressedColor = Vector3f(0.15f, 0.2f, 1f)
         )
-
-        leftEyeTrackColumn =
-            createWristMenuColumn(toggleTrackTypeBtn, toggleHedgehogsBtn, calibrateButton, name = "Eye Tracking Menu")
-        leftEyeTrackColumn?.visible = false
     }
 
     /** Writes the accumulated gazes (hedgehog) to a file, analyzes it,
