@@ -1,17 +1,12 @@
 @file:Suppress("UNCHECKED_CAST")
 
-package org.mastodon.mamut
-
 import bdv.viewer.Source
 import bdv.viewer.SourceAndConverter
 import graphics.scenery.*
-import graphics.scenery.attribute.spatial.DefaultSpatial
-import graphics.scenery.attribute.spatial.Spatial
 import graphics.scenery.backends.RenderConfigReader
 import graphics.scenery.controls.OpenVRHMD
 import graphics.scenery.controls.behaviours.SelectCommand
 import graphics.scenery.controls.behaviours.WithCameraDelegateBase
-import graphics.scenery.primitives.Cylinder
 import graphics.scenery.primitives.TextBoard
 import graphics.scenery.utils.extensions.minus
 import graphics.scenery.utils.extensions.plus
@@ -38,6 +33,8 @@ import org.mastodon.adapter.TimepointModelAdapter
 import org.mastodon.collection.RefCollections
 import org.mastodon.mamut.model.Link
 import org.mastodon.mamut.model.Spot
+import org.mastodon.mamut.ui.Manvr3dUIMig
+import org.mastodon.mamut.util.DataAxes
 import org.mastodon.mamut.views.bdv.MamutViewBdv
 import org.mastodon.model.tag.TagSetStructure
 import org.mastodon.ui.coloring.DefaultGraphColorGenerator
@@ -48,11 +45,12 @@ import org.scijava.ui.behaviour.ClickBehaviour
 import org.scijava.ui.behaviour.DragBehaviour
 import org.scijava.ui.behaviour.util.Actions
 import sc.iview.SciView
-import sc.iview.commands.analysis.CellTrackingBase
-import sc.iview.commands.analysis.TimepointObserver
-import sc.iview.commands.analysis.EyeTracking
+import org.mastodon.mamut.ProjectModel
+import graphics.scenery.utils.TimepointObserver
+import vr.EyeTracking
 import util.SphereLinkNodes
 import util.updateInstanceBuffers
+import vr.CellTrackingBase
 import java.util.concurrent.Executors
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
@@ -65,7 +63,7 @@ import kotlin.time.Duration.Companion.seconds
 import kotlin.time.TimeSource
 
 
-class SciviewBridge: TimepointObserver {
+class Manvr3dMain: TimepointObserver {
     private val logger by lazyLogger(System.getProperty("scenery.LogLevel", "info"))
     //data source stuff
     val mastodon: ProjectModel
@@ -87,7 +85,7 @@ class SciviewBridge: TimepointObserver {
     var updateVolAutomatically = true
 
     override fun toString(): String {
-        val sb = StringBuilder("Mastodon-sciview bridge internal settings:\n")
+        val sb = StringBuilder("Manvr3d internal settings:\n")
         sb.append("   SOURCE_ID = $sourceID\n")
         sb.append("   SOURCE_USED_RES_LEVEL = $volumeMipmapLevel\n")
         sb.append("   INTENSITY_CONTRAST = ${intensity.contrast}\n")
@@ -103,7 +101,7 @@ class SciviewBridge: TimepointObserver {
     val sciviewWin: SciView
     val sphereLinkNodes: SphereLinkNodes
     //sink scene graph structuring nodes
-    val axesParent: Node?
+    val axesParent: DataAxes
 
     // Worker queue for async 3D updating
     private val updateQueue = LinkedBlockingQueue<() -> Unit>()
@@ -124,7 +122,7 @@ class SciviewBridge: TimepointObserver {
     // triggering the event watcher while a spot is edited in Sciview
     var bdvNotifier: BdvNotifier? = null
     var moveSpotInSciview: (Spot?) -> Unit?
-    var associatedUI: SciviewBridgeUIMig? = null
+    var associatedUI: Manvr3dUIMig? = null
     var uiFrame: JFrame? = null
     private var isRunning = true
     var isVRactive = false
@@ -185,7 +183,7 @@ class SciviewBridge: TimepointObserver {
         sciviewWin.addNode(AmbientLight(0.05f, Vector3f(1f, 1f, 1f)))
 
         //add "root" with data axes
-        axesParent = constructDataAxes()
+        axesParent = DataAxes()
         sciviewWin.addNode(axesParent, activePublish = false)
 
         //get necessary metadata - from image data
@@ -383,7 +381,7 @@ class SciviewBridge: TimepointObserver {
     val eventService: EventService?
         get() = sciviewWin.scijavaContext?.getService(EventService::class.java)
 
-    /** Sets the [vrResolutionScale]. Changes are only applied once [SciviewBridge.launchVR] is executed. */
+    /** Sets the [vrResolutionScale]. Changes are only applied once [Manvr3dMain.launchVR] is executed. */
     fun setVrResolutionScale(scale: Float) {
         vrResolutionScale = scale
     }
@@ -410,38 +408,25 @@ class SciviewBridge: TimepointObserver {
 
     /** Centers the camera on the volume and adjusts its distance to fully fit the volume into the camera's FOV. */
     private fun centerCameraOnVolume() {
-        // get the extent of the volume in sciview coordinates
-        val volSize = (volumeNode.boundingBox!!.max - volumeNode.boundingBox!!.min) * volumeNode.pixelToWorldRatio * sceneScale
-        val hFOVRad = Math.toRadians((sciviewWin.camera?.fov ?: 70f).toDouble())
-        val aspectRatio = sciviewWin.camera?.aspectRatio() ?: 1f
-        val vFOVRad = 2 * atan(tan(hFOVRad / 2.0) / aspectRatio)
-        // calculate the maximum distances for vertical and horizontal FOV
-        val distanceHeight = (volSize.y / 2f) / tan(vFOVRad / 2.0)
-        val distanceWidth = (volSize.x / 2f) / tan(hFOVRad / 2.0)
-        val maxDistance = max(distanceWidth, distanceHeight) * 1.2f // add a little margin
-
-        sciviewWin.camera?.spatial {
-            rotation = Quaternionf().lookAlong(Vector3f(0f, 0f, 1f), Vector3f(0f, 1f, 0f))
-            position = Vector3f(0f, 0f, maxDistance.toFloat())
-        }
+        sciviewWin.camera?.centerOnNode(node = volumeNode, sceneScale = volumeNode.pixelToWorldRatio * sceneScale)
     }
 
     fun close() {
         stopAndDetachUI()
         deregisterKeyboardHandlers()
-        logger.info("Mastodon-sciview Bridge closing procedure: UI and keyboard handlers are removed now")
-        sciviewWin.setActiveNode(axesParent)
-        logger.info("Mastodon-sciview Bridge closing procedure: focus shifted away from our nodes")
+        logger.info("Manvr3d closing procedure: UI and keyboard handlers are removed now")
+//        sciviewWin.setActiveNode(axesParent)
+        logger.info("Manvr3d closing procedure: focus shifted away from our nodes")
         val updateGraceTime = 100L // in ms
         try {
             sciviewWin.deleteNode(volumeNode, true)
-            logger.debug("Mastodon-sciview Bridge closing procedure: red volume removed")
+            logger.debug("Manvr3d closing procedure: red volume removed")
             Thread.sleep(updateGraceTime)
 //            sciviewWin.deleteNode(sphereParent, true)
-            logger.debug("Mastodon-sciview Bridge closing procedure: spots were removed")
+            logger.debug("Manvr3d closing procedure: spots were removed")
         } catch (e: InterruptedException) { /* do nothing */
         }
-        sciviewWin.deleteNode(axesParent, true)
+//        sciviewWin.deleteNode(axesParent, true)
     }
 
     /** Convert a [Vector3f] from sciview space into Mastodon's voxel coordinate space,
@@ -1005,8 +990,8 @@ class SciviewBridge: TimepointObserver {
                 )
             }
             vrTracking.mergeSelectedCallback = {
-                val spots = RefCollections.createRefList<Spot>(mastodon.model.graph.vertices())
-                spots.addAll(selectedSpotInstances.map { sphereLinkNodes.findSpotFromInstance(it) })
+                val spots = RefCollections.createRefList(mastodon.model.graph.vertices())
+                spots.addAll(selectedSpotInstances.map { sphereLinkNodes.findSpotFromInstance(it) }.distinct())
                 sphereLinkNodes.mergeSpots(spots)
                 sphereLinkNodes.clearSelection()
                 sphereLinkNodes.showInstancedSpots(
@@ -1041,7 +1026,7 @@ class SciviewBridge: TimepointObserver {
                 vrTracking.rebuildGeometryCallback?.invoke()
             }
 
-            // register the bridge as an observer to the timepoint changes by the user in VR,
+            // register manvr3d as an observer to the timepoint changes by the user in VR,
             // allowing us to get updates via the onTimepointChanged() function
             vrTracking.registerObserver(this)
 
@@ -1084,24 +1069,9 @@ class SciviewBridge: TimepointObserver {
     }
 
     /** Quickly flashes the volume's bounding grid to indicate the borders of the volume. */
-    fun flashBoundingGrid(flashColor: Vector3f = Vector3f(0.95f, 0.25f, 0.15f)) {
+    fun flashVolumeGrid() {
         val bg = volumeNode.children.filterIsInstance<BoundingGrid>()
-        bg.firstOrNull()?.let { grid ->
-            val initVisibility = grid.visible
-            val initColor = grid.gridColor
-            thread {
-                grid.gridColor = flashColor
-                var count = 7
-                while (count > 0) {
-                    grid.visible = !grid.visible
-                    grid.spatial().needsUpdate = true
-                    Thread.sleep(100)
-                    count -= 1
-                }
-                grid.visible = initVisibility
-                grid.gridColor = initColor
-            }
-        }
+        bg.firstOrNull()?.flashGrid()
     }
 
     private fun deregisterKeyboardHandlers() {
@@ -1128,7 +1098,7 @@ class SciviewBridge: TimepointObserver {
             val panel = JPanel()
             add(panel)
             setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE)
-            associatedUI = SciviewBridgeUIMig(this@SciviewBridge, panel)
+            associatedUI = Manvr3dUIMig(this@Manvr3dMain, panel)
             pack()
             isVisible = true
         }
@@ -1137,7 +1107,7 @@ class SciviewBridge: TimepointObserver {
     fun stopAndDetachUI() {
         isRunning = false
         workerExecutor.shutdownNow()
-        logger.info("Stopped bridge worker queue.")
+        logger.info("Stopped manvr3d worker queue.")
         try {
             // Wait for graceful termination
             if (!workerExecutor.awaitTermination(5, TimeUnit.SECONDS)) {
@@ -1178,35 +1148,6 @@ class SciviewBridge: TimepointObserver {
         fun adjustHeadLight(hl: PointLight) {
             hl.intensity = 1.5f
             hl.spatial().rotation = Quaternionf().rotateY(Math.PI.toFloat())
-        }
-
-        fun constructDataAxes(): Node {
-            //add the data axes
-            val AXES_LINE_WIDTHS = 0.01f
-            val AXES_LINE_LENGTHS = 0.1f
-            //
-            val axesParent = Group()
-            axesParent.name = "Data Axes"
-            //
-            var c = Cylinder(AXES_LINE_WIDTHS / 2.0f, AXES_LINE_LENGTHS, 12)
-            c.name = "Data x axis"
-            c.material().diffuse = Vector3f(1f, 0f, 0f)
-            val halfPI = Math.PI.toFloat() / 2.0f
-            c.spatial().rotation = Quaternionf().rotateLocalZ(-halfPI)
-            axesParent.addChild(c)
-            //
-            c = Cylinder(AXES_LINE_WIDTHS / 2.0f, AXES_LINE_LENGTHS, 12)
-            c.name = "Data y axis"
-            c.material().diffuse = Vector3f(0f, 1f, 0f)
-            c.spatial().rotation = Quaternionf().rotateLocalZ(Math.PI.toFloat())
-            axesParent.addChild(c)
-            //
-            c = Cylinder(AXES_LINE_WIDTHS / 2.0f, AXES_LINE_LENGTHS, 12)
-            c.name = "Data z axis"
-            c.material().diffuse = Vector3f(0f, 0f, 1f)
-            c.spatial().rotation = Quaternionf().rotateLocalX(-halfPI)
-            axesParent.addChild(c)
-            return axesParent
         }
 
         // --------------------------------------------------------------------------

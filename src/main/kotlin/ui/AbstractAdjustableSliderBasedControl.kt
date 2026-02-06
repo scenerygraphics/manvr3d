@@ -1,7 +1,10 @@
-package util
+package ui
 
-import java.awt.event.*
-import java.util.function.Consumer
+import java.awt.event.KeyEvent
+import java.awt.event.KeyListener
+import java.awt.event.MouseEvent
+import java.awt.event.MouseListener
+import java.awt.event.MouseMotionListener
 import javax.swing.JLabel
 import javax.swing.JSlider
 import javax.swing.JSpinner
