@@ -990,8 +990,8 @@ class Manvr3dMain: TimepointObserver {
                 )
             }
             vrTracking.mergeSelectedCallback = {
-                val spots = RefCollections.createRefList<Spot>(mastodon.model.graph.vertices())
-                spots.addAll(selectedSpotInstances.map { sphereLinkNodes.findSpotFromInstance(it) })
+                val spots = RefCollections.createRefList(mastodon.model.graph.vertices())
+                spots.addAll(selectedSpotInstances.map { sphereLinkNodes.findSpotFromInstance(it) }.distinct())
                 sphereLinkNodes.mergeSpots(spots)
                 sphereLinkNodes.clearSelection()
                 sphereLinkNodes.showInstancedSpots(
