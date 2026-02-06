@@ -627,8 +627,9 @@ class SphereLinkNodes(
         }
 
         // Remove all old spots
-        spots.forEach {
-            graph.remove(it)
+        spots.forEach { spot ->
+            sourceRef.refTo(spot)
+            graph.remove(sourceRef)
         }
         logger.info("Newly merged spot now has incoming edges ${newSpot.incomingEdges().map { it.internalPoolIndex }}" +
                 " and outgoing edges ${newSpot.outgoingEdges().map { it.internalPoolIndex }}")
