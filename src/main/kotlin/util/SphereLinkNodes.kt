@@ -1290,9 +1290,3 @@ class SphereLinkNodes(
 }
 
 data class LinkNode (val instance: InstancedNode.Instance, val from: Spot, val to: Spot, val tp: Int)
-
-/** This extension function pushes updated instance buffers to the GPU.
- * Without calling this function, instances will not update in the renderer. */
-fun InstancedNode.updateInstanceBuffers() {
-    this.metadata["MaxInstanceUpdateCount"] = AtomicInteger(1)
-}
