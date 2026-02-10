@@ -49,7 +49,6 @@ import org.mastodon.mamut.ProjectModel
 import graphics.scenery.utils.TimepointObserver
 import vr.EyeTracking
 import util.SphereLinkNodes
-import util.updateInstanceBuffers
 import vr.CellTrackingBase
 import java.util.concurrent.Executors
 import java.util.concurrent.LinkedBlockingQueue
@@ -61,7 +60,6 @@ import kotlin.concurrent.thread
 import kotlin.math.*
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.TimeSource
-
 
 class Manvr3dMain: TimepointObserver {
     private val logger by lazyLogger(System.getProperty("scenery.LogLevel", "info"))
