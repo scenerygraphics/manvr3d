@@ -131,10 +131,6 @@ class Manvr3dMain: TimepointObserver {
     var defaultVolumeRotation: Quaternionf
 
     lateinit var vrTracking: CellTrackingBase
-    private var adjacentEdges = mutableListOf<Int>()
-    private var moveInstanceVRInit: (Vector3f) -> Unit
-    private var moveInstanceVRDrag: (Vector3f) -> Unit
-    private var moveInstanceVREnd: (Vector3f) -> Unit
 
     private val pluginActions: Actions
     private var predictSpotsAction: Action? = null
@@ -241,58 +237,6 @@ class Manvr3dMain: TimepointObserver {
         defaultVolumePosition = volumeNode.spatial().position
         defaultVolumeScale = volumeNode.spatial().scale
         defaultVolumeRotation = volumeNode.spatial().rotation
-
-        var currentControllerPos = Vector3f()
-
-        // Three lambdas that are passed to the sciview class to handle the three drag behavior stages with controllers
-        moveInstanceVRInit = fun (pos: Vector3f) {
-
-            if (mastodon.selectionModel.selectedVertices == null) {
-                selectedSpotInstances.clear()
-                return
-            } else {
-                bdvNotifier?.lockUpdates = true
-                selectedSpotInstances.forEach { inst ->
-                    logger.debug("selected spot instance is $inst")
-                    val spot = geometryHandler.findSpotFromInstance(inst)
-                    val selectedTP = spot?.timepoint ?: -1
-                    if (selectedTP != volumeNode.currentTimepoint) {
-                        selectedSpotInstances.clear()
-                        logger.warn("Tried to move a spot that was outside the current timepoint. Aborting.")
-                        return
-                    } else {
-                        bdvNotifier?.lockUpdates = true
-                        currentControllerPos = sciviewToMastodonCoords(pos)
-                        spot?.let { s ->
-                            adjacentEdges.addAll(s.edges().map { it.internalPoolIndex })
-                            logger.debug("Moving edges $adjacentEdges for spot ${spot.internalPoolIndex}.")
-                        }
-                    }
-                }
-            }
-        }
-
-        moveInstanceVRDrag = fun (pos: Vector3f) {
-            val newPos = sciviewToMastodonCoords(pos)
-            val movement = newPos - currentControllerPos
-            selectedSpotInstances.forEach {
-                it.spatial {
-                    position += movement
-                }
-                geometryHandler.moveSpotInBDV(it, movement)
-            }
-            geometryHandler.mainSpotInstance?.updateInstanceBuffers()
-            geometryHandler.updateLinkTransforms(adjacentEdges)
-            currentControllerPos = newPos
-        }
-
-        moveInstanceVREnd = fun (pos: Vector3f) {
-            bdvNotifier?.lockUpdates = false
-            geometryHandler.showInstancedSpots(detachedDPP_showsLastTimepoint.timepoint,
-                detachedDPP_showsLastTimepoint.colorizer)
-            adjacentEdges.clear()
-            bdvNotifier?.lockUpdates = false
-        }
 
         pluginActions = mastodon.plugins.pluginActions
 
@@ -1013,10 +957,6 @@ class Manvr3dMain: TimepointObserver {
                 CellTrackingBase(sciviewWin, this, geometryHandler, vrResolutionScale)
             }
             sciviewWin.getSceneryRenderer()?.setRenderingQuality(RenderConfigReader.RenderingQuality.Low)
-            // Pass track and spot handling callbacks to sciview
-            vrTracking.spotMoveInitCallback = moveInstanceVRInit
-            vrTracking.spotMoveDragCallback = moveInstanceVRDrag
-            vrTracking.spotMoveEndCallback = moveInstanceVREnd
 
             // register manvr3d as an observer to the timepoint changes by the user in VR,
             // allowing us to get updates via the onTimepointChanged() function

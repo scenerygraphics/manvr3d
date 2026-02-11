@@ -78,10 +78,6 @@ open class CellTrackingBase(
     /** determines whether the volume and hedgehogs should keep listening for updates or not */
     var cellTrackingActive: Boolean = false
 
-    var spotMoveInitCallback: ((Vector3f) -> Unit)? = null
-    var spotMoveDragCallback: ((Vector3f) -> Unit)? = null
-    var spotMoveEndCallback: ((Vector3f) -> Unit)? = null
-
     enum class HedgehogVisibility { Hidden, PerTimePoint, Visible }
 
     enum class PlaybackDirection { Forward, Backward }
@@ -697,13 +693,10 @@ open class CellTrackingBase(
         )
 
         // drag behavior can stay enabled regardless of current tool mode
-        MoveInstanceVR.createAndSet(
-            sciview.currentScene, hmd, listOf(OpenVRHMD.OpenVRButton.Side), listOf(TrackerRole.RightHand),
+        MoveInstanceVR.createAndSet(manvr3d, hmd,
+            listOf(OpenVRHMD.OpenVRButton.Side), listOf(TrackerRole.RightHand),
             grabButtonManager,
-            { cursor.getPosition() },
-            spotMoveInitCallback,
-            spotMoveDragCallback,
-            spotMoveEndCallback,
+            { cursor.getPosition() }
         )
 
         hmd.allowRepeats += OpenVRHMD.OpenVRButton.Trigger to TrackerRole.LeftHand
