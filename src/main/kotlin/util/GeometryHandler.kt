@@ -980,7 +980,7 @@ class GeometryHandler(
                 inst.name = "${edge.internalPoolIndex}"
                 inst.parent = linkParentNode
                 // add a new key-value pair to the hash map
-                links[edge.internalPoolIndex] = LinkNode(inst, from, to, to.timepoint)
+                links[edge.target.hashCode()] = LinkNode(inst, from, to, to.timepoint)
 
                 index++
             }
@@ -1046,7 +1046,7 @@ class GeometryHandler(
      * When set to [ColorMode.SPOT], it uses the [colorizer] to get the spot colors. */
     fun updateLinkColors (
         colorizer: GraphColorGenerator<Spot, Link>?,
-        cm: ColorMode =  currentColorMode
+        cm: ColorMode = currentColorMode
     ) {
         val start = TimeSource.Monotonic.markNow()
         when (cm) {
