@@ -587,12 +587,10 @@ class Manvr3dMain: TimepointObserver {
 
     /** Calls [updateSciviewTimepointFromBDV] and [GeometryHandler.showInstancedSpots] to update the current volume and corresponding spots. */
     fun updateSciviewContent() {
-        val needsUpdate = updateSciviewTimepointFromBDV()
-        if (needsUpdate) {
-            geometryHandler.showInstancedSpots(currentTimepoint, currentColorizer)
-            geometryHandler.updateSegmentVisibility(currentTimepoint)
-            geometryHandler.updateLinkColors(currentColorizer)
-        }
+        volumeNode.goToTimepoint(currentTimepoint)
+        geometryHandler.showInstancedSpots(currentTimepoint, currentColorizer)
+        geometryHandler.updateSegmentVisibility(currentTimepoint)
+        geometryHandler.updateLinkColors(currentColorizer)
     }
 
     /** Uses the current [bdvWinParamsProvider] to update the sciview spots of the current timepoint. */
@@ -609,7 +607,7 @@ class Manvr3dMain: TimepointObserver {
 
     /** Takes a timepoint and updates the current BDV window's time accordingly. */
     fun updateBDV_TimepointFromSciview(tp: Int) {
-        logger.debug("Updated BDV timepoint from sciview")
+        logger.debug("Updated BDV timepoint from sciview to $tp")
         bdvWindow.viewerPanelMamut.state().currentTimepoint = tp
     }
 
@@ -669,11 +667,6 @@ class Manvr3dMain: TimepointObserver {
     }
 
     fun showTimepoint(timepoint: Int) {
-        setTimepoint(when {
-            timepoint < 0 -> maxTimepoint
-            timepoint > maxTimepoint -> 0
-            else -> timepoint
-        })
         geometryHandler.clearSelection()
         updateSciviewContent()
         vrTracking.volumeTimepointWidget.text = currentTimepoint.toString()
@@ -932,9 +925,14 @@ class Manvr3dMain: TimepointObserver {
     /** Implementation of the [TimepointObserver] interface; this method is called whenever the VR user triggers
      *  a timepoint change or plays the animation */
     override fun onTimePointChanged(timepoint: Int) {
-        logger.debug("Called onTimepointChanged")
-        updateBDV_TimepointFromSciview(timepoint)
-        showTimepoint(timepoint)
+        logger.debug("Called onTimepointChanged with $timepoint")
+        setTimepoint(when {
+            timepoint < 0 -> maxTimepoint
+            timepoint > maxTimepoint -> 0
+            else -> timepoint
+        })
+        updateBDV_TimepointFromSciview(currentTimepoint)
+        showTimepoint(currentTimepoint)
     }
 
     /** Quickly flashes the volume's bounding grid to indicate the borders of the volume. */
