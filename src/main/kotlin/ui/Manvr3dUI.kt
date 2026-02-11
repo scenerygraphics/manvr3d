@@ -171,7 +171,7 @@ class Manvr3dUI(manvr3dContext: Manvr3dMain, populateThisContainer: Container) {
             linkRangeBackwards,
             {
                 f: Float -> manvr3d.geometryHandler.linkBackwardRange = f.toInt()
-                manvr3d.geometryHandler.updateSegmentVisibility(manvr3d.lastUpdatedSciviewTP)
+                manvr3d.geometryHandler.updateSegmentVisibility(manvr3d.currentTimepoint)
             },
             c)
 
@@ -184,7 +184,7 @@ class Manvr3dUI(manvr3dContext: Manvr3dMain, populateThisContainer: Container) {
             linkRangeForwards,
             {
                 f: Float -> manvr3d.geometryHandler.linkForwardRange = f.toInt()
-                manvr3d.geometryHandler.updateSegmentVisibility(manvr3d.lastUpdatedSciviewTP)
+                manvr3d.geometryHandler.updateSegmentVisibility(manvr3d.currentTimepoint)
             },
             c
         )
