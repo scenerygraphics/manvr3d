@@ -1,5 +1,6 @@
 package vr
 
+import Manvr3dMain
 import graphics.scenery.*
 import graphics.scenery.attribute.material.Material
 import graphics.scenery.controls.*
@@ -25,7 +26,9 @@ import graphics.scenery.controls.behaviours.MultiButtonManager
 import graphics.scenery.controls.behaviours.VR2HandNodeTransform
 import graphics.scenery.controls.behaviours.VRGrabTheWorld
 import graphics.scenery.utils.TimepointObservable
+import org.checkerframework.checker.units.qual.m
 import util.CellTrackingButtonMapper
+import util.GeometryHandler
 import util.SpineMetadata
 import java.io.BufferedWriter
 import java.io.FileWriter
@@ -42,6 +45,8 @@ import kotlin.concurrent.thread
  */
 open class CellTrackingBase(
     open var sciview: SciView,
+    open var manvr3d: Manvr3dMain,
+    open var geometryHandler: GeometryHandler,
     val resolutionScale: Float = 1f
 ): TimepointObservable() {
     val logger by lazyLogger(System.getProperty("scenery.LogLevel", "info"))
@@ -73,74 +78,9 @@ open class CellTrackingBase(
     /** determines whether the volume and hedgehogs should keep listening for updates or not */
     var cellTrackingActive: Boolean = false
 
-    /** Takes a list of [SpineGraphVertex] and its positions to create the corresponding track in Mastodon.
-     * In the case of controller tracking, the points were already sent to Mastodon one by one via [singleLinkTrackedCallback] and the list is not needed.
-     * Set the first boolean to true if the coordinates are in world space. The manvr3d will convert them to Mastodon coords.
-     * The first Spot defines whether to start with an existing spot, so the lambda will use that as starting point.
-     * The second spot defines whether we want to merge into this spot. */
-    var trackCreationCallback: ((
-        List<Pair<Vector3f, SpineGraphVertex>>?,
-        radius: Float,
-        isWorldSpace: Boolean,
-        startSpot: Spot?,
-        mergeSpot: Spot?
-    ) -> Unit)? = null
-
-    /** Passes the current time point, a position and a radius to manvr3d to either create a new spot
-     * or to delete an existing spot if there is a spot selected.
-     * The deleteBranch flag indicates whether we want to delete the whole branch or just a spot.
-     * isVoxelCoords indicates whether the coordinates are in sciview or in mastodon space */
-    var spotCreateDeleteCallback: ((
-        tp: Int,
-        sciviewPos: Vector3f,
-        radius: Float,
-        deleteBranch: Boolean,
-        isWorldSpace: Boolean
-    ) -> Unit)? = null
-    /** Select a spot based on the controller tip's position, current time point and a multiple of the radius
-     * in which a selection event is counted as valid. addOnly prevents deselection from clicking away. */
-    var spotSelectCallback: ((sciviewPos: Vector3f, tp: Int, radiusFactor: Float, addOnly: Boolean) -> Pair<Spot?, Boolean>)? = null
     var spotMoveInitCallback: ((Vector3f) -> Unit)? = null
     var spotMoveDragCallback: ((Vector3f) -> Unit)? = null
     var spotMoveEndCallback: ((Vector3f) -> Unit)? = null
-    /** Links a selected spot to the closest spot to handle merge events. */
-    var spotLinkCallback: (() -> Unit)? = null
-    /** Generates a single link between a new position and the previously annotated one.
-     * Sends the position data to manvr3d for intermediary keeping. The integer is the timepoint.
-     * The Float contains the cursor's radius in sciview space.
-     * The boolean specifies whether the link preview should be rendered. */
-    var singleLinkTrackedCallback: ((pos: Vector3f, tp: Int, radius: Float, preview: Boolean) -> Unit)? = null
-    var toggleTrackingPreviewCallback: ((Boolean) -> Unit)? = null
-    var rebuildGeometryCallback: (() -> Unit)? = null
-
-    var stageSpotsCallback: (() -> Unit)? = null
-    var predictSpotsCallback: ((all: Boolean) -> Unit)? = null
-    var trainSpotsCallback: (() -> Unit)? = null
-    var neighborLinkingCallback: (() -> Unit)? = null
-    // TODO add train flow functionality
-    var trainFlowCallback: (() -> Unit)? = null
-    /** Reverts to the point previously saved by Mastodon's undo recorder. Also handles redo events if undo is set to false. */
-    var mastodonUndoRedoCallback: ((undo: Boolean) -> Unit)? = null
-    /** Returns a list of spots currently selected in Mastodon. Used to determine whether to scale the cursor or the spots. */
-    var getSelectionCallback: (() -> List<InstancedNode.Instance>)? = null
-    /** Adjusts the radii of spots, both in sciview and Mastodon. */
-    var scaleSpotsCallback: ((radius: Float, update: Boolean) -> Unit)? = null
-    /** Toggle the visibility of spots in the scene. */
-    var setSpotVisCallback: ((Boolean) -> Unit)? = null
-    /** Toggle the visibility of tracks in the scene. */
-    var setTrackVisCallback: ((Boolean) -> Unit)? = null
-    /** Toggle the visiblity of the volume in the scene while maintaining visibility of spots and links as child elements. */
-    var setVolumeVisCallback: ((Boolean) -> Unit)? = null
-    /** Merges overlapping spots in a given timepoint. */
-    var mergeOverlapsCallback: ((Int) -> Unit)? = null
-    /** Merges selected spots. */
-    var mergeSelectedCallback: (() -> Unit)? = null
-    /** Deletes the whole graph. */
-    var deleteGraphCallback: (() -> Unit)? = null
-    /** Deletes all annotations from this timepoint. */
-    var deleteTimepointCallback: (() -> Unit)? = null
-    /** Recenter and set default scaling for volume, then center camera on volume. */
-    var resetViewCallback: (() -> Unit)? = null
 
     enum class HedgehogVisibility { Hidden, PerTimePoint, Visible }
 
@@ -236,7 +176,7 @@ open class CellTrackingBase(
         inputSetup()
 
         cellTrackingActive = true
-        rebuildGeometryCallback?.invoke()
+        manvr3d.rebuildGeometry()
         launchUpdaterThread()
     }
 
@@ -262,7 +202,7 @@ open class CellTrackingBase(
             val p = cursor.getPosition()
             // did the user click on an existing cell and wants to merge the track into it?
             val (selected, isValidSelection) =
-                spotSelectCallback?.invoke(p, volume.currentTimepoint, cursor.radius, false) ?: (null to false)
+                geometryHandler.selectClosestSpotsVR(p, volume.currentTimepoint, cursor.radius, false) ?: (null to false)
             // If this is the first spot we track, and its a valid existing spot, mark it as such
             if (isValidSelection && controllerTrackList.size == 0) {
                 startWithExistingSpot = selected
@@ -273,7 +213,7 @@ open class CellTrackingBase(
             logger.debug("Tracked a new spot at position $p")
             logger.debug("Do we want to merge? $isValidSelection. Selected spot is $selected")
             // Create a placeholder link during tracking for immediate feedback
-            singleLinkTrackedCallback?.invoke(p, volume.currentTimepoint, cursor.radius, enableTrackingPreview)
+            geometryHandler.addTrackedPoint(p, volume.currentTimepoint, cursor.radius, enableTrackingPreview)
 
             volume.goToTimepoint(volume.currentTimepoint - 1)
             // If the user clicked a cell and its *not* the first in the track, we assume it is a merge event and end the tracking
@@ -296,7 +236,7 @@ open class CellTrackingBase(
             logger.info("Ending controller tracking now and sending ${controllerTrackList.size} spots to Mastodon to chew on.")
             controllerTrackingActive = false
             // Radius can be 0 because the actual radii were already captured during tracking
-            trackCreationCallback?.invoke(null, 0f, true, startWithExistingSpot, mergeSpot)
+            geometryHandler.addTrackToMastodon(null, 0f, true, startWithExistingSpot, mergeSpot)
             controllerTrackList.clear()
             cursor.resetColor()
         }
@@ -335,11 +275,11 @@ open class CellTrackingBase(
         if ((buttonTime - lastButtonTime) > 1000) {
             thread {
                 when (mode) {
-                    ElephantMode.StageSpots -> stageSpotsCallback?.invoke()
-                    ElephantMode.TrainAll -> trainSpotsCallback?.invoke()
-                    ElephantMode.PredictTP -> predictSpotsCallback?.invoke(false)
-                    ElephantMode.PredictAll -> predictSpotsCallback?.invoke(true)
-                    ElephantMode.NNLinking -> neighborLinkingCallback?.invoke()
+                    ElephantMode.StageSpots -> manvr3d.stageSpots()
+                    ElephantMode.TrainAll -> manvr3d.trainSpots()
+                    ElephantMode.PredictTP -> manvr3d.preditSpots(false)
+                    ElephantMode.PredictAll -> manvr3d.preditSpots(true)
+                    ElephantMode.NNLinking -> manvr3d.linkNearestNeighbors()
                 }
                 logger.info("We locked the buttons for ${(buttonTime-lastButtonTime)} ms ")
                 lastButtonTime = buttonTime
@@ -358,17 +298,17 @@ open class CellTrackingBase(
 
         val undoButton = Button(
             "Undo",
-            command = { mastodonUndoRedoCallback?.invoke(true) }, byTouch = true, depressDelay = 250,
+            command = { manvr3d.undoRedo() }, byTouch = true, depressDelay = 250,
             defaultColor = color, pressedColor = pressedColor, touchingColor = touchingColor
         )
         val redoButton = Button(
             "Redo",
-            command = {mastodonUndoRedoCallback?.invoke(false)}, byTouch = true, depressDelay = 250,
+            command = { manvr3d.undoRedo(redo = true) }, byTouch = true, depressDelay = 250,
             defaultColor = color, pressedColor = pressedColor, touchingColor = touchingColor
         )
         val resetViewButton = Button(
             "Recenter", command = {
-                resetViewCallback?.invoke()
+                manvr3d.resetView()
             }, byTouch = true, depressDelay = 250,
             defaultColor = color, pressedColor = pressedColor, touchingColor = touchingColor
         )
@@ -437,36 +377,36 @@ open class CellTrackingBase(
         leftWristMenu.addColumn("Toggle Menu")
         leftWristMenu.addToggleButton("Toggle Menu", "Volume off", "Volume on", command = {
             val state = volume.visible
-            setVolumeVisCallback?.invoke(!state)
+            manvr3d.setVolumeOnlyVisibility(!state)
         }, color = color, pressedColor = pressedColor, touchingColor = touchingColor, defaultState = true)
-        leftWristMenu.addToggleButton("Toggle Menu", "Track off", "Track on",
+        leftWristMenu.addToggleButton("Toggle Menu", "Tracks off", "Tracks on",
             command = {
                 trackVisibility = !trackVisibility
-                setTrackVisCallback?.invoke(trackVisibility)
+                geometryHandler.setTrackVisibility(trackVisibility)
             }, color = color, pressedColor = pressedColor, touchingColor = touchingColor, defaultState = true )
         leftWristMenu.addToggleButton("Toggle Menu", "Spots off", "Spots on",
             command = {
                 spotVisibility = !spotVisibility
-                setSpotVisCallback?.invoke(spotVisibility)
+                geometryHandler.setSpotVisibility(spotVisibility)
             }, color = color, pressedColor = pressedColor, touchingColor = touchingColor, defaultState = true )
         leftWristMenu.addToggleButton("Toggle Menu", "Preview Off", "Preview On", command = {
             enableTrackingPreview = !enableTrackingPreview
-            toggleTrackingPreviewCallback?.invoke(enableTrackingPreview)
+            geometryHandler.toggleLinkPreviews(enableTrackingPreview)
         }, color = color, pressedColor = pressedColor, touchingColor = touchingColor, defaultState = true)
 
 
         leftWristMenu.addColumn("Cleanup Menu")
         leftWristMenu.addButton("Cleanup Menu", "Merge overlaps", command = {
-            mergeOverlapsCallback?.invoke(volume.currentTimepoint)
+            manvr3d.mergeOverlapsAndUpdate(volume.currentTimepoint)
         }, color = color, pressedColor = pressedColor, touchingColor = touchingColor)
         leftWristMenu.addButton("Cleanup Menu", "Merge selected", command = {
-            mergeSelectedCallback?.invoke()
+            manvr3d.mergeSelectionAndUpdate()
         }, color = color, pressedColor = pressedColor, touchingColor = touchingColor)
         leftWristMenu.addButton("Cleanup Menu", "Delete Graph", command = {
-            deleteGraphCallback?.invoke()
+            manvr3d.deleteGraphAndUpdate()
         }, byTouch = true, color = color, pressedColor = pressedColor, touchingColor = touchingColor)
         leftWristMenu.addButton("Cleanup Menu", "Delete TP", command = {
-            deleteTimepointCallback?.invoke()
+            manvr3d.deleteTimepointAndUpdate(volume.currentTimepoint)
         }, byTouch = true, color = color, pressedColor = pressedColor, touchingColor = touchingColor)
     }
 
@@ -552,23 +492,22 @@ open class CellTrackingBase(
         }
 
         class ScaleCursorOrSpotsBehavior(val factor: Float): DragBehaviour {
-            var isSelected = false
+            var selection = listOf<InstancedNode.Instance>()
             override fun init(p0: Int, p1: Int) {
-                // determine whether we selected spots or not
-                isSelected = getSelectionCallback?.invoke()?.isNotEmpty() ?: false
+                selection = manvr3d.selectedSpotInstances.toList()
             }
 
             override fun drag(p0: Int, p1: Int) {
-                if (isSelected) {
-                    scaleSpotsCallback?.invoke(factor, false)
+                if (selection.isNotEmpty()) {
+                    geometryHandler.changeSpotRadius(selection,factor, false)
                 } else {
-                    // Make cursor movement a little stronger than
+                    // Make cursor movement a little faster than  changing the spot radii
                     cursor.scaleByFactor(factor * factor)
                 }
             }
 
             override fun end(p0: Int, p1: Int) {
-                scaleSpotsCallback?.invoke(factor, true)
+                geometryHandler.changeSpotRadius(selection, factor, true)
             }
         }
 
@@ -673,7 +612,12 @@ open class CellTrackingBase(
             override fun drag(x: Int, y: Int) {
                 if (System.currentTimeMillis() - start > 500 && !wasExecuted) {
                     val p = cursor.getPosition()
-                    spotCreateDeleteCallback?.invoke(volume.currentTimepoint, p, cursor.radius, true, true)
+                    geometryHandler.addOrRemoveSpots(
+                        volume.currentTimepoint,
+                        p,
+                        cursor.radius,
+                        true,
+                        true)
                     wasExecuted = true
                 }
             }
@@ -684,7 +628,12 @@ open class CellTrackingBase(
                     val p = cursor.getPosition()
                     logger.debug("Got cursor position: $p")
                     if (!wasExecuted) {
-                        spotCreateDeleteCallback?.invoke(volume.currentTimepoint, p, cursor.radius, false, true)
+                        geometryHandler.addOrRemoveSpots(
+                            volume.currentTimepoint,
+                            p,
+                            cursor.radius,
+                            false,
+                            true)
                     }
                 }
             }
@@ -698,13 +647,13 @@ open class CellTrackingBase(
                 time = System.currentTimeMillis()
                 val p = cursor.getPosition()
                 cursor.setColor(cursorSelectColor)
-                spotSelectCallback?.invoke(p, volume.currentTimepoint, cursor.radius, false)
+                geometryHandler.selectClosestSpotsVR(p, volume.currentTimepoint, cursor.radius, false)
             }
             override fun drag(x: Int, y: Int) {
                 // Only perform the selection method ten times a second
                 if (System.currentTimeMillis() - time > 100) {
                     val p = cursor.getPosition()
-                    spotSelectCallback?.invoke(p, volume.currentTimepoint, cursor.radius, true)
+                    geometryHandler.selectClosestSpotsVR(p, volume.currentTimepoint, cursor.radius, true)
                     time = System.currentTimeMillis()
                 }
             }
@@ -734,14 +683,14 @@ open class CellTrackingBase(
             lockYaxis = false,
             target = volume,
             onStartCallback = {
-                setSpotVisCallback?.invoke(false)
-                setTrackVisCallback?.invoke(false)
+                geometryHandler.setSpotVisibility(false)
+                geometryHandler.setTrackVisibility(false)
             },
             onEndCallback = {
-                rebuildGeometryCallback?.invoke()
+                manvr3d.rebuildGeometry()
                 // Only re-enable the spots or tracks if they were enabled in the first place
-                setSpotVisCallback?.invoke(spotVisibility)
-                setTrackVisCallback?.invoke(trackVisibility)
+                geometryHandler.setSpotVisibility(spotVisibility)
+                geometryHandler.setTrackVisibility(trackVisibility)
             },
             resetRotationBtnManager = resetRotationBtnManager,
             resetRotationButton = MultiButtonManager.ButtonConfig(leftAButtonBehavior.button, leftAButtonBehavior.role)
@@ -975,7 +924,7 @@ open class CellTrackingBase(
 
         sciview.toggleVRRendering()
         logger.info("Shut down and disabled VR environment.")
-        rebuildGeometryCallback?.invoke()
+        manvr3d.rebuildGeometry()
     }
 
 }
