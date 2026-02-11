@@ -78,8 +78,8 @@ class MoveInstanceVR(
     override fun end(x: Int, y: Int) {
         if (!buttonmanager.isTwoHandedActive()) {
             manvr3d.bdvNotifier?.lockUpdates = false
-            manvr3d.geometryHandler.showInstancedSpots(manvr3d.detachedDPP_showsLastTimepoint.timepoint,
-                manvr3d.detachedDPP_showsLastTimepoint.colorizer)
+            manvr3d.geometryHandler.showInstancedSpots(manvr3d.currentTimepoint,
+                manvr3d.currentColorizer)
             adjacentEdges.clear()
             manvr3d.bdvNotifier?.lockUpdates = false
         }

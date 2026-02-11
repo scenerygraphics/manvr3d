@@ -77,7 +77,7 @@ class Manvr3dUIMig(manvr3dContext: Manvr3dMain, populateThisContainer: JPanel) {
             SpinnerNumberModel(manvr3d.mastodon.maxTimepoint, 0, manvr3d.mastodon.maxTimepoint, 1)
         ) { value ->
             manvr3d.geometryHandler.linkBackwardRange = value.toInt()
-            manvr3d.geometryHandler.updateSegmentVisibility(manvr3d.lastUpdatedSciviewTP)
+            manvr3d.geometryHandler.updateSegmentVisibility(manvr3d.currentTimepoint)
         }
 
         linkRangeForwards = addLabeledSpinner(
@@ -85,7 +85,7 @@ class Manvr3dUIMig(manvr3dContext: Manvr3dMain, populateThisContainer: JPanel) {
             SpinnerNumberModel(manvr3d.mastodon.maxTimepoint, 0, manvr3d.mastodon.maxTimepoint, 1)
         ) { value ->
             manvr3d.geometryHandler.linkForwardRange = value.toInt()
-            manvr3d.geometryHandler.updateSegmentVisibility(manvr3d.lastUpdatedSciviewTP)
+            manvr3d.geometryHandler.updateSegmentVisibility(manvr3d.currentTimepoint)
         }
 
         spotScaleFactor = addLabeledSpinner(
@@ -211,7 +211,7 @@ class Manvr3dUIMig(manvr3dContext: Manvr3dMain, populateThisContainer: JPanel) {
             }
         }
         manvr3dContext.geometryHandler.updateLinkColors(
-            manvr3dContext.recentColorizer ?: manvr3dContext.noTSColorizer
+            manvr3dContext.currentColorizer
         )
     }
 

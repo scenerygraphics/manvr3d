@@ -117,6 +117,16 @@ class Manvr3dMain: TimepointObserver {
     // the event watcher for BDV, needed here for the lock handling to prevent BDV from
     // triggering the event watcher while a spot is edited in Sciview
     var bdvNotifier: BdvNotifier? = null
+    lateinit var bdvWindow: MamutViewBdv
+    var currentTimepoint: Int = 0
+        private set
+    var minTimepoint: Int = 0
+        private set
+    var maxTimepoint: Int = 0
+        private set
+    val currentColorizer: GraphColorGenerator<Spot, Link>
+        get() = getCurrentColorizer(bdvWindow)
+
     var moveSpotInSciview: (Spot?) -> Unit?
     var associatedUI: Manvr3dUIMig? = null
     var uiFrame: JFrame? = null
@@ -152,10 +162,9 @@ class Manvr3dMain: TimepointObserver {
         mastodon = mastodonMainWindow
         sciviewWin = targetSciviewWindow
         sciviewWin.setPushMode(true)
-        detachedDPP_withOwnTime = DPP_DetachedOwnTime(
-            mastodon.minTimepoint,
-            mastodon.maxTimepoint
-        )
+        minTimepoint = mastodon.minTimepoint
+        maxTimepoint = mastodon.maxTimepoint
+        currentTimepoint = minTimepoint
 
         //adjust the default scene's settings
         sciviewWin.applicationName = ("sciview for Mastodon: " + mastodon.projectName)
@@ -275,7 +284,7 @@ class Manvr3dMain: TimepointObserver {
         settings.timeRange = if (predictAll) volumeNode.timepointCount else 1
         logger.info("Elephant settings.timeRange was set to ${settings.timeRange}.")
         val start = TimeSource.Monotonic.markNow()
-        val currentTP = detachedDPP_showsLastTimepoint.timepoint
+        val currentTP = currentTimepoint
         val groupHandle = mastodon.groupManager.createGroupHandle()
         groupHandle.groupId = 0
         val tpAdapter = TimepointModelAdapter(groupHandle.getModel(mastodon.TIMEPOINT))
@@ -288,8 +297,8 @@ class Manvr3dMain: TimepointObserver {
         if (predictAll) {
             tpAdapter.timepoint = currentTP
         }
-        geometryHandler.showInstancedSpots(detachedDPP_showsLastTimepoint.timepoint,
-            detachedDPP_showsLastTimepoint.colorizer)
+        geometryHandler.showInstancedSpots(currentTimepoint,
+            currentColorizer)
         sciviewWin.camera?.showMessage("Prediction took ${start.elapsedNow()} ms", 2f, 0.2f, centered = true)
 
     }
@@ -302,8 +311,8 @@ class Manvr3dMain: TimepointObserver {
             logger.warn("Could not find tag or tag set! Please ensure both exist.")
         } else {
             geometryHandler.showInstancedSpots(
-                detachedDPP_showsLastTimepoint.timepoint,
-                detachedDPP_showsLastTimepoint.colorizer)
+                currentTimepoint,
+                currentColorizer)
         }
     }
 
@@ -317,7 +326,7 @@ class Manvr3dMain: TimepointObserver {
         val settings = ElephantMainSettingsManager.getInstance().forwardDefaultStyle
         settings.timeRange = volumeNode.timepointCount
         // Store current TP so we can revert to it after the linking
-        val currentTP = detachedDPP_showsLastTimepoint.timepoint
+        val currentTP = currentTimepoint
         // Get the group handle and move its TP to the last TP
         val groupHandle = mastodon.groupManager.createGroupHandle()
         groupHandle.groupId = 0
@@ -524,159 +533,102 @@ class Manvr3dMain: TimepointObserver {
 
     /** Overload that implicitly uses the existing [spimSource] for [volumeIntensityProcessing] */
     fun volumeIntensityProcessing() {
-        val srcImg = spimSource.getSource(detachedDPP_withOwnTime.timepoint, volumeMipmapLevel) as RandomAccessibleInterval<UnsignedShortType>
+        val srcImg = spimSource.getSource(currentTimepoint, volumeMipmapLevel) as RandomAccessibleInterval<UnsignedShortType>
         volumeIntensityProcessing(srcImg)
     }
 
-    private var bdvWinParamsProvider: DisplayParamsProvider? = null
-
     /** Create a BDV window and launch a [BdvNotifier] instance to synchronize time point and viewing direction. */
     fun openSyncedBDV() {
-        val bdvWin = mastodon.windowManager.createView(MamutViewBdv::class.java)
-        bdvWin.frame.setTitle("BDV linked to ${sciviewWin.getName()}")
-            //initial spots content:
-            bdvWinParamsProvider = DPP_BdvAdapter(bdvWin)
-            bdvWinParamsProvider?.let {
-                updateSciviewContent(it)
-                bdvNotifier = BdvNotifier(
-                    // time point processor
-                    { updateSciviewContent(it) },
-                    // view update processor
-                    { updateSciviewCameraFromBDV(bdvWin) },
-                    // vertex update processor
-                    moveSpotInSciview as (Spot?) -> Unit,
-                    // graph update processor: redraws track segments and spots
-                    {
-                        geometryHandler.showInstancedLinks(geometryHandler.currentColorMode, it.colorizer)
-                        geometryHandler.showInstancedSpots(it.timepoint, it.colorizer)
-                    },
-                    mastodon,
-                    bdvWin
-                )
-            }
-       }
+        bdvWindow = mastodon.windowManager.createView(MamutViewBdv::class.java)
+        bdvWindow.frame.setTitle("BDV linked to ${sciviewWin.getName()}")
+
+        updateSciviewContent()
+        bdvNotifier = BdvNotifier(
+            { updateSciviewContent() },
+            { updateSciviewCameraFromBDV() },
+            moveSpotInSciview as (Spot?) -> Unit,
+            {
+                geometryHandler.showInstancedLinks(geometryHandler.currentColorMode, currentColorizer)
+                geometryHandler.showInstancedSpots(currentTimepoint, currentColorizer)
+            },
+            mastodon,
+            bdvWindow
+        )
+    }
 
     private var recentTagSet: TagSetStructure.TagSet? = null
     var recentColorizer: GraphColorGenerator<Spot, Link>? = null
     val noTSColorizer = DefaultGraphColorGenerator<Spot, Link>()
 
     private fun getCurrentColorizer(forThisBdv: MamutViewBdv): GraphColorGenerator<Spot, Link> {
-        //NB: trying to avoid re-creating of new TagSetGraphColorGenerator objs with every new content rending
-        val colorizer: GraphColorGenerator<Spot, Link>
+        //NB: trying to avoid re-creating of new TagSetGraphColorGenerator objs with every new content rendering
         val ts = forThisBdv.coloringModel.tagSet
         if (ts != null) {
             if (ts !== recentTagSet) {
                 recentColorizer = TagSetGraphColorGenerator(mastodon.model.tagSetModel, ts)
+                recentTagSet = ts
             }
-            colorizer = recentColorizer!!
-        } else {
-            colorizer = noTSColorizer
+            return recentColorizer!!
         }
-        recentTagSet = ts
-        return colorizer
+        return noTSColorizer
     }
 
-    interface DisplayParamsProvider {
-        val timepoint: Int
-        val colorizer: GraphColorGenerator<Spot, Link>
+    fun setTimepoint(tp: Int) {
+        currentTimepoint = max(minTimepoint.toDouble(), min(maxTimepoint.toDouble(), tp.toDouble())).toInt()
     }
 
-    internal inner class DPP_BdvAdapter(ofThisBdv: MamutViewBdv) : DisplayParamsProvider {
-        val bdv: MamutViewBdv = ofThisBdv
-        override val timepoint: Int
-            get() = bdv.viewerPanelMamut.state().currentTimepoint
-        override val colorizer: GraphColorGenerator<Spot, Link>
-            get() = getCurrentColorizer(bdv)
+    fun nextTimepoint() {
+        setTimepoint(currentTimepoint + 1)
     }
 
-    internal inner class DPP_Detached : DisplayParamsProvider {
-        override val timepoint: Int
-            get() = lastUpdatedSciviewTP
-        override val colorizer: GraphColorGenerator<Spot, Link>
-            get() = recentColorizer ?: noTSColorizer
-    }
-
-    inner class DPP_DetachedOwnTime(val min: Int, val max: Int) : DisplayParamsProvider {
-
-        override var timepoint = 0
-            set(value) {
-                field = max(min.toDouble(), min(max.toDouble(), value.toDouble())).toInt()
-            }
-
-        fun prevTimepoint() {
-            timepoint = max(min.toDouble(), (timepoint - 1).toDouble()).toInt()
-        }
-
-        fun nextTimepoint() {
-            timepoint = min(max.toDouble(), (timepoint + 1).toDouble()).toInt()
-        }
-
-        override val colorizer: GraphColorGenerator<Spot, Link>
-            get() = recentColorizer ?: noTSColorizer
+    fun prevTimepoint() {
+        setTimepoint(currentTimepoint - 1)
     }
 
     /** Calls [updateSciviewTimepointFromBDV] and [GeometryHandler.showInstancedSpots] to update the current volume and corresponding spots. */
-    fun updateSciviewContent(forThisBdv: DisplayParamsProvider) {
-        logger.debug("Called updateSciviewContent")
-        val needsUpdate = updateSciviewTimepointFromBDV(forThisBdv)
+    fun updateSciviewContent() {
+        val needsUpdate = updateSciviewTimepointFromBDV()
         if (needsUpdate) {
-            geometryHandler.showInstancedSpots(forThisBdv.timepoint, forThisBdv.colorizer)
-            geometryHandler.updateSegmentVisibility(forThisBdv.timepoint)
-            geometryHandler.updateLinkColors(forThisBdv.colorizer)
+            geometryHandler.showInstancedSpots(currentTimepoint, currentColorizer)
+            geometryHandler.updateSegmentVisibility(currentTimepoint)
+            geometryHandler.updateLinkColors(currentColorizer)
         }
     }
 
     /** Uses the current [bdvWinParamsProvider] to update the sciview spots of the current timepoint. */
     fun redrawSciviewSpots() {
-        bdvWinParamsProvider?.let {
-            geometryHandler.showInstancedSpots(it.timepoint, it.colorizer)
-        }
+        geometryHandler.showInstancedSpots(currentTimepoint, currentColorizer)
     }
 
     /** Rebuild all geometry on the sciview side for the default [bdvWinParamsProvider]. */
     fun rebuildGeometry() {
-        bdvWinParamsProvider?.let {
-            logger.debug("Called rebuildGeometryCallback")
-            geometryHandler.showInstancedSpots(it.timepoint, it.colorizer)
-            geometryHandler.showInstancedLinks(geometryHandler.currentColorMode, it.colorizer)
-        }
+        logger.debug("Called rebuildGeometryCallback")
+        geometryHandler.showInstancedSpots(currentTimepoint, currentColorizer)
+        geometryHandler.showInstancedLinks(geometryHandler.currentColorMode, currentColorizer)
     }
 
     /** Takes a timepoint and updates the current BDV window's time accordingly. */
     fun updateBDV_TimepointFromSciview(tp: Int) {
         logger.debug("Updated BDV timepoint from sciview")
-        if (bdvWinParamsProvider != null) {
-            (bdvWinParamsProvider as DPP_BdvAdapter).bdv.viewerPanelMamut.state().currentTimepoint = tp
-        } else {
-            logger.warn("BDV window was likely not initialized, can't synchronize sciview timepoint to BDV window!")
-        }
+        bdvWindow.viewerPanelMamut.state().currentTimepoint = tp
     }
-
-    var lastUpdatedSciviewTP = 0
-    val detachedDPP_showsLastTimepoint: DisplayParamsProvider = DPP_Detached()
 
     /** Update the sciview content based on the timepoint from the BDV window.
      * Returns true if the content was updated. */
     @JvmOverloads
-    fun updateSciviewTimepointFromBDV(
-        forThisBdv: DisplayParamsProvider = detachedDPP_showsLastTimepoint,
-        force: Boolean = false
-    ): Boolean {
-
+    fun updateSciviewTimepointFromBDV(force: Boolean = false): Boolean {
         if (updateVolAutomatically || force) {
-            val currTP = forThisBdv.timepoint
-            if (currTP != lastUpdatedSciviewTP) {
-                lastUpdatedSciviewTP = currTP
-                val tp = forThisBdv.timepoint
-                volumeNode.goToTimepoint(tp)
-                // Only return true
+            val bdvTP = bdvWindow.viewerPanelMamut?.state()?.currentTimepoint ?: currentTimepoint
+            if (bdvTP != currentTimepoint) {
+                currentTimepoint = bdvTP
+                volumeNode.goToTimepoint(currentTimepoint)
                 return true
             }
         }
         return false
     }
 
-    private fun updateSciviewCameraFromBDV(forThisBdv: MamutViewBdv) {
+    private fun updateSciviewCameraFromBDV() {
         // Let's not move the camera around when the user is in VR
         if (isVRactive) {
             return
@@ -684,7 +636,7 @@ class Manvr3dMain: TimepointObserver {
         val auxTransform = AffineTransform3D()
         val viewMatrix = Matrix4f()
         val viewRotation = Quaternionf()
-        forThisBdv.viewerPanelMamut.state().getViewerTransform(auxTransform)
+        bdvWindow.viewerPanelMamut.state().getViewerTransform(auxTransform)
         for (r in 0..2) for (c in 0..3) viewMatrix[c, r] = auxTransform[r, c].toFloat()
         viewMatrix.getUnnormalizedRotation(viewRotation)
         val camSpatial = sciviewWin.camera?.spatial() ?: return
@@ -716,20 +668,15 @@ class Manvr3dMain: TimepointObserver {
         volumeNode.multiResolutionLevelLimits = level to level + 1
     }
 
-    val detachedDPP_withOwnTime: DPP_DetachedOwnTime
-
     fun showTimepoint(timepoint: Int) {
-        val maxTP = detachedDPP_withOwnTime.max
-        // if we play backwards, start with the highest TP once we reach below 0, otherwise play forward and wrap at maxTP
-        detachedDPP_withOwnTime.timepoint = when {
-            timepoint < 0 -> maxTP
-            timepoint > maxTP -> 0
+        setTimepoint(when {
+            timepoint < 0 -> maxTimepoint
+            timepoint > maxTimepoint -> 0
             else -> timepoint
-        }
-        // Clear the selection between time points, otherwise we might run into problems
+        })
         geometryHandler.clearSelection()
-        updateSciviewContent(detachedDPP_withOwnTime)
-        vrTracking.volumeTimepointWidget.text = detachedDPP_withOwnTime.timepoint.toString()
+        updateSciviewContent()
+        vrTracking.volumeTimepointWidget.text = currentTimepoint.toString()
     }
 
     private fun registerKeyboardHandlers() {
@@ -745,10 +692,8 @@ class Manvr3dMain: TimepointObserver {
             BehaviourTriple(desc_INC_LINK, key_INC_LINK, { _, _ -> geometryHandler.increaseLinkScale(); updateUI() }),
             BehaviourTriple(desc_CTRL_WIN, key_CTRL_WIN, { _, _ -> createAndShowControllingUI() }),
             BehaviourTriple(desc_CTRL_INFO, key_CTRL_INFO, { _, _ -> logger.info(this.toString()) }),
-            BehaviourTriple(desc_PREV_TP, key_PREV_TP, { _, _ -> detachedDPP_withOwnTime.prevTimepoint()
-                updateSciviewContent(detachedDPP_withOwnTime) }),
-            BehaviourTriple(desc_NEXT_TP, key_NEXT_TP, { _, _ -> detachedDPP_withOwnTime.nextTimepoint()
-                updateSciviewContent(detachedDPP_withOwnTime) }),
+            BehaviourTriple(desc_PREV_TP, key_PREV_TP, { _, _ -> prevTimepoint(); updateSciviewContent() }),
+            BehaviourTriple(desc_NEXT_TP, key_NEXT_TP, { _, _ -> nextTimepoint(); updateSciviewContent() }),
             BehaviourTriple("Scale Instance Up", "ctrl E",
                 {_, _ -> geometryHandler.changeSpotRadius(selectedSpotInstances, 1.1f)}),
             BehaviourTriple("Scale Instance Down", "ctrl Q",
@@ -775,10 +720,7 @@ class Manvr3dMain: TimepointObserver {
                     logger.debug("selected instance {}", selectedSpotInstances)
                     selectedSpotInstances.forEach { s ->
                         geometryHandler.selectSpot2D(s)
-                        geometryHandler.showInstancedSpots(
-                            detachedDPP_showsLastTimepoint.timepoint,
-                            detachedDPP_showsLastTimepoint.colorizer
-                        )
+                        geometryHandler.showInstancedSpots(currentTimepoint, currentColorizer)
                     }
                 } else {
                     geometryHandler.clearSelection()
@@ -853,8 +795,8 @@ class Manvr3dMain: TimepointObserver {
         override fun end(x: Int, y: Int) {
             edges.clear()
             bdvNotifier?.lockUpdates = false
-            geometryHandler.showInstancedSpots(detachedDPP_showsLastTimepoint.timepoint,
-                detachedDPP_showsLastTimepoint.colorizer)
+            geometryHandler.showInstancedSpots(currentTimepoint,
+                currentColorizer)
         }
     }
 
@@ -882,18 +824,12 @@ class Manvr3dMain: TimepointObserver {
         spots.addAll(selectedSpotInstances.map { geometryHandler.findSpotFromInstance(it) }.distinct())
         geometryHandler.mergeSpots(spots)
         geometryHandler.clearSelection()
-        geometryHandler.showInstancedSpots(
-            detachedDPP_showsLastTimepoint.timepoint,
-            detachedDPP_showsLastTimepoint.colorizer
-        )
+        geometryHandler.showInstancedSpots(currentTimepoint, currentColorizer)
     }
 
     fun mergeOverlapsAndUpdate(tp: Int = volumeNode.currentTimepoint) {
         geometryHandler.mergeOverlappingSpots(tp)
-        geometryHandler.showInstancedSpots(
-            detachedDPP_showsLastTimepoint.timepoint,
-            detachedDPP_showsLastTimepoint.colorizer
-        )
+        geometryHandler.showInstancedSpots(currentTimepoint, currentColorizer)
     }
 
     /** Deletes the whole graph and updates the geometry. */
