@@ -7,7 +7,6 @@ import graphics.scenery.backends.RenderConfigReader
 import graphics.scenery.controls.OpenVRHMD
 import graphics.scenery.controls.behaviours.SelectCommand
 import graphics.scenery.controls.behaviours.WithCameraDelegateBase
-import graphics.scenery.primitives.TextBoard
 import graphics.scenery.utils.extensions.minus
 import graphics.scenery.utils.extensions.plus
 import graphics.scenery.utils.extensions.times
@@ -48,7 +47,7 @@ import sc.iview.SciView
 import org.mastodon.mamut.ProjectModel
 import graphics.scenery.utils.TimepointObserver
 import vr.EyeTracking
-import util.SphereLinkNodes
+import util.GeometryHandler
 import vr.CellTrackingBase
 import java.util.concurrent.Executors
 import java.util.concurrent.LinkedBlockingQueue
@@ -97,18 +96,17 @@ class Manvr3dMain: TimepointObserver {
 
     //data sink stuff
     val sciviewWin: SciView
-    val sphereLinkNodes: SphereLinkNodes
+    val geometryHandler: GeometryHandler
     //sink scene graph structuring nodes
     val axesParent: DataAxes
 
     // Worker queue for async 3D updating
     private val updateQueue = LinkedBlockingQueue<() -> Unit>()
     private val workerExecutor = Executors.newSingleThreadExecutor { thread ->
-        Thread(thread, "SphereLinkUpdateWorker").apply { isDaemon = true }
+        Thread(thread, "GeometryHandlerUpdateWorker").apply { isDaemon = true }
     }
 
     var volumeNode: Volume
-    val volumeTPWidget = TextBoard()
     var spimSource: Source<out Any>
     // the source and converter that contains our volume data
     var sac: SourceAndConverter<*>
@@ -139,15 +137,10 @@ class Manvr3dMain: TimepointObserver {
     private var moveInstanceVREnd: (Vector3f) -> Unit
 
     private val pluginActions: Actions
-    private val predictSpotsAction: Action
-    private val predictSpotsCallback: ((all: Boolean) -> Unit)
-    private val trainSpotsAction: Action
-    private val trainsSpotsCallback: (() -> Unit)
-//    private val trainFlowAction: Action
-//    private val trainFlowCallback: (() -> Unit)
-    private val neighborLinkingAction: Action
-    private val neighborLinkingCallback: (() -> Unit)
-    private val stageSpotsCallback: (() -> Unit)
+    private var predictSpotsAction: Action? = null
+    private var trainSpotsAction: Action? = null
+    private val trainFlowAction: Action? = null
+    private var neighborLinkingAction: Action? = null
 
     constructor(
         mastodonMainWindow: ProjectModel,
@@ -231,18 +224,18 @@ class Manvr3dMain: TimepointObserver {
 
         logger.info("volume size is ${volumeNode.boundingBox!!.max - volumeNode.boundingBox!!.min}")
         //add the sciview-side displaying handler for the spots
-        sphereLinkNodes = SphereLinkNodes(sciviewWin, this, updateQueue, mastodon, volumeNode, volumeNode)
+        geometryHandler = GeometryHandler(sciviewWin, this, updateQueue, mastodon, volumeNode, volumeNode)
 
-        sphereLinkNodes.showInstancedSpots(0, noTSColorizer)
-        sphereLinkNodes.showInstancedLinks(SphereLinkNodes.ColorMode.LUT, colorizer = noTSColorizer)
+        geometryHandler.showInstancedSpots(0, noTSColorizer)
+        geometryHandler.showInstancedLinks(GeometryHandler.ColorMode.LUT, colorizer = noTSColorizer)
 
         // lambda function that is passed to the event handler and called
         // when a vertex position change occurs on the BDV side
         moveSpotInSciview = { spot: Spot? ->
             spot?.let {
                 selectedSpotInstances.clear()
-                sphereLinkNodes.findInstanceFromSpot(spot)?.let { selectedSpotInstances.add(it) }
-                sphereLinkNodes.moveAndScaleSpotInSciview(spot) }
+                geometryHandler.findInstanceFromSpot(spot)?.let { selectedSpotInstances.add(it) }
+                geometryHandler.moveAndScaleSpotInSciview(spot) }
         }
 
         defaultVolumePosition = volumeNode.spatial().position
@@ -261,7 +254,7 @@ class Manvr3dMain: TimepointObserver {
                 bdvNotifier?.lockUpdates = true
                 selectedSpotInstances.forEach { inst ->
                     logger.debug("selected spot instance is $inst")
-                    val spot = sphereLinkNodes.findSpotFromInstance(inst)
+                    val spot = geometryHandler.findSpotFromInstance(inst)
                     val selectedTP = spot?.timepoint ?: -1
                     if (selectedTP != volumeNode.currentTimepoint) {
                         selectedSpotInstances.clear()
@@ -286,16 +279,16 @@ class Manvr3dMain: TimepointObserver {
                 it.spatial {
                     position += movement
                 }
-                sphereLinkNodes.moveSpotInBDV(it, movement)
+                geometryHandler.moveSpotInBDV(it, movement)
             }
-            sphereLinkNodes.mainSpotInstance?.updateInstanceBuffers()
-            sphereLinkNodes.updateLinkTransforms(adjacentEdges)
+            geometryHandler.mainSpotInstance?.updateInstanceBuffers()
+            geometryHandler.updateLinkTransforms(adjacentEdges)
             currentControllerPos = newPos
         }
 
         moveInstanceVREnd = fun (pos: Vector3f) {
             bdvNotifier?.lockUpdates = false
-            sphereLinkNodes.showInstancedSpots(detachedDPP_showsLastTimepoint.timepoint,
+            geometryHandler.showInstancedSpots(detachedDPP_showsLastTimepoint.timepoint,
                 detachedDPP_showsLastTimepoint.colorizer)
             adjacentEdges.clear()
             bdvNotifier?.lockUpdates = false
@@ -303,71 +296,6 @@ class Manvr3dMain: TimepointObserver {
 
         pluginActions = mastodon.plugins.pluginActions
 
-        predictSpotsAction = pluginActions.actionMap.get("[elephant] predict spots")
-        predictSpotsCallback = { predictAll ->
-            // Limitation of Elephant: we can only predict X number of frames in the past
-            // So we have to temporarily move to the last TP and set the time range to the size of all TPs
-            val settings = ElephantMainSettingsManager.getInstance().forwardDefaultStyle
-            settings.timeRange = if (predictAll) volumeNode.timepointCount else 1
-            logger.info("Elephant settings.timeRange was set to ${settings.timeRange}.")
-            val start = TimeSource.Monotonic.markNow()
-            val currentTP = detachedDPP_showsLastTimepoint.timepoint
-            val groupHandle = mastodon.groupManager.createGroupHandle()
-            groupHandle.groupId = 0
-            val tpAdapter = TimepointModelAdapter(groupHandle.getModel(mastodon.TIMEPOINT))
-
-            if (predictAll) {
-                tpAdapter.timepoint = volumeNode.timepointCount
-            }
-            (predictSpotsAction as PredictSpotsAction).run()
-            logger.info("Predicting spots took ${start.elapsedNow()} ms")
-            if (predictAll) {
-                tpAdapter.timepoint = currentTP
-            }
-            sphereLinkNodes.showInstancedSpots(detachedDPP_showsLastTimepoint.timepoint,
-                detachedDPP_showsLastTimepoint.colorizer)
-            sciviewWin.camera?.showMessage("Prediction took ${start.elapsedNow()} ms", 2f, 0.2f, centered = true)
-        }
-
-        trainSpotsAction = pluginActions.actionMap.get("[elephant] train detection model (all timepoints)")
-        trainsSpotsCallback = {
-                val start = TimeSource.Monotonic.markNow()
-                logger.info("Training spots from all timepoints...")
-                (trainSpotsAction as TrainDetectionAction).run()
-                logger.info("Training spots took ${start.elapsedNow()} ms")
-                sciviewWin.camera?.showMessage("Training took ${start.elapsedNow()} ms", 2f, 0.2f, centered = true)
-        }
-
-        neighborLinkingAction = pluginActions.actionMap.get("[elephant] nearest neighbor linking")
-        neighborLinkingCallback = {
-                logger.info("Linking nearest neighbors...")
-                // Setting the NN linking range to always include the whole time range
-                val settings = ElephantMainSettingsManager.getInstance().forwardDefaultStyle
-                settings.timeRange = volumeNode.timepointCount
-                // Store current TP so we can revert to it after the linking
-                val currentTP = detachedDPP_showsLastTimepoint.timepoint
-                // Get the group handle and move its TP to the last TP
-                val groupHandle = mastodon.groupManager.createGroupHandle()
-                groupHandle.groupId = 0
-                val tpAdapter = TimepointModelAdapter(groupHandle.getModel(mastodon.TIMEPOINT))
-                tpAdapter.timepoint = volumeNode.timepointCount
-                (neighborLinkingAction as NearestNeighborLinkingAction).run()
-                // Revert to the previous TP
-                tpAdapter.timepoint = currentTP
-                sciviewWin.camera?.showMessage("Linked nearest neighbors.", 2f, 0.2f, centered = true)
-        }
-
-        stageSpotsCallback = {
-            logger.info("Adding all spots to the true positive tag set...")
-            val tagResult = sphereLinkNodes.applyTagToAllSpots("Detection", "tp")
-            if (!tagResult) {
-                logger.warn("Could not find tag or tag set! Please ensure both exist.")
-            } else {
-                sphereLinkNodes.showInstancedSpots(
-                    detachedDPP_showsLastTimepoint.timepoint,
-                    detachedDPP_showsLastTimepoint.colorizer)
-            }
-        }
 
         openSyncedBDV()
 
@@ -379,12 +307,95 @@ class Manvr3dMain: TimepointObserver {
     val eventService: EventService?
         get() = sciviewWin.scijavaContext?.getService(EventService::class.java)
 
+    /** Train the ELEPHANT model on all timepoints. */
+    fun trainSpots() {
+        if (trainSpotsAction == null) {
+            trainSpotsAction = pluginActions.actionMap.get("[elephant] train detection model (all timepoints)")
+        }
+        val start = TimeSource.Monotonic.markNow()
+        logger.info("Training spots from all timepoints...")
+        (trainSpotsAction as TrainDetectionAction).run()
+        logger.info("Training spots took ${start.elapsedNow()} ms")
+        sciviewWin.camera?.showMessage("Training took ${start.elapsedNow()} ms", 2f, 0.2f, centered = true)
+    }
+
+    /** Predict spots with ELEPHANT. If [predictAll] is true, all timepoints will be predicted.
+     * Otherwise just the current timepoint will be predicted. */
+    fun preditSpots(predictAll: Boolean) {
+        if (predictSpotsAction == null) {
+            predictSpotsAction = pluginActions.actionMap.get("[elephant] predict spots")
+        }
+        // Limitation of Elephant: we can only predict X number of frames in the past
+        // So we have to temporarily move to the last TP and set the time range to the size of all TPs
+        val settings = ElephantMainSettingsManager.getInstance().forwardDefaultStyle
+        settings.timeRange = if (predictAll) volumeNode.timepointCount else 1
+        logger.info("Elephant settings.timeRange was set to ${settings.timeRange}.")
+        val start = TimeSource.Monotonic.markNow()
+        val currentTP = detachedDPP_showsLastTimepoint.timepoint
+        val groupHandle = mastodon.groupManager.createGroupHandle()
+        groupHandle.groupId = 0
+        val tpAdapter = TimepointModelAdapter(groupHandle.getModel(mastodon.TIMEPOINT))
+
+        if (predictAll) {
+            tpAdapter.timepoint = volumeNode.timepointCount
+        }
+        (predictSpotsAction as PredictSpotsAction).run()
+        logger.info("Predicting spots took ${start.elapsedNow()} ms")
+        if (predictAll) {
+            tpAdapter.timepoint = currentTP
+        }
+        geometryHandler.showInstancedSpots(detachedDPP_showsLastTimepoint.timepoint,
+            detachedDPP_showsLastTimepoint.colorizer)
+        sciviewWin.camera?.showMessage("Prediction took ${start.elapsedNow()} ms", 2f, 0.2f, centered = true)
+
+    }
+
+    /** Prepare all spots in the scene for ELEPHANT training. */
+    fun stageSpots() {
+        logger.info("Adding all spots to the true positive tag set...")
+        val tagResult = geometryHandler.applyTagToAllSpots("Detection", "tp")
+        if (!tagResult) {
+            logger.warn("Could not find tag or tag set! Please ensure both exist.")
+        } else {
+            geometryHandler.showInstancedSpots(
+                detachedDPP_showsLastTimepoint.timepoint,
+                detachedDPP_showsLastTimepoint.colorizer)
+        }
+    }
+
+    /** Use the nearest-neighbor linking algorithm in ELEPHANT to connect all spots in the scene. */
+    fun linkNearestNeighbors() {
+        if (neighborLinkingAction == null) {
+            neighborLinkingAction = pluginActions.actionMap.get("[elephant] nearest neighbor linking")
+        }
+        logger.info("Linking nearest neighbors...")
+        // Setting the NN linking range to always include the whole time range
+        val settings = ElephantMainSettingsManager.getInstance().forwardDefaultStyle
+        settings.timeRange = volumeNode.timepointCount
+        // Store current TP so we can revert to it after the linking
+        val currentTP = detachedDPP_showsLastTimepoint.timepoint
+        // Get the group handle and move its TP to the last TP
+        val groupHandle = mastodon.groupManager.createGroupHandle()
+        groupHandle.groupId = 0
+        val tpAdapter = TimepointModelAdapter(groupHandle.getModel(mastodon.TIMEPOINT))
+        tpAdapter.timepoint = volumeNode.timepointCount
+        (neighborLinkingAction as NearestNeighborLinkingAction).run()
+        // Revert to the previous TP
+        tpAdapter.timepoint = currentTP
+        sciviewWin.camera?.showMessage("Linked nearest neighbors.", 2f, 0.2f, centered = true)
+    }
+
+    /** Train the ELEPHANT flow model on the scene. */
+    fun trainFlow() {
+        // TODO
+    }
+
     /** Sets the [vrResolutionScale]. Changes are only applied once [Manvr3dMain.launchVR] is executed. */
     fun setVrResolutionScale(scale: Float) {
         vrResolutionScale = scale
     }
 
-    /** Launches a worker that sequentially executes queued spot and link updates from [SphereLinkNodes]. */
+    /** Launches a worker that sequentially executes queued spot and link updates from [GeometryHandler]. */
     private fun submitToTaskExecutor() {
         workerExecutor.submit {
             while (isRunning && !Thread.currentThread().isInterrupted) {
@@ -406,7 +417,11 @@ class Manvr3dMain: TimepointObserver {
 
     /** Centers the camera on the volume and adjusts its distance to fully fit the volume into the camera's FOV. */
     private fun centerCameraOnVolume() {
-        sciviewWin.camera?.centerOnNode(node = volumeNode, sceneScale = volumeNode.pixelToWorldRatio * sceneScale)
+        sciviewWin.camera?.centerOnNode(
+            node = volumeNode,
+            sceneScale = volumeNode.pixelToWorldRatio * sceneScale,
+            resetPosition = true
+        )
     }
 
     fun close() {
@@ -588,8 +603,8 @@ class Manvr3dMain: TimepointObserver {
                     moveSpotInSciview as (Spot?) -> Unit,
                     // graph update processor: redraws track segments and spots
                     {
-                        sphereLinkNodes.showInstancedLinks(sphereLinkNodes.currentColorMode, it.colorizer)
-                        sphereLinkNodes.showInstancedSpots(it.timepoint, it.colorizer)
+                        geometryHandler.showInstancedLinks(geometryHandler.currentColorMode, it.colorizer)
+                        geometryHandler.showInstancedSpots(it.timepoint, it.colorizer)
                     },
                     mastodon,
                     bdvWin
@@ -656,21 +671,30 @@ class Manvr3dMain: TimepointObserver {
             get() = recentColorizer ?: noTSColorizer
     }
 
-    /** Calls [updateSciviewTimepointFromBDV] and [SphereLinkNodes.showInstancedSpots] to update the current volume and corresponding spots. */
+    /** Calls [updateSciviewTimepointFromBDV] and [GeometryHandler.showInstancedSpots] to update the current volume and corresponding spots. */
     fun updateSciviewContent(forThisBdv: DisplayParamsProvider) {
         logger.debug("Called updateSciviewContent")
         val needsUpdate = updateSciviewTimepointFromBDV(forThisBdv)
         if (needsUpdate) {
-            sphereLinkNodes.showInstancedSpots(forThisBdv.timepoint, forThisBdv.colorizer)
-            sphereLinkNodes.updateLinkVisibility(forThisBdv.timepoint)
-            sphereLinkNodes.updateLinkColors(forThisBdv.colorizer)
+            geometryHandler.showInstancedSpots(forThisBdv.timepoint, forThisBdv.colorizer)
+            geometryHandler.updateSegmentVisibility(forThisBdv.timepoint)
+            geometryHandler.updateLinkColors(forThisBdv.colorizer)
         }
     }
 
     /** Uses the current [bdvWinParamsProvider] to update the sciview spots of the current timepoint. */
     fun redrawSciviewSpots() {
         bdvWinParamsProvider?.let {
-            sphereLinkNodes.showInstancedSpots(it.timepoint, it.colorizer)
+            geometryHandler.showInstancedSpots(it.timepoint, it.colorizer)
+        }
+    }
+
+    /** Rebuild all geometry on the sciview side for the default [bdvWinParamsProvider]. */
+    fun rebuildGeometry() {
+        bdvWinParamsProvider?.let {
+            logger.debug("Called rebuildGeometryCallback")
+            geometryHandler.showInstancedSpots(it.timepoint, it.colorizer)
+            geometryHandler.showInstancedLinks(geometryHandler.currentColorMode, it.colorizer)
         }
     }
 
@@ -728,9 +752,9 @@ class Manvr3dMain: TimepointObserver {
     }
 
     fun setVolumeOnlyVisibility(state: Boolean) {
-        val spots = sphereLinkNodes.mainSpotInstance
+        val spots = geometryHandler.mainSpotInstance
         val spotVis = spots?.visible ?: false
-        val links = sphereLinkNodes.mainLinkInstance
+        val links = geometryHandler.mainLinkInstance
         val linksVis = links?.visible ?: false
 
         volumeNode.visible = state
@@ -759,7 +783,7 @@ class Manvr3dMain: TimepointObserver {
             else -> timepoint
         }
         // Clear the selection between time points, otherwise we might run into problems
-        sphereLinkNodes.clearSelection()
+        geometryHandler.clearSelection()
         updateSciviewContent(detachedDPP_withOwnTime)
         vrTracking.volumeTimepointWidget.text = detachedDPP_withOwnTime.timepoint.toString()
     }
@@ -771,10 +795,10 @@ class Manvr3dMain: TimepointObserver {
         val handler = sciviewWin.sceneryInputHandler ?: throw IllegalStateException("Could not find input handler!")
 
         val behaviourCollection = arrayOf(
-            BehaviourTriple(desc_DEC_SPH, key_DEC_SPH, { _, _ -> sphereLinkNodes.decreaseSphereInstanceScale(); updateUI() }),
-            BehaviourTriple(desc_INC_SPH, key_INC_SPH, { _, _ -> sphereLinkNodes.increaseSphereInstanceScale(); updateUI() }),
-            BehaviourTriple(desc_DEC_LINK, key_DEC_LINK, { _, _ -> sphereLinkNodes.decreaseLinkScale(); updateUI() }),
-            BehaviourTriple(desc_INC_LINK, key_INC_LINK, { _, _ -> sphereLinkNodes.increaseLinkScale(); updateUI() }),
+            BehaviourTriple(desc_DEC_SPH, key_DEC_SPH, { _, _ -> geometryHandler.decreaseSphereInstanceScale(); updateUI() }),
+            BehaviourTriple(desc_INC_SPH, key_INC_SPH, { _, _ -> geometryHandler.increaseSphereInstanceScale(); updateUI() }),
+            BehaviourTriple(desc_DEC_LINK, key_DEC_LINK, { _, _ -> geometryHandler.decreaseLinkScale(); updateUI() }),
+            BehaviourTriple(desc_INC_LINK, key_INC_LINK, { _, _ -> geometryHandler.increaseLinkScale(); updateUI() }),
             BehaviourTriple(desc_CTRL_WIN, key_CTRL_WIN, { _, _ -> createAndShowControllingUI() }),
             BehaviourTriple(desc_CTRL_INFO, key_CTRL_INFO, { _, _ -> logger.info(this.toString()) }),
             BehaviourTriple(desc_PREV_TP, key_PREV_TP, { _, _ -> detachedDPP_withOwnTime.prevTimepoint()
@@ -782,9 +806,9 @@ class Manvr3dMain: TimepointObserver {
             BehaviourTriple(desc_NEXT_TP, key_NEXT_TP, { _, _ -> detachedDPP_withOwnTime.nextTimepoint()
                 updateSciviewContent(detachedDPP_withOwnTime) }),
             BehaviourTriple("Scale Instance Up", "ctrl E",
-                {_, _ -> sphereLinkNodes.changeSpotRadius(selectedSpotInstances, 1.1f)}),
+                {_, _ -> geometryHandler.changeSpotRadius(selectedSpotInstances, 1.1f)}),
             BehaviourTriple("Scale Instance Down", "ctrl Q",
-                {_, _ -> sphereLinkNodes.changeSpotRadius(selectedSpotInstances, 0.9f)}),
+                {_, _ -> geometryHandler.changeSpotRadius(selectedSpotInstances, 0.9f)}),
         )
 
         behaviourCollection.forEach {
@@ -801,19 +825,19 @@ class Manvr3dMain: TimepointObserver {
             action = { result, _, _ ->
                 if (result.matches.isNotEmpty()) {
                     // Remove previous selections first
-                    sphereLinkNodes.clearSelection()
+                    geometryHandler.clearSelection()
                     // Try to cast the result to an instance, or clear the existing selection if it fails
                     selectedSpotInstances.add(result.matches.first().node as InstancedNode.Instance)
                     logger.debug("selected instance {}", selectedSpotInstances)
                     selectedSpotInstances.forEach { s ->
-                        sphereLinkNodes.selectSpot2D(s)
-                        sphereLinkNodes.showInstancedSpots(
+                        geometryHandler.selectSpot2D(s)
+                        geometryHandler.showInstancedSpots(
                             detachedDPP_showsLastTimepoint.timepoint,
                             detachedDPP_showsLastTimepoint.colorizer
                         )
                     }
                 } else {
-                    sphereLinkNodes.clearSelection()
+                    geometryHandler.clearSelection()
                 }
             }
         )
@@ -846,7 +870,7 @@ class Manvr3dMain: TimepointObserver {
                 if (selectedSpotInstances.isNotEmpty()) {
                     distance = cam.spatial().position.distance(selectedSpotInstances.first().spatial().position)
                     currentHit = rayStart + rayDir * distance
-                    val spot = sphereLinkNodes.findSpotFromInstance(selectedSpotInstances.first())
+                    val spot = geometryHandler.findSpotFromInstance(selectedSpotInstances.first())
                     spot?.let {
                         edges.addAll(it.edges().map { it.internalPoolIndex })
                     }
@@ -873,9 +897,9 @@ class Manvr3dMain: TimepointObserver {
                             currentHit = newHit
                             it.instancedParent.updateInstanceBuffers()
                         }
-                        sphereLinkNodes.moveSpotInBDV(it, movement)
-                        sphereLinkNodes.updateLinkTransforms(edges)
-                        sphereLinkNodes.links.values
+                        geometryHandler.moveSpotInBDV(it, movement)
+                        geometryHandler.updateLinkTransforms(edges)
+                        geometryHandler.links.values
                     }
                 }
 
@@ -885,9 +909,79 @@ class Manvr3dMain: TimepointObserver {
         override fun end(x: Int, y: Int) {
             edges.clear()
             bdvNotifier?.lockUpdates = false
-            sphereLinkNodes.showInstancedSpots(detachedDPP_showsLastTimepoint.timepoint,
+            geometryHandler.showInstancedSpots(detachedDPP_showsLastTimepoint.timepoint,
                 detachedDPP_showsLastTimepoint.colorizer)
         }
+    }
+
+    var timeSinceUndo = TimeSource.Monotonic.markNow()
+
+    /** Reverts to the point previously saved by Mastodon's undo recorder.
+     * Performs redo events if [redo] is set to true. */
+    fun undoRedo(redo: Boolean = false) {
+        val now = TimeSource.Monotonic.markNow()
+        if (now.minus(timeSinceUndo) > 0.5.seconds) {
+            if (redo) {
+                mastodon.model.redo()
+                logger.info("Redid last change.")
+            } else {
+                mastodon.model.undo()
+                logger.info("Undid last change.")
+            }
+            timeSinceUndo = now
+        }
+    }
+
+    /**  */
+    fun mergeSelectionAndUpdate() {
+        val spots = RefCollections.createRefList(mastodon.model.graph.vertices())
+        spots.addAll(selectedSpotInstances.map { geometryHandler.findSpotFromInstance(it) }.distinct())
+        geometryHandler.mergeSpots(spots)
+        geometryHandler.clearSelection()
+        geometryHandler.showInstancedSpots(
+            detachedDPP_showsLastTimepoint.timepoint,
+            detachedDPP_showsLastTimepoint.colorizer
+        )
+    }
+
+    fun mergeOverlapsAndUpdate(tp: Int = volumeNode.currentTimepoint) {
+        geometryHandler.mergeOverlappingSpots(tp)
+        geometryHandler.showInstancedSpots(
+            detachedDPP_showsLastTimepoint.timepoint,
+            detachedDPP_showsLastTimepoint.colorizer
+        )
+    }
+
+    /** Deletes the whole graph and updates the geometry. */
+    fun deleteGraphAndUpdate() {
+        val spots = RefCollections.createRefSet<Spot>(mastodon.model.graph.vertices())
+        spots.addAll(mastodon.model.graph.vertices())
+        geometryHandler.deleteSpots(spots)
+        rebuildGeometry()
+    }
+
+    /** Deletes all annotations from this timepoint. */
+    fun deleteTimepointAndUpdate(tp: Int) {
+        val tp = mastodon.model.spatioTemporalIndex.getSpatialIndex(tp)
+        val spots = RefCollections.createRefSet<Spot>(mastodon.model.graph.vertices())
+        spots.addAll(tp)
+        geometryHandler.deleteSpots(spots)
+        rebuildGeometry()
+    }
+
+    /** Recenter and set default scaling for the volume, then center camera on the volume. */
+    fun resetView() {
+        volumeNode.spatial {
+            position = Vector3f(0f)
+            scale = defaultVolumeScale
+            rotation = defaultVolumeRotation
+            needsUpdate = true
+            needsUpdateWorld = true
+        }
+        centerCameraOnVolume()
+        // TODO this is a hacky workaround for the geometry not updating properly when resetting the volume
+        rebuildGeometry()
+        rebuildGeometry()
     }
 
     /** Starts the sciview VR environment and optionally the eye tracking environment,
@@ -908,121 +1002,21 @@ class Manvr3dMain: TimepointObserver {
         thread {
 
             vrTracking = if (useEyeTrackers) {
-                val eyeTracking = EyeTracking(sciviewWin, vrResolutionScale)
+                val eyeTracking = EyeTracking(sciviewWin, this, geometryHandler, vrResolutionScale)
                 if (eyeTracking.establishEyeTrackerConnection()) {
                     eyeTracking
                 } else {
                     useEyeTrackers = false
-                    CellTrackingBase(sciviewWin, vrResolutionScale)
+                    CellTrackingBase(sciviewWin, this, geometryHandler, vrResolutionScale)
                 }
             } else {
-                CellTrackingBase(sciviewWin, vrResolutionScale)
+                CellTrackingBase(sciviewWin, this, geometryHandler, vrResolutionScale)
             }
             sciviewWin.getSceneryRenderer()?.setRenderingQuality(RenderConfigReader.RenderingQuality.Low)
             // Pass track and spot handling callbacks to sciview
-            vrTracking.trackCreationCallback = sphereLinkNodes.addTrackToMastodon
-            vrTracking.spotCreateDeleteCallback = sphereLinkNodes.addOrRemoveSpots
-            vrTracking.spotSelectCallback = sphereLinkNodes.selectClosestSpotsVR
             vrTracking.spotMoveInitCallback = moveInstanceVRInit
             vrTracking.spotMoveDragCallback = moveInstanceVRDrag
             vrTracking.spotMoveEndCallback = moveInstanceVREnd
-            vrTracking.singleLinkTrackedCallback = sphereLinkNodes.addTrackedPoint
-            vrTracking.toggleTrackingPreviewCallback = sphereLinkNodes.toggleLinkPreviews
-            vrTracking.rebuildGeometryCallback = {
-                logger.debug("Called rebuildGeometryCallback")
-                sphereLinkNodes.showInstancedSpots(
-                    detachedDPP_showsLastTimepoint.timepoint,
-                    detachedDPP_showsLastTimepoint.colorizer
-                )
-                sphereLinkNodes.showInstancedLinks(
-                    sphereLinkNodes.currentColorMode,
-                    detachedDPP_showsLastTimepoint.colorizer
-                )
-            }
-            vrTracking.predictSpotsCallback = predictSpotsCallback
-            vrTracking.trainSpotsCallback = trainsSpotsCallback
-            vrTracking.trainFlowCallback = null
-            vrTracking.neighborLinkingCallback = neighborLinkingCallback
-            vrTracking.stageSpotsCallback = stageSpotsCallback
-            vrTracking.getSelectionCallback = {
-                selectedSpotInstances.toList()
-            }
-            vrTracking.scaleSpotsCallback = { factor, update ->
-                sphereLinkNodes.changeSpotRadius(selectedSpotInstances, factor, update)
-            }
-
-            var timeSinceUndo = TimeSource.Monotonic.markNow()
-            vrTracking.mastodonUndoRedoCallback = { undo ->
-                val now = TimeSource.Monotonic.markNow()
-                if (now.minus(timeSinceUndo) > 0.5.seconds) {
-                    if (undo) {
-                        mastodon.model.undo()
-                    } else {
-                        mastodon.model.redo()
-                    }
-                    logger.info("Undid last change.")
-                    timeSinceUndo = now
-                }
-            }
-
-            vrTracking.setSpotVisCallback = { state ->
-                sphereLinkNodes.mainSpotInstance?.let {
-                    it.visible = state
-                    it.updateInstanceBuffers()
-                }
-            }
-            vrTracking.setTrackVisCallback = { state ->
-                sphereLinkNodes.mainLinkInstance?.let {
-                    it.visible = state
-                    it.updateInstanceBuffers()
-                }
-            }
-            vrTracking.setVolumeVisCallback = { state ->
-                setVolumeOnlyVisibility(state)
-            }
-            vrTracking.mergeOverlapsCallback = { tp ->
-                sphereLinkNodes.mergeOverlappingSpots(tp)
-                sphereLinkNodes.showInstancedSpots(
-                    detachedDPP_showsLastTimepoint.timepoint,
-                    detachedDPP_showsLastTimepoint.colorizer
-                )
-            }
-            vrTracking.mergeSelectedCallback = {
-                val spots = RefCollections.createRefList(mastodon.model.graph.vertices())
-                spots.addAll(selectedSpotInstances.map { sphereLinkNodes.findSpotFromInstance(it) }.distinct())
-                sphereLinkNodes.mergeSpots(spots)
-                sphereLinkNodes.clearSelection()
-                sphereLinkNodes.showInstancedSpots(
-                    detachedDPP_showsLastTimepoint.timepoint,
-                    detachedDPP_showsLastTimepoint.colorizer
-                )
-            }
-            vrTracking.deleteGraphCallback = {
-                val spots = RefCollections.createRefSet<Spot>(mastodon.model.graph.vertices())
-                spots.addAll(mastodon.model.graph.vertices())
-                sphereLinkNodes.deleteSpots(spots)
-                vrTracking.rebuildGeometryCallback?.invoke()
-            }
-            vrTracking.deleteTimepointCallback = {
-                val tp = mastodon.model.spatioTemporalIndex.getSpatialIndex(detachedDPP_showsLastTimepoint.timepoint)
-                val spots = RefCollections.createRefSet<Spot>(mastodon.model.graph.vertices())
-                spots.addAll(tp)
-                sphereLinkNodes.deleteSpots(spots)
-                vrTracking.rebuildGeometryCallback?.invoke()
-            }
-            vrTracking.resetViewCallback = {
-                volumeNode.spatial {
-                    position = Vector3f(0f)
-                    scale = defaultVolumeScale
-                    rotation = defaultVolumeRotation
-                    needsUpdate = true
-                    needsUpdateWorld = true
-                }
-                centerCameraOnVolume()
-                // TODO this is a hacky workaround for the geometry not updating properly when resetting the volume
-                vrTracking.rebuildGeometryCallback?.invoke()
-                vrTracking.rebuildGeometryCallback?.invoke()
-            }
 
             // register manvr3d as an observer to the timepoint changes by the user in VR,
             // allowing us to get updates via the onTimepointChanged() function

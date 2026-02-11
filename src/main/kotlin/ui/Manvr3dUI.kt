@@ -4,7 +4,7 @@ import graphics.scenery.utils.lazyLogger
 import Manvr3dMain
 import ui.AdjustableBoundsRangeSlider
 import util.GroupLocksHandling
-import util.SphereLinkNodes
+import util.GeometryHandler
 import java.awt.Container
 import java.awt.Dimension
 import java.awt.GridBagConstraints
@@ -170,8 +170,8 @@ class Manvr3dUI(manvr3dContext: Manvr3dMain, populateThisContainer: Container) {
         insertSpinner(
             linkRangeBackwards,
             {
-                f: Float -> manvr3d.sphereLinkNodes.linkBackwardRange = f.toInt()
-                manvr3d.sphereLinkNodes.updateLinkVisibility(manvr3d.lastUpdatedSciviewTP)
+                f: Float -> manvr3d.geometryHandler.linkBackwardRange = f.toInt()
+                manvr3d.geometryHandler.updateSegmentVisibility(manvr3d.lastUpdatedSciviewTP)
             },
             c)
 
@@ -183,8 +183,8 @@ class Manvr3dUI(manvr3dContext: Manvr3dMain, populateThisContainer: Container) {
         insertSpinner(
             linkRangeForwards,
             {
-                f: Float -> manvr3d.sphereLinkNodes.linkForwardRange = f.toInt()
-                manvr3d.sphereLinkNodes.updateLinkVisibility(manvr3d.lastUpdatedSciviewTP)
+                f: Float -> manvr3d.geometryHandler.linkForwardRange = f.toInt()
+                manvr3d.geometryHandler.updateSegmentVisibility(manvr3d.lastUpdatedSciviewTP)
             },
             c
         )
@@ -387,16 +387,16 @@ class Manvr3dUI(manvr3dContext: Manvr3dMain, populateThisContainer: Container) {
     val chooseLinkColormap = ActionListener { _ ->
         when (linkColorSelector.selectedItem) {
             "By Spot" -> {
-                manvr3dContext.sphereLinkNodes.currentColorMode = SphereLinkNodes.ColorMode.SPOT
+                manvr3dContext.geometryHandler.currentColorMode = GeometryHandler.ColorMode.SPOT
                 logger.info("Coloring links by spot color")
             }
             else -> {
-                manvr3dContext.sphereLinkNodes.currentColorMode = SphereLinkNodes.ColorMode.LUT
-                manvr3dContext.sphereLinkNodes.setLUT("${linkColorSelector.selectedItem}.lut")
+                manvr3dContext.geometryHandler.currentColorMode = GeometryHandler.ColorMode.LUT
+                manvr3dContext.geometryHandler.setLUT("${linkColorSelector.selectedItem}.lut")
                 logger.info("Coloring links with LUT ${linkColorSelector.selectedItem}")
             }
         }
-        manvr3dContext.sphereLinkNodes.updateLinkColors(manvr3dContext.recentColorizer ?: manvr3dContext.noTSColorizer)
+        manvr3dContext.geometryHandler.updateLinkColors(manvr3dContext.recentColorizer ?: manvr3dContext.noTSColorizer)
     }
 
     val chooseVolumeColormap = ActionListener {

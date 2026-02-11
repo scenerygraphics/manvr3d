@@ -5,7 +5,7 @@ import net.miginfocom.swing.MigLayout
 import Manvr3dMain
 import ui.AdjustableBoundsRangeSlider
 import util.GroupLocksHandling
-import util.SphereLinkNodes
+import util.GeometryHandler
 import java.awt.event.ActionListener
 import javax.swing.JButton
 import javax.swing.JCheckBox
@@ -76,23 +76,23 @@ class Manvr3dUIMig(manvr3dContext: Manvr3dMain, populateThisContainer: JPanel) {
             "Link window range backwards",
             SpinnerNumberModel(manvr3d.mastodon.maxTimepoint, 0, manvr3d.mastodon.maxTimepoint, 1)
         ) { value ->
-            manvr3d.sphereLinkNodes.linkBackwardRange = value.toInt()
-            manvr3d.sphereLinkNodes.updateLinkVisibility(manvr3d.lastUpdatedSciviewTP)
+            manvr3d.geometryHandler.linkBackwardRange = value.toInt()
+            manvr3d.geometryHandler.updateSegmentVisibility(manvr3d.lastUpdatedSciviewTP)
         }
 
         linkRangeForwards = addLabeledSpinner(
             "Link window range forwards",
             SpinnerNumberModel(manvr3d.mastodon.maxTimepoint, 0, manvr3d.mastodon.maxTimepoint, 1)
         ) { value ->
-            manvr3d.sphereLinkNodes.linkForwardRange = value.toInt()
-            manvr3d.sphereLinkNodes.updateLinkVisibility(manvr3d.lastUpdatedSciviewTP)
+            manvr3d.geometryHandler.linkForwardRange = value.toInt()
+            manvr3d.geometryHandler.updateSegmentVisibility(manvr3d.lastUpdatedSciviewTP)
         }
 
         spotScaleFactor = addLabeledSpinner(
             "Spot scale factor",
             SpinnerNumberModel(1f, 0.1f, 10f, 0.1f)
         ) { value ->
-            manvr3d.sphereLinkNodes.sphereScaleFactor = value.toFloat()
+            manvr3d.geometryHandler.sphereScaleFactor = value.toFloat()
             manvr3d.redrawSciviewSpots()
         }
 
@@ -200,17 +200,17 @@ class Manvr3dUIMig(manvr3dContext: Manvr3dMain, populateThisContainer: JPanel) {
     val chooseLinkColormap = ActionListener { _ ->
         when (linkColorSelector.selectedItem) {
             "By Spot" -> {
-                manvr3dContext.sphereLinkNodes.currentColorMode = SphereLinkNodes.ColorMode.SPOT
+                manvr3dContext.geometryHandler.currentColorMode = GeometryHandler.ColorMode.SPOT
                 logger.info("Coloring links by spot color")
             }
 
             else -> {
-                manvr3dContext.sphereLinkNodes.currentColorMode = SphereLinkNodes.ColorMode.LUT
-                manvr3dContext.sphereLinkNodes.setLUT("${linkColorSelector.selectedItem}.lut")
+                manvr3dContext.geometryHandler.currentColorMode = GeometryHandler.ColorMode.LUT
+                manvr3dContext.geometryHandler.setLUT("${linkColorSelector.selectedItem}.lut")
                 logger.info("Coloring links with LUT ${linkColorSelector.selectedItem}")
             }
         }
-        manvr3dContext.sphereLinkNodes.updateLinkColors(
+        manvr3dContext.geometryHandler.updateLinkColors(
             manvr3dContext.recentColorizer ?: manvr3dContext.noTSColorizer
         )
     }
@@ -246,7 +246,7 @@ class Manvr3dUIMig(manvr3dContext: Manvr3dMain, populateThisContainer: JPanel) {
         //that trigger (not all of them) the expensive volume updating
         manvr3d.updateVolAutomatically = false
 
-        spotScaleFactor.value = manvr3d.sphereLinkNodes.sphereScaleFactor
+        spotScaleFactor.value = manvr3d.geometryHandler.sphereScaleFactor
         val upperValBackup = manvr3d.intensity.rangeMax
 
         intensityRangeSlider.rangeSlider.value = manvr3d.intensity.rangeMin.toInt()

@@ -1,5 +1,6 @@
 package vr
 
+import Manvr3dMain
 import graphics.scenery.BoundingGrid
 import graphics.scenery.Box
 import graphics.scenery.BufferUtils
@@ -35,6 +36,7 @@ import org.joml.Vector4f
 import org.scijava.ui.behaviour.ClickBehaviour
 import sc.iview.SciView
 import analysis.HedgehogAnalysis
+import util.GeometryHandler
 import util.SpineMetadata
 import java.awt.image.DataBufferByte
 import java.io.ByteArrayInputStream
@@ -55,8 +57,10 @@ import kotlin.time.TimeSource
  */
 class EyeTracking(
     sciview: SciView,
+    manvr3d: Manvr3dMain,
+    geometryHandler: GeometryHandler,
     resolutionScale: Float = 1f,
-): CellTrackingBase(sciview, resolutionScale) {
+): CellTrackingBase(sciview, manvr3d, geometryHandler, resolutionScale) {
 
     lateinit var pupilTracker: PupilEyeTracker
     val calibrationTarget = Icosphere(0.02f, 2)
@@ -65,8 +69,6 @@ class EyeTracking(
     val confidenceThreshold = 0.60f
 
     private lateinit var debugBoard: TextBoard
-
-    var leftEyeTrackColumn: Column? = null
 
     enum class TrackingType { Follow, Pick }
 
@@ -406,12 +408,8 @@ class EyeTracking(
             return
         }
 
-        if (trackCreationCallback != null && rebuildGeometryCallback != null) {
-            trackCreationCallback?.invoke(track.points, cursor.radius,false, null, null)
-            rebuildGeometryCallback?.invoke()
-        } else {
-            logger.warn("Tried to send track data to Mastodon but couldn't find the callbacks!")
-        }
+        geometryHandler.addTrackToMastodon(track.points, cursor.radius,false, null, null)
+        manvr3d.rebuildGeometry()
 
         writeTrackToFile(track.points, hedgehogId)
 
@@ -510,7 +508,7 @@ class EyeTracking(
         }
         logger.info("Sampling volume and spot extraction took ${TimeSource.Monotonic.markNow() - start}")
         spots.filterNotNull().forEach { spot ->
-            spotCreateDeleteCallback?.invoke(volume.currentTimepoint, spot, cursor.radius, false, false)
+            geometryHandler.addOrRemoveSpots(volume.currentTimepoint, spot, cursor.radius, false, false)
         }
     }
 

@@ -34,14 +34,13 @@ import org.scijava.event.EventService
 import sc.iview.SciView
 import analysis.HedgehogAnalysis.SpineGraphVertex
 import spim.fiji.spimdata.interestpoints.InterestPoint
-import util.SphereLinkNodes.ColorMode.LUT
-import util.SphereLinkNodes.ColorMode.SPOT
+import util.GeometryHandler.ColorMode.LUT
+import util.GeometryHandler.ColorMode.SPOT
 import java.awt.Color
 import java.lang.Math
 import java.util.*
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.LinkedBlockingQueue
-import java.util.concurrent.atomic.AtomicInteger
 import kotlin.collections.plus
 import kotlin.collections.set
 import kotlin.math.pow
@@ -57,7 +56,7 @@ import kotlin.time.TimeSource
  * @param mastodonData Instance of the Mastodon ProjectModel
  * @param sphereParentNode Parent node for the instanced spheres
  * @param linkParentNode Parent node for the instanced links */
-class SphereLinkNodes(
+class GeometryHandler(
     val sv: SciView,
     val manvr3d: Manvr3dMain,
     val updateQueue: LinkedBlockingQueue<() -> Unit>,
@@ -713,7 +712,7 @@ class SphereLinkNodes(
                 logger.debug("Deleted spot {}", it)
             }
             mastodonData.model.graph.lock.writeLock().unlock()
-            this@SphereLinkNodes.manvr3d.selectedSpotInstances.clear()
+            this@GeometryHandler.manvr3d.selectedSpotInstances.clear()
             manvr3d.bdvNotifier?.lockUpdates = false
         }
     }
@@ -1074,7 +1073,7 @@ class SphereLinkNodes(
         logger.debug("Updating link colors took ${end - start}.")
     }
 
-    fun updateLinkVisibility(currentTP: Int) {
+    fun updateSegmentVisibility(currentTP: Int) {
         links.forEach {link ->
             // turns the link on if it is within range, otherwise turns it off
             link.value.instance.visible = link.value.tp in currentTP - linkBackwardRange..currentTP + linkForwardRange
@@ -1082,11 +1081,25 @@ class SphereLinkNodes(
         mainLinkInstance?.updateInstanceBuffers()
     }
 
-    /** Passed as callback to sciview to send a list of vertices from sciview to Mastodon.
+    fun setSpotVisibility(state: Boolean) {
+        mainSpotInstance?.let {
+            it.visible = state
+            it.updateInstanceBuffers()
+        }
+    }
+
+    fun setTrackVisibility(state: Boolean)  {
+        mainLinkInstance?.let {
+            it.visible = state
+            it.updateInstanceBuffers()
+        }
+    }
+
+    /** Send a list of vertices from sciview to Mastodon.
      * If the boolean is true, the coordinates are in world space and will be converted to local Mastodon space first.
      * The first passed spot indicates that the user wants to start from an existing spot (aka clicked on it for starting the track).
      * The second spot is used to merge into existing spots. */
-    val addTrackToMastodon = fun(
+    fun addTrackToMastodon(
         list: List<Pair<Vector3f, SpineGraphVertex>>?,
         cursorRadius: Float,
         isWorldSpace: Boolean,
