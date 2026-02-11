@@ -1,27 +1,58 @@
 package vr
 
+import Manvr3dMain
 import graphics.scenery.Scene
 import graphics.scenery.controls.OpenVRHMD
 import graphics.scenery.controls.TrackedDeviceType
 import graphics.scenery.controls.TrackerRole
 import graphics.scenery.controls.behaviours.MultiButtonManager
+import graphics.scenery.utils.extensions.minus
+import graphics.scenery.utils.extensions.plus
+import graphics.scenery.utils.lazyLogger
 import org.joml.Vector3f
 import org.scijava.ui.behaviour.DragBehaviour
 
 class MoveInstanceVR(
+    val manvr3d: Manvr3dMain,
     val buttonmanager: MultiButtonManager,
     val button: OpenVRHMD.OpenVRButton,
     val trackerRole: TrackerRole,
-    val getTipPosition: () -> Vector3f,
-    val spotMoveInitCallback: ((Vector3f) -> Unit)? = null,
-    val spotMoveDragCallback: ((Vector3f) -> Unit)? = null,
-    val spotMoveEndCallback: ((Vector3f) -> Unit)? = null,
+    val getTipPosition: () -> Vector3f
 ): DragBehaviour {
+
+    val logger by lazyLogger()
+
+    val adjacentEdges = mutableListOf<Int>()
+
+    var currentControllerPos = Vector3f()
 
     override fun init(x: Int, y: Int) {
         buttonmanager.pressButton(button, trackerRole)
         if (!buttonmanager.isTwoHandedActive()) {
-            spotMoveInitCallback?.invoke(getTipPosition())
+            val pos = getTipPosition()
+            if (manvr3d.mastodon.selectionModel.selectedVertices == null) {
+                manvr3d.selectedSpotInstances.clear()
+                return
+            } else {
+                manvr3d.bdvNotifier?.lockUpdates = true
+                manvr3d.selectedSpotInstances.forEach { inst ->
+                    logger.debug("selected spot instance is $inst")
+                    val spot = manvr3d.geometryHandler.findSpotFromInstance(inst)
+                    val selectedTP = spot?.timepoint ?: -1
+                    if (selectedTP != manvr3d.volumeNode.currentTimepoint) {
+                        manvr3d.selectedSpotInstances.clear()
+                        logger.warn("Tried to move a spot that was outside the current timepoint. Aborting.")
+                        return
+                    } else {
+                        manvr3d.bdvNotifier?.lockUpdates = true
+                        currentControllerPos = manvr3d.sciviewToMastodonCoords(pos)
+                        spot?.let { s ->
+                            adjacentEdges.addAll(s.edges().map { it.internalPoolIndex })
+                            logger.debug("Moving edges $manvr3d.adjacentEdges for spot ${spot.internalPoolIndex}.")
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -29,13 +60,28 @@ class MoveInstanceVR(
         // Only perform the single hand behavior when no other grab button is currently active
         // to prevent simultaneous execution of behaviors
         if (!buttonmanager.isTwoHandedActive()) {
-            spotMoveDragCallback?.invoke(getTipPosition())
+            val pos = getTipPosition()
+            val newPos = manvr3d.sciviewToMastodonCoords(pos)
+            val movement = newPos - currentControllerPos
+            manvr3d.selectedSpotInstances.forEach {
+                it.spatial {
+                    position += movement
+                }
+                manvr3d.geometryHandler.moveSpotInBDV(it, movement)
+            }
+            manvr3d.geometryHandler.mainSpotInstance?.updateInstanceBuffers()
+            manvr3d.geometryHandler.updateLinkTransforms(adjacentEdges)
+            currentControllerPos = newPos
         }
     }
 
     override fun end(x: Int, y: Int) {
         if (!buttonmanager.isTwoHandedActive()) {
-            spotMoveEndCallback?.invoke(getTipPosition())
+            manvr3d.bdvNotifier?.lockUpdates = false
+            manvr3d.geometryHandler.showInstancedSpots(manvr3d.detachedDPP_showsLastTimepoint.timepoint,
+                manvr3d.detachedDPP_showsLastTimepoint.colorizer)
+            adjacentEdges.clear()
+            manvr3d.bdvNotifier?.lockUpdates = false
         }
         buttonmanager.releaseButton(button, trackerRole)
     }
@@ -46,15 +92,12 @@ class MoveInstanceVR(
          * Convenience method for adding grab behaviour
          */
         fun createAndSet(
-            scene: Scene,
+            manvr3d: Manvr3dMain,
             hmd: OpenVRHMD,
             buttons: List<OpenVRHMD.OpenVRButton>,
             controllerSide: List<TrackerRole>,
             buttonmanager: MultiButtonManager,
-            getTipPosition: () -> Vector3f,
-            spotMoveInitCallback: ((Vector3f) -> Unit)? = null,
-            spotMoveDragCallback: ((Vector3f) -> Unit)? = null,
-            spotMoveEndCallback: ((Vector3f) -> Unit)? = null,
+            getTipPosition: () -> Vector3f
         ) {
             hmd.events.onDeviceConnect.add { _, device, _ ->
                 if (device.type == TrackedDeviceType.Controller) {
@@ -63,13 +106,11 @@ class MoveInstanceVR(
                             buttons.forEach { button ->
                                 val name = "VRDrag:${hmd.trackingSystemName}:${device.role}:$button"
                                 val grabBehaviour = MoveInstanceVR(
+                                    manvr3d,
                                     buttonmanager,
                                     button,
                                     device.role,
-                                    getTipPosition,
-                                    spotMoveInitCallback,
-                                    spotMoveDragCallback,
-                                    spotMoveEndCallback
+                                    getTipPosition
                                 )
                                 buttonmanager.registerButtonConfig(button, device.role)
                                 hmd.addBehaviour(name, grabBehaviour)
