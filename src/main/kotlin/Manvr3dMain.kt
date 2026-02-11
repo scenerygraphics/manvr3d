@@ -724,6 +724,7 @@ class Manvr3dMain: TimepointObserver {
                     }
                 } else {
                     geometryHandler.clearSelection()
+                    geometryHandler.showInstancedSpots(currentTimepoint, currentColorizer)
                 }
             }
         )
