@@ -4,7 +4,7 @@ import graphics.scenery.utils.lazyLogger
 import org.mastodon.app.ui.GroupLocksPanel
 import org.mastodon.grouping.GroupHandle
 import org.mastodon.mamut.ProjectModel
-import org.mastodon.mamut.SciviewBridge
+import Manvr3dMain
 import org.mastodon.mamut.model.Link
 import org.mastodon.mamut.model.Spot
 import org.mastodon.model.NavigationListener
@@ -16,7 +16,7 @@ import org.scijava.event.SciJavaEvent
 import sc.iview.event.NodeActivatedEvent
 
 class GroupLocksHandling(//controls sciview via this bridge obj
-    private val bridge: SciviewBridge, mastodon: ProjectModel
+    private val manvr3d: Manvr3dMain, mastodon: ProjectModel
 ) {
     val logger by lazyLogger()
     //controls Mastodon
@@ -31,7 +31,7 @@ class GroupLocksHandling(//controls sciview via this bridge obj
     fun createAndActivate(): GroupLocksPanel? {
         if (isActive) return null
         isActive = true
-        bridge.eventService?.subscribe(sciviewFocusHandler)
+        manvr3d.eventService?.subscribe(sciviewFocusHandler)
         myGroupHandle = projectModel.groupManager.createGroupHandle()
         myGroupHandle.getModel(projectModel.NAVIGATION).listeners().add(navigationRequestsHandler)
         myGroupHandle.getModel(projectModel.TIMEPOINT).listeners().add(navigationRequestsHandler)
@@ -46,7 +46,7 @@ class GroupLocksHandling(//controls sciview via this bridge obj
         projectModel.groupManager.removeGroupHandle(myGroupHandle)
 
         //can fail, so we better do it as the last action here
-        val subs = bridge.eventService?.getSubscribers(
+        val subs = manvr3d.eventService?.getSubscribers(
             SciJavaEvent::class.java
         )
         subs?.remove<Any?>(sciviewFocusHandler)
@@ -63,7 +63,7 @@ class GroupLocksHandling(//controls sciview via this bridge obj
 
         override fun timepointChanged() {
             logger.debug("timepoint changed to ${myGroupHandle.getModel(projectModel.TIMEPOINT).timepoint}")
-            bridge.showTimepoint(myGroupHandle.getModel(projectModel.TIMEPOINT).timepoint)
+            manvr3d.showTimepoint(myGroupHandle.getModel(projectModel.TIMEPOINT).timepoint)
         }
     }
 

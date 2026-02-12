@@ -1,6 +1,6 @@
 package org.mastodon.mamut
 
-import util.AdjustableBoundsSlider
+import ui.AdjustableBoundsSlider
 import java.awt.GridBagConstraints
 import java.awt.GridBagLayout
 import javax.swing.JButton

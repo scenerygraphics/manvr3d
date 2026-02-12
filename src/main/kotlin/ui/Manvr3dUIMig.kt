@@ -1,16 +1,25 @@
-package org.mastodon.mamut
+package org.mastodon.mamut.ui
 
 import graphics.scenery.utils.lazyLogger
 import net.miginfocom.swing.MigLayout
-import util.AdjustableBoundsRangeSlider
+import Manvr3dMain
+import ui.AdjustableBoundsRangeSlider
 import util.GroupLocksHandling
-import util.SphereLinkNodes
+import util.GeometryHandler
 import java.awt.event.ActionListener
-import javax.swing.*
+import javax.swing.JButton
+import javax.swing.JCheckBox
+import javax.swing.JComboBox
+import javax.swing.JLabel
+import javax.swing.JPanel
+import javax.swing.JSpinner
+import javax.swing.JToggleButton
+import javax.swing.SpinnerModel
+import javax.swing.SpinnerNumberModel
 import javax.swing.event.ChangeListener
 
-class SciviewBridgeUIMig(controlledBridge: SciviewBridge, populateThisContainer: JPanel) {
-    var controlledBridge: SciviewBridge?
+class Manvr3dUIMig(manvr3dContext: Manvr3dMain, populateThisContainer: JPanel) {
+    var manvr3dContext: Manvr3dMain?
     val windowPanel: JPanel
     private val logger by lazyLogger(System.getProperty("scenery.LogLevel", "info"))
 
@@ -31,32 +40,32 @@ class SciviewBridgeUIMig(controlledBridge: SciviewBridge, populateThisContainer:
     lateinit var vrResolutionScale: SpinnerModel
 
     private fun populatePane() {
-        val bridge = this.controlledBridge ?: throw IllegalStateException("The passed bridge cannot be null.")
+        val manvr3d = this.manvr3dContext ?: throw IllegalStateException("The passed manvr3d instance cannot be null.")
 
         windowPanel.layout = MigLayout("insets 15", "[grow,leading] [grow]", "")
 
         // Lock Group Handling and Mastodon
-        lockGroupHandler = GroupLocksHandling(bridge, bridge.mastodon)
+        lockGroupHandler = GroupLocksHandling(manvr3d, manvr3d.mastodon)
         windowPanel.add(lockGroupHandler.createAndActivate()!!, "growx")
 
         val openBdvBtn = JButton("Open synced Mastodon BDV").apply {
-            addActionListener { bridge.openSyncedBDV() }
+            addActionListener { manvr3d.openSyncedBDV() }
         }
         windowPanel.add(openBdvBtn, "growx, wrap")
 
         // MIPMAP Level
         mipmapSpinner = addLabeledSpinner("Choose Mipmap Level", SpinnerNumberModel(0, 0, 6, 1)) { level ->
-            controlledBridge?.setMipmapLevel(level.toInt())
+            this@Manvr3dUIMig.manvr3dContext?.setMipmapLevel(level.toInt())
         }
-        controlledBridge?.let {
+        this@Manvr3dUIMig.manvr3dContext?.let {
             setMaxMipmapLevel(it.spimSource.numMipmapLevels - 1)
         }
 
         // Range Slider
-        intensityRangeSlider = AdjustableBoundsRangeSlider.createAndPlaceHere(
+        intensityRangeSlider = AdjustableBoundsRangeSlider.Companion.createAndPlaceHere(
             windowPanel,
-            bridge.intensity.rangeMin.toInt(),
-            bridge.intensity.rangeMax.toInt(),
+            manvr3d.intensity.rangeMin.toInt(),
+            manvr3d.intensity.rangeMax.toInt(),
             0,
             10000
         )
@@ -65,33 +74,33 @@ class SciviewBridgeUIMig(controlledBridge: SciviewBridge, populateThisContainer:
         // Link range spinners
         linkRangeBackwards = addLabeledSpinner(
             "Link window range backwards",
-            SpinnerNumberModel(bridge.mastodon.maxTimepoint, 0, bridge.mastodon.maxTimepoint, 1)
+            SpinnerNumberModel(manvr3d.mastodon.maxTimepoint, 0, manvr3d.mastodon.maxTimepoint, 1)
         ) { value ->
-            bridge.sphereLinkNodes.linkBackwardRange = value.toInt()
-            bridge.sphereLinkNodes.updateLinkVisibility(bridge.lastUpdatedSciviewTP)
+            manvr3d.geometryHandler.linkBackwardRange = value.toInt()
+            manvr3d.geometryHandler.updateSegmentVisibility(manvr3d.currentTimepoint)
         }
 
         linkRangeForwards = addLabeledSpinner(
             "Link window range forwards",
-            SpinnerNumberModel(bridge.mastodon.maxTimepoint, 0, bridge.mastodon.maxTimepoint, 1)
+            SpinnerNumberModel(manvr3d.mastodon.maxTimepoint, 0, manvr3d.mastodon.maxTimepoint, 1)
         ) { value ->
-            bridge.sphereLinkNodes.linkForwardRange = value.toInt()
-            bridge.sphereLinkNodes.updateLinkVisibility(bridge.lastUpdatedSciviewTP)
+            manvr3d.geometryHandler.linkForwardRange = value.toInt()
+            manvr3d.geometryHandler.updateSegmentVisibility(manvr3d.currentTimepoint)
         }
 
         spotScaleFactor = addLabeledSpinner(
             "Spot scale factor",
             SpinnerNumberModel(1f, 0.1f, 10f, 0.1f)
         ) { value ->
-            bridge.sphereLinkNodes.sphereScaleFactor = value.toFloat()
-            bridge.redrawSciviewSpots()
+            manvr3d.geometryHandler.sphereScaleFactor = value.toFloat()
+            manvr3d.redrawSciviewSpots()
         }
 
         vrResolutionScale = addLabeledSpinner(
             "VR Resolution scale",
             SpinnerNumberModel(0.75f, 0.1f, 2f, 0.1f)
         ) { value ->
-            bridge.setVrResolutionScale(value.toFloat())
+            manvr3d.setVrResolutionScale(value.toFloat())
         }
 
         // Adding dropdowns for link LUTs and volume colors
@@ -100,7 +109,7 @@ class SciviewBridgeUIMig(controlledBridge: SciviewBridge, populateThisContainer:
         // Link colors dropdown
         colorSelectorPanel.add(JLabel("Link colors:"), "gapright 10")
         val linkColorChoices = mutableListOf("By Spot")
-        val availableLUTs = bridge.sciviewWin.getAvailableLUTs() as MutableList<String>
+        val availableLUTs = manvr3d.sciviewWin.getAvailableLUTs() as MutableList<String>
         for (i in availableLUTs.indices) {
             availableLUTs[i] = availableLUTs[i].removeSuffix(".lut")
         }
@@ -125,7 +134,7 @@ class SciviewBridgeUIMig(controlledBridge: SciviewBridge, populateThisContainer:
         visToggleSpots = JButton("Toggle spots").apply { addActionListener(toggleSpotsVisibility) }
         visToggleVols = JButton("Toggle volume").apply { addActionListener(toggleVolumeVisibility) }
         visToggleTracks = JButton("Toggle tracks").apply { addActionListener(toggleTrackVisibility) }
-        autoIntensityBtn = JToggleButton("Auto Intensity", bridge.isVolumeAutoAdjust).apply {
+        autoIntensityBtn = JToggleButton("Auto Intensity", manvr3d.isVolumeAutoAdjust).apply {
             addActionListener(autoAdjustIntensity)
         }
 
@@ -140,13 +149,13 @@ class SciviewBridgeUIMig(controlledBridge: SciviewBridge, populateThisContainer:
         // Launch VR session
         toggleVR = JButton("Start VR").apply {
             addActionListener {
-                if (!bridge.isVRactive) {
-                    val launched = bridge.launchVR(eyeTrackingToggle.isSelected)
+                if (!manvr3d.isVRactive) {
+                    val launched = manvr3d.launchVR(eyeTrackingToggle.isSelected)
                     if (launched) {
                         toggleVR.text = "Stop VR"
                     }
                 } else {
-                    bridge.stopVR()
+                    manvr3d.stopVR()
                     toggleVR.text = "Start VR"
                 }
             }
@@ -159,7 +168,7 @@ class SciviewBridgeUIMig(controlledBridge: SciviewBridge, populateThisContainer:
         }, "span, growx")
 
         // Close Button
-        val closeBtn = JButton("Close").apply { addActionListener { bridge.stopAndDetachUI() } }
+        val closeBtn = JButton("Close").apply { addActionListener { manvr3d.stopAndDetachUI() } }
         windowPanel.add(closeBtn, "span, right")
     }
 
@@ -182,69 +191,72 @@ class SciviewBridgeUIMig(controlledBridge: SciviewBridge, populateThisContainer:
     }
 
     val rangeSliderListener = ChangeListener {
-        controlledBridge.intensity.rangeMin = intensityRangeSlider.value.toFloat()
-        controlledBridge.intensity.rangeMax = intensityRangeSlider.upperValue.toFloat()
-        controlledBridge.volumeNode.minDisplayRange = controlledBridge.intensity.rangeMin
-        controlledBridge.volumeNode.maxDisplayRange = controlledBridge.intensity.rangeMax
+        manvr3dContext.intensity.rangeMin = intensityRangeSlider.value.toFloat()
+        manvr3dContext.intensity.rangeMax = intensityRangeSlider.upperValue.toFloat()
+        manvr3dContext.volumeNode.minDisplayRange = manvr3dContext.intensity.rangeMin
+        manvr3dContext.volumeNode.maxDisplayRange = manvr3dContext.intensity.rangeMax
     }
 
     val chooseLinkColormap = ActionListener { _ ->
         when (linkColorSelector.selectedItem) {
             "By Spot" -> {
-                controlledBridge.sphereLinkNodes.currentColorMode = SphereLinkNodes.ColorMode.SPOT
+                manvr3dContext.geometryHandler.currentColorMode = GeometryHandler.ColorMode.SPOT
                 logger.info("Coloring links by spot color")
             }
+
             else -> {
-                controlledBridge.sphereLinkNodes.currentColorMode = SphereLinkNodes.ColorMode.LUT
-                controlledBridge.sphereLinkNodes.setLUT("${linkColorSelector.selectedItem}.lut")
+                manvr3dContext.geometryHandler.currentColorMode = GeometryHandler.ColorMode.LUT
+                manvr3dContext.geometryHandler.setLUT("${linkColorSelector.selectedItem}.lut")
                 logger.info("Coloring links with LUT ${linkColorSelector.selectedItem}")
             }
         }
-        controlledBridge.sphereLinkNodes.updateLinkColors(controlledBridge.recentColorizer ?: controlledBridge.noTSColorizer)
+        manvr3dContext.geometryHandler.updateLinkColors(
+            manvr3dContext.currentColorizer
+        )
     }
 
     val chooseVolumeColormap = ActionListener {
-        controlledBridge.sciviewWin.setColormap(controlledBridge.volumeNode, "${volumeColorSelector.selectedItem}.lut")
+        manvr3dContext.sciviewWin.setColormap(manvr3dContext.volumeNode, "${volumeColorSelector.selectedItem}.lut")
         logger.info("Coloring volume with LUT ${volumeColorSelector.selectedItem}")
     }
 
     val toggleSpotsVisibility = ActionListener {
-        val spots = controlledBridge.volumeNode.getChildrenByName("SpotInstance").first()
+        val spots = manvr3dContext.volumeNode.getChildrenByName("SpotInstance").first()
         val newState = !spots.visible
         spots.visible = newState
     }
     val toggleVolumeVisibility = ActionListener {
-        val newState = !controlledBridge.volumeNode.visible
-        controlledBridge.setVolumeOnlyVisibility(newState)
+        val newState = !manvr3dContext.volumeNode.visible
+        manvr3dContext.setVolumeOnlyVisibility(newState)
     }
     val toggleTrackVisibility = ActionListener {
-        val links = controlledBridge.volumeNode.getChildrenByName("LinkInstance").first()
+        val links = manvr3dContext.volumeNode.getChildrenByName("LinkInstance").first()
         val newState = !links.visible
         links.visible = newState
     }
 
     val autoAdjustIntensity = ActionListener {
-        controlledBridge.autoAdjustIntensity()
+        manvr3dContext.autoAdjustIntensity()
     }
 
     fun updatePaneValues() {
-        val bridge = this.controlledBridge ?: throw IllegalStateException("Bridge is null.")
-        val updVolAutoBackup = bridge.updateVolAutomatically
+        val manvr3d = this.manvr3dContext ?: throw IllegalStateException("Manvr3d context is null.")
+        val updVolAutoBackup = manvr3d.updateVolAutomatically
         //temporarily disable because setting the controls trigger their listeners
         //that trigger (not all of them) the expensive volume updating
-        bridge.updateVolAutomatically = false
+        manvr3d.updateVolAutomatically = false
 
-        spotScaleFactor.value = bridge.sphereLinkNodes.sphereScaleFactor
-        val upperValBackup = bridge.intensity.rangeMax
+        spotScaleFactor.value = manvr3d.geometryHandler.sphereScaleFactor
+        val upperValBackup = manvr3d.intensity.rangeMax
 
-        intensityRangeSlider.rangeSlider.value = bridge.intensity.rangeMin.toInt()
+        intensityRangeSlider.rangeSlider.value = manvr3d.intensity.rangeMin.toInt()
         //NB: this triggers a "value changed listener" which updates _both_ the value and upperValue,
         //    which resets the value with the new one (so no change in the end) but clears upperValue
         //    to the value the dialog was left with (forgets the new upperValue effectively)
-        bridge.intensity.rangeMax = upperValBackup
-        intensityRangeSlider.rangeSlider.upperValue = bridge.intensity.rangeMax.toInt()
-        autoIntensityBtn.isSelected = bridge.isVolumeAutoAdjust
-        bridge.updateVolAutomatically = updVolAutoBackup
+        manvr3d.intensity.rangeMax = upperValBackup
+        intensityRangeSlider.rangeSlider.upperValue = manvr3d.intensity.rangeMax.toInt()
+        autoIntensityBtn.isSelected = manvr3d.isVolumeAutoAdjust
+        manvr3d.updateVolAutomatically = updVolAutoBackup
     }
 
     fun deactivateAndForget() {
@@ -258,12 +270,12 @@ class SciviewBridgeUIMig(controlledBridge: SciviewBridge, populateThisContainer:
         visToggleSpots.removeActionListener(toggleSpotsVisibility)
         visToggleVols.removeActionListener(toggleVolumeVisibility)
         autoIntensityBtn.removeActionListener(autoAdjustIntensity)
-        controlledBridge = null
+        this@Manvr3dUIMig.manvr3dContext = null
 
     }
 
     init {
-        this.controlledBridge = controlledBridge
+        this.manvr3dContext = manvr3dContext
         windowPanel = populateThisContainer
         populatePane()
     }
