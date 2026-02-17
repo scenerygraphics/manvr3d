@@ -159,7 +159,10 @@ open class CellTrackingBase(
                 } else if (device.role == TrackerRole.LeftHand) {
                     device.model?.let {
                         it.name = "leftHand"
-                        leftWristMenu = MultiWristMenu(it)
+                        leftWristMenu = MultiWristMenu(it,
+                            columnBasePosition = Vector3f(0.03f, 0f, 0.1f),
+                            columnRotation = Quaternionf().rotationXYZ(-1.2f, 1.7f, 0f)
+                        )
                         setupElephantMenu()
                         setupGeneralMenu()
                         leftWristMenu.hideAll()
@@ -365,9 +368,9 @@ open class CellTrackingBase(
 
         leftWristMenu.addColumn("General Menu")
         leftWristMenu.addRow("General Menu",
-            goToFirstBtn, playSlowerBtn, togglePlaybackDirBtn, playFasterBtn, goToLastBtn, middleAlign = false)
+            goToFirstBtn, playSlowerBtn, togglePlaybackDirBtn, playFasterBtn, goToLastBtn)
         leftWristMenu.addRow(
-            "General Menu", undoButton, redoButton, resetViewButton, middleAlign = false)
+            "General Menu", undoButton, redoButton, resetViewButton)
 
 
         leftWristMenu.addColumn("Toggle Menu")
