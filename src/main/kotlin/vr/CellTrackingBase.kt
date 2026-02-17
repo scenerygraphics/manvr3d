@@ -39,9 +39,11 @@ import kotlin.concurrent.thread
 
 /**
  * Base class for different VR cell tracking purposes. It includes functionality to add spines and edgehogs,
- * as used by [EyeTracking], and registers controller bindings via [inputSetup]. It is possible to register observers
- * that listen to timepoint changes with [registerObserver].
- * @param [sciview] The [SciView] instance to use
+ * as used by [EyeTracking], and registers controller bindings via [inputSetup].
+ * @param sciview The [SciView] instance to use
+ * @param manvr3d An instance of [Manvr3dMain], used for interactions with the Mastodon data structure
+ * @param geometryHandler The [GeometryHandler] that handles spheres (cells) and cylinders (track segments)
+ * @param resolutionScale Allows rendering the VR window at higher or lower resolution than natively supported
  */
 open class CellTrackingBase(
     open var sciview: SciView,

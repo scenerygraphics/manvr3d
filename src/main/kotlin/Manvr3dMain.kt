@@ -273,7 +273,7 @@ class Manvr3dMain: TimepointObserver {
     }
 
     /** Predict spots with ELEPHANT. If [predictAll] is true, all timepoints will be predicted.
-     * Otherwise just the current timepoint will be predicted. */
+     * Otherwise, just the current timepoint will be predicted. */
     fun preditSpots(predictAll: Boolean) {
         if (predictSpotsAction == null) {
             predictSpotsAction = pluginActions.actionMap.get("[elephant] predict spots")
@@ -291,6 +291,8 @@ class Manvr3dMain: TimepointObserver {
 
         if (predictAll) {
             tpAdapter.timepoint = volumeNode.timepointCount
+        } else {
+            tpAdapter.timepoint = currentTP
         }
         (predictSpotsAction as PredictSpotsAction).run()
         logger.info("Predicting spots took ${start.elapsedNow()} ms")
