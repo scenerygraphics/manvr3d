@@ -49,6 +49,8 @@ import graphics.scenery.utils.TimepointObserver
 import vr.EyeTracking
 import util.GeometryHandler
 import vr.CellTrackingBase
+import java.util.Collections
+import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.Executors
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
@@ -101,7 +103,7 @@ class Manvr3dMain: TimepointObserver {
     val axesParent: DataAxes
 
     // Worker queue for async 3D updating
-    private val updateQueue = LinkedBlockingQueue<() -> Unit>()
+    private val updateQueue = LinkedBlockingQueue<() -> Unit>(100)
     private val workerExecutor = Executors.newSingleThreadExecutor { thread ->
         Thread(thread, "GeometryHandlerUpdateWorker").apply { isDaemon = true }
     }
@@ -113,7 +115,7 @@ class Manvr3dMain: TimepointObserver {
     var isVolumeAutoAdjust = false
     val sceneScale: Float = 10f
     // keep track of the currently selected spot globally so that edit behaviors can access it
-    var selectedSpotInstances = mutableListOf<InstancedNode.Instance>()
+    var selectedSpotInstances = CopyOnWriteArrayList<InstancedNode.Instance>()
     // the event watcher for BDV, needed here for the lock handling to prevent BDV from
     // triggering the event watcher while a spot is edited in Sciview
     var bdvNotifier: BdvNotifier? = null
