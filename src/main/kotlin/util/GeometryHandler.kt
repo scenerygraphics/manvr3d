@@ -88,6 +88,8 @@ class GeometryHandler(
     private val spotToInstanceMap = ConcurrentHashMap<Int, InstancedNode.Instance>()
     /** Allows finding a spot pool index based on a spot instance. */
     private val instanceToSpotMap = ConcurrentHashMap<InstancedNode.Instance, Int>()
+    /** Cache the already calculated radii to prevent recalculating them all the time. Stores the vertex index and the radius. */
+    private val radiusCache = ConcurrentHashMap<Int, Float>()
 
     lateinit var currentColorizer: GraphColorGenerator<Spot, Link>
 
@@ -223,20 +225,15 @@ class GeometryHandler(
 
             // Pre-allocate memory to prevent recreation of variables inside the loop
             val spotPosition = FloatArray(3)
-            val covArray = Array(3) { DoubleArray(3) }
-            var covariance: Array2DRowRealMatrix
-            var eig: JamaEigenvalueDecomposition
-            var eigVals: DoubleArray
-            var spotVolume: Double
             var spotRadius: Float
             var inst: InstancedNode.Instance
-            var axisLengths: Vector3f
 
-            var index = 0
             logger.debug("we have ${visibleSpots.size()} spots in this Mastodon time point.")
             manvr3d.bdvNotifier?.lockUpdates = true
             val vertexRef = mastodonData.model.graph.vertexRef()
             mastodonData.model.graph.lock.readLock().lock()
+
+            var index = 0
             for (spot in visibleSpots) {
                 vertexRef.refTo(spot)
                 // reuse a spot instance from the pool if the pool is large enough
@@ -252,31 +249,13 @@ class GeometryHandler(
                 }
                 // get spot covariance and calculate the scaling and rotation from it
                 vertexRef.localize(spotPosition)
-                spot.getCovariance(covArray)
-                covariance = Array2DRowRealMatrix(covArray)
+                spotRadius = getSpotRadius(vertexRef)
 
-                // We don't use getSpotRadius() here to prevent re-allocation of variables
-                eig = JamaEigenvalueDecomposition(3)
-                eig.decomposeSymmetric(covArray)
-                eigVals = eig.realEigenvalues
-                spotVolume = 4.0 / 3.0 * Math.PI
-                for (k in eigVals.indices) {
-                    val semiAxis = sqrt(eigVals[k])
-                    spotVolume *= semiAxis
-                }
-                spotRadius = (spotVolume * 3.0 / 4.0 / Math.PI).pow(1.0 / 3.0).toFloat()
-
-                if (vertexRef.internalPoolIndex % 10 == 0) {
-                    logger.debug("Spot ${vertexRef.label} has radius $spotRadius")
-                }
                 inst.spatial {
                     position = Vector3f(spotPosition)
                     scale = Vector3f(sphereScaleFactor * spotRadius)
                     // TODO add ellipsoid scale & rotation to instances
-                    // scale = axisLengths * sphereScaleFactor * 0.5f
-                    // rotation = eigenvectors.toQuaternion()
                 }
-                //            inst.drawEigenVectors(eigenvectors, axisLengths)
 
                 inst.setColorFromSpot(vertexRef, currentColorizer)
                 // highlight the spots currently selected in BDV
@@ -324,16 +303,18 @@ class GeometryHandler(
     }
 
     private fun getSpotRadius(spot: Spot): Float {
-        val covArray = Array(3) { DoubleArray(3) }
-        spot.getCovariance(covArray)
-        val eig = EigenDecomposition(Array2DRowRealMatrix(covArray))
-        val eigVals = eig.realEigenvalues
-        var volume = 4.0 / 3.0 * Math.PI
-        for (k in eigVals.indices) {
-            val semiAxis = sqrt(eigVals[k])
-            volume *= semiAxis
+        return radiusCache.getOrPut(spot.internalPoolIndex) {
+            val covArray = Array(3) { DoubleArray(3) }
+            spot.getCovariance(covArray)
+            val eig = EigenDecomposition(Array2DRowRealMatrix(covArray))
+            val eigVals = eig.realEigenvalues
+            var volume = 4.0 / 3.0 * Math.PI
+            for (k in eigVals.indices) {
+                val semiAxis = sqrt(eigVals[k])
+                volume *= semiAxis
+            }
+            return (volume * 3.0 / 4.0 / Math.PI).pow(1.0 / 3.0).toFloat()
         }
-        return (volume * 3.0 / 4.0 / Math.PI).pow(1.0 / 3.0).toFloat()
     }
 
     /** Debug function to help with aligning ellipsoids with the eigenvectors from the covariance matrix.
