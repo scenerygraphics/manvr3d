@@ -915,8 +915,8 @@ class GeometryHandler(
 
     /** Shows or initializes the main links instance, publishes it to the scene and populates it with instances from the current Mastodon graph. */
     fun showInstancedLinks(
-        colorMode: ColorMode,
-        colorizer: GraphColorGenerator<Spot, Link>
+        colorMode: ColorMode = currentColorMode,
+        colorizer: GraphColorGenerator<Spot, Link> = currentColorizer
     ) {
         updateQueue.offer {
             val tStart = TimeSource.Monotonic.markNow()
@@ -980,7 +980,7 @@ class GeometryHandler(
                 inst.name = "${edge.internalPoolIndex}"
                 inst.parent = linkParentNode
                 // add a new key-value pair to the hash map
-                links[edge.target.hashCode()] = LinkNode(inst, from, to, to.timepoint)
+                links[edge.internalPoolIndex] = LinkNode(inst, from, to, to.timepoint)
 
                 index++
             }
@@ -1045,7 +1045,7 @@ class GeometryHandler(
     /** Traverse and update the colors of all [links] using the provided color mode [cm].
      * When set to [ColorMode.SPOT], it uses the [colorizer] to get the spot colors. */
     fun updateLinkColors (
-        colorizer: GraphColorGenerator<Spot, Link>?,
+        colorizer: GraphColorGenerator<Spot, Link>? = currentColorizer,
         cm: ColorMode = currentColorMode
     ) {
         val start = TimeSource.Monotonic.markNow()
@@ -1059,11 +1059,9 @@ class GeometryHandler(
             }
             SPOT -> {
                 if (colorizer != null) {
-                    for (tp in 0 .. numTimePoints) {
-                        val spots = mastodonData.model.spatioTemporalIndex.getSpatialIndex(tp)
-                        spots.forEach { spot ->
-                            links[spot.hashCode()]?.instance?.setColorFromSpot(spot, colorizer)
-                        }
+                    links.forEach { (edgeIdx, linkNode) ->
+                        // Color based on the target spot
+                        linkNode.instance.setColorFromSpot(linkNode.to, colorizer)
                     }
                 }
             }

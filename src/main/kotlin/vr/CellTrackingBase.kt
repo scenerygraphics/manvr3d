@@ -282,7 +282,6 @@ open class CellTrackingBase(
                     ElephantMode.PredictAll -> manvr3d.preditSpots(true)
                     ElephantMode.NNLinking -> manvr3d.linkNearestNeighbors()
                 }
-                logger.info("We locked the buttons for ${(buttonTime-lastButtonTime)} ms ")
                 lastButtonTime = buttonTime
             }
         } else {
