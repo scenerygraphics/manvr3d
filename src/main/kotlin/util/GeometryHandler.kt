@@ -84,6 +84,9 @@ class GeometryHandler(
     var linkForwardRange: Int
     var linkBackwardRange: Int
 
+    private val spotToInstanceMap = ConcurrentHashMap<Int, InstancedNode.Instance>()
+    private val instanceToSpotMap = ConcurrentHashMap<InstancedNode.Instance, Spot>()
+
     lateinit var currentColorizer: GraphColorGenerator<Spot, Link>
 
     private var selectedColor = Vector4f(1f, 0.25f, 0.25f, 1f)
@@ -191,9 +194,13 @@ class GeometryHandler(
                 mainSpotInstance = mainSpot
             }
 
-            // ensure that mainSpotInstance is not null and properly initialized
+            // Ensure that mainSpotInstance is not null and properly initialized
             val mainSpot =
                 mainSpotInstance ?: throw IllegalStateException("InstancedSpot is null, instance was not initialized.")
+
+            // Clear the maps on the start of each timepoint
+            instanceToSpotMap.clear()
+            spotToInstanceMap.clear()
 
             val selectedSpotRef = mastodonData.selectionModel.selectedVertices
             visibleSpots = mastodonData.model.spatioTemporalIndex.getSpatialIndex(timepoint)
@@ -228,7 +235,6 @@ class GeometryHandler(
                     inst.parent = sphereParentNode
                     spotPool.add(inst)
                 }
-                inst.name = "spot_${vertexRef.internalPoolIndex}"
                 // get spot covariance and calculate the scaling and rotation from it
                 vertexRef.localize(spotPosition)
                 spot.getCovariance(covArray)
@@ -262,6 +268,9 @@ class GeometryHandler(
                 selectedSpotRef.find { it.internalPoolIndex == vertexRef.internalPoolIndex }?.let {
                     inst.instancedProperties["Color"] = { selectedColor }
                 }
+
+                spotToInstanceMap[vertexRef.internalPoolIndex] = inst
+                instanceToSpotMap[inst] = vertexRef
 
                 index++
             }
@@ -432,21 +441,15 @@ class GeometryHandler(
      * It does that by filtering through the names of the spots.
      * @return either a [Spot] or null. */
     fun findSpotFromInstance(instance: InstancedNode.Instance): Spot? {
-        // TODO Refactor this to be faster with hashmaps instead of using strings
-        if (instance.name.startsWith("spot")) {
-            val name = instance.name.removePrefix("spot_")
-            val selectedSpot = visibleSpots.find { it.internalPoolIndex == name.toInt() }
-            return selectedSpot
-        } else {
-            return null
-        }
+        val spot = instanceToSpotMap[instance] ?: return null
+        return visibleSpots.find { it.internalPoolIndex == spot.internalPoolIndex }
     }
 
     /** Tries to find a spot instance in the current time point for the given [spot].
      * It does that by filtering through the names of the instances, which contain the internalPoolIndex.
      * @return either an [InstancedNode.Instance] or null. */
     fun findInstanceFromSpot(spot: Spot): InstancedNode.Instance? {
-        return spotPool.find { it.name.removePrefix("spot_").toInt() == spot.internalPoolIndex }
+        return spotToInstanceMap[spot.internalPoolIndex]
     }
 
     /** Tries to find a link instance for the given [link].
@@ -1263,7 +1266,6 @@ class GeometryHandler(
             val color = Vector4f(0.65f, 1f, 0.22f, 1f)
 //            val localFrom = manvr3d.sciviewToMastodonCoords(from)
             inst.instancedProperties["Color"] = { color }
-            inst.name = "${tp}_${localPos}"
             inst.parent = linkParentNode
             inst.visible = preview
             setLinkTransform(trackPointList.last().first, localPos, inst)
