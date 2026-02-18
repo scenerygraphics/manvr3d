@@ -24,7 +24,7 @@ import org.mastodon.collection.RefCollections
 import org.mastodon.collection.RefList
 import org.mastodon.collection.RefSet
 import org.mastodon.mamut.ProjectModel
-import org.mastodon.mamut.SciviewBridge
+import Manvr3dMain
 import org.mastodon.mamut.model.Link
 import org.mastodon.mamut.model.Spot
 import org.mastodon.spatial.SpatialIndex
@@ -32,16 +32,15 @@ import org.mastodon.ui.coloring.GraphColorGenerator
 import org.mastodon.views.bdv.overlay.util.JamaEigenvalueDecomposition
 import org.scijava.event.EventService
 import sc.iview.SciView
-import sc.iview.commands.analysis.HedgehogAnalysis.SpineGraphVertex
+import analysis.HedgehogAnalysis.SpineGraphVertex
 import spim.fiji.spimdata.interestpoints.InterestPoint
-import util.SphereLinkNodes.ColorMode.LUT
-import util.SphereLinkNodes.ColorMode.SPOT
+import util.GeometryHandler.ColorMode.LUT
+import util.GeometryHandler.ColorMode.SPOT
 import java.awt.Color
 import java.lang.Math
 import java.util.*
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.LinkedBlockingQueue
-import java.util.concurrent.atomic.AtomicInteger
 import kotlin.collections.plus
 import kotlin.collections.set
 import kotlin.math.pow
@@ -52,14 +51,14 @@ import kotlin.time.TimeSource
  * in the form of instanced geometry. Spots are represented as spheres, and track segments (links) are represented as cylinders.
  * It handles initialization, updates and actions like addition, deletion and movement of spots.
  * @param sv The sciview instance to use.
- * @param bridge And instance of the mastodon-sciview bridge.
+ * @param manvr3d An instance of manvr3d.
  * @param updateQueue Queue that executues scene updates sequentially in its own thread.
  * @param mastodonData Instance of the Mastodon ProjectModel
  * @param sphereParentNode Parent node for the instanced spheres
  * @param linkParentNode Parent node for the instanced links */
-class SphereLinkNodes(
+class GeometryHandler(
     val sv: SciView,
-    val bridge: SciviewBridge,
+    val manvr3d: Manvr3dMain,
     val updateQueue: LinkedBlockingQueue<() -> Unit>,
     val mastodonData: ProjectModel,
     val sphereParentNode: Node,
@@ -84,6 +83,13 @@ class SphereLinkNodes(
     lateinit var visibleSpots: SpatialIndex<Spot>
     var linkForwardRange: Int
     var linkBackwardRange: Int
+
+    /** Allows finding a spot instance based on a spot pool index. */
+    private val spotToInstanceMap = ConcurrentHashMap<Int, InstancedNode.Instance>()
+    /** Allows finding a spot pool index based on a spot instance. */
+    private val instanceToSpotMap = ConcurrentHashMap<InstancedNode.Instance, Int>()
+    /** Cache the already calculated radii to prevent recalculating them all the time. Stores the vertex index and the radius. */
+    private val radiusCache = ConcurrentHashMap<Int, Float>()
 
     lateinit var currentColorizer: GraphColorGenerator<Spot, Link>
 
@@ -149,12 +155,25 @@ class SphereLinkNodes(
         logger.info("adding $number ${mainInstance.name} instances took ${TimeSource.Monotonic.markNow()-tStart}.")
     }
 
+    /** Helper method for safe enqueueing. Will drop tasks if the [updateQueue] exceeds its capacity (currently 100),
+     * unless [isCritical] was set to true. */
+    private fun enqueueUpdate(description: String, isCritical: Boolean = false, task: () -> Unit) {
+        if (!updateQueue.offer(task)) {
+            // Queue is full, now warn the user or execute if critical
+            if (isCritical) {
+                task.invoke()
+            } else {
+                logger.warn("Update queue full, dropping: $description")
+            }
+        }
+    }
+
     /** Shows or initializes the main spot instance, publishes it to the scene and populates it with instances from the current time-point. */
     fun showInstancedSpots(
         timepoint: Int,
         colorizer: GraphColorGenerator<Spot, Link>
     ) {
-        updateQueue.offer {
+        enqueueUpdate("showInstancedSpots(tp=$timepoint)") {
             currentColorizer = colorizer
             logger.debug("Called showInstancedSpots")
             val tStart = TimeSource.Monotonic.markNow()
@@ -192,9 +211,13 @@ class SphereLinkNodes(
                 mainSpotInstance = mainSpot
             }
 
-            // ensure that mainSpotInstance is not null and properly initialized
+            // Ensure that mainSpotInstance is not null and properly initialized
             val mainSpot =
                 mainSpotInstance ?: throw IllegalStateException("InstancedSpot is null, instance was not initialized.")
+
+            // Clear the maps on the start of each timepoint
+            instanceToSpotMap.clear()
+            spotToInstanceMap.clear()
 
             val selectedSpotRef = mastodonData.selectionModel.selectedVertices
             visibleSpots = mastodonData.model.spatioTemporalIndex.getSpatialIndex(timepoint)
@@ -202,20 +225,15 @@ class SphereLinkNodes(
 
             // Pre-allocate memory to prevent recreation of variables inside the loop
             val spotPosition = FloatArray(3)
-            val covArray = Array(3) { DoubleArray(3) }
-            var covariance: Array2DRowRealMatrix
-            var eig: JamaEigenvalueDecomposition
-            var eigVals: DoubleArray
-            var spotVolume: Double
             var spotRadius: Float
             var inst: InstancedNode.Instance
-            var axisLengths: Vector3f
 
-            var index = 0
             logger.debug("we have ${visibleSpots.size()} spots in this Mastodon time point.")
-            bridge.bdvNotifier?.lockUpdates = true
+            manvr3d.bdvNotifier?.lockUpdates = true
             val vertexRef = mastodonData.model.graph.vertexRef()
             mastodonData.model.graph.lock.readLock().lock()
+
+            var index = 0
             for (spot in visibleSpots) {
                 vertexRef.refTo(spot)
                 // reuse a spot instance from the pool if the pool is large enough
@@ -229,34 +247,15 @@ class SphereLinkNodes(
                     inst.parent = sphereParentNode
                     spotPool.add(inst)
                 }
-                inst.name = "spot_${vertexRef.internalPoolIndex}"
                 // get spot covariance and calculate the scaling and rotation from it
                 vertexRef.localize(spotPosition)
-                spot.getCovariance(covArray)
-                covariance = Array2DRowRealMatrix(covArray)
+                spotRadius = getSpotRadius(vertexRef)
 
-                // We don't use getSpotRadius() here to prevent re-allocation of variables
-                eig = JamaEigenvalueDecomposition(3)
-                eig.decomposeSymmetric(covArray)
-                eigVals = eig.realEigenvalues
-                spotVolume = 4.0 / 3.0 * Math.PI
-                for (k in eigVals.indices) {
-                    val semiAxis = sqrt(eigVals[k])
-                    spotVolume *= semiAxis
-                }
-                spotRadius = (spotVolume * 3.0 / 4.0 / Math.PI).pow(1.0 / 3.0).toFloat()
-
-                if (vertexRef.internalPoolIndex % 10 == 0) {
-                    logger.debug("Spot ${vertexRef.label} has radius $spotRadius")
-                }
                 inst.spatial {
                     position = Vector3f(spotPosition)
                     scale = Vector3f(sphereScaleFactor * spotRadius)
                     // TODO add ellipsoid scale & rotation to instances
-                    // scale = axisLengths * sphereScaleFactor * 0.5f
-                    // rotation = eigenvectors.toQuaternion()
                 }
-                //            inst.drawEigenVectors(eigenvectors, axisLengths)
 
                 inst.setColorFromSpot(vertexRef, currentColorizer)
                 // highlight the spots currently selected in BDV
@@ -264,9 +263,12 @@ class SphereLinkNodes(
                     inst.instancedProperties["Color"] = { selectedColor }
                 }
 
+                spotToInstanceMap[vertexRef.internalPoolIndex] = inst
+                instanceToSpotMap[inst] = vertexRef.internalPoolIndex
+
                 index++
             }
-            bridge.bdvNotifier?.lockUpdates = false
+            manvr3d.bdvNotifier?.lockUpdates = false
             mastodonData.model.graph.lock.readLock().unlock()
             // turn all leftover spots from the pool invisible
             var i = index
@@ -301,16 +303,18 @@ class SphereLinkNodes(
     }
 
     private fun getSpotRadius(spot: Spot): Float {
-        val covArray = Array(3) { DoubleArray(3) }
-        spot.getCovariance(covArray)
-        val eig = EigenDecomposition(Array2DRowRealMatrix(covArray))
-        val eigVals = eig.realEigenvalues
-        var volume = 4.0 / 3.0 * Math.PI
-        for (k in eigVals.indices) {
-            val semiAxis = sqrt(eigVals[k])
-            volume *= semiAxis
+        return radiusCache.getOrPut(spot.internalPoolIndex) {
+            val covArray = Array(3) { DoubleArray(3) }
+            spot.getCovariance(covArray)
+            val eig = EigenDecomposition(Array2DRowRealMatrix(covArray))
+            val eigVals = eig.realEigenvalues
+            var volume = 4.0 / 3.0 * Math.PI
+            for (k in eigVals.indices) {
+                val semiAxis = sqrt(eigVals[k])
+                volume *= semiAxis
+            }
+            return (volume * 3.0 / 4.0 / Math.PI).pow(1.0 / 3.0).toFloat()
         }
-        return (volume * 3.0 / 4.0 / Math.PI).pow(1.0 / 3.0).toFloat()
     }
 
     /** Debug function to help with aligning ellipsoids with the eigenvectors from the covariance matrix.
@@ -392,19 +396,6 @@ class SphereLinkNodes(
         return quaternion
     }
 
-    // stretch color channels
-    private fun Vector3f.stretchColor(): Vector3f {
-        this.x.coerceIn(0f, 1f)
-        this.y.coerceIn(0f, 1f)
-        this.z.coerceIn(0f, 1f)
-        val max = this.max()
-        return this + Vector3f(1 - max)
-    }
-
-    private fun Vector3f.toDoubleArray(): DoubleArray {
-        return this.toFloatArray().map { it.toDouble() }.toDoubleArray()
-    }
-
     /** Extension function that takes a spot and colors the corresponding instance according to the [colorizer]. */
     private fun InstancedNode.Instance.setColorFromSpot(
         s: Spot,
@@ -418,7 +409,7 @@ class SphereLinkNodes(
         }
         if (!isPartyMode) {
             if (!randomColors) {
-                val col = unpackRGB(intColor)
+                val col = intColor.unpackRGB()
                 this.instancedProperties["Color"] = { col }
             } else {
                 val col = Random.random3DVectorFromRange(0f, 1f).stretchColor()
@@ -446,21 +437,15 @@ class SphereLinkNodes(
      * It does that by filtering through the names of the spots.
      * @return either a [Spot] or null. */
     fun findSpotFromInstance(instance: InstancedNode.Instance): Spot? {
-        // TODO Refactor this to be faster with hashmaps instead of using strings
-        if (instance.name.startsWith("spot")) {
-            val name = instance.name.removePrefix("spot_")
-            val selectedSpot = visibleSpots.find { it.internalPoolIndex == name.toInt() }
-            return selectedSpot
-        } else {
-            return null
-        }
+        val spotIdx = instanceToSpotMap[instance] ?: return null
+        return visibleSpots.find { it.internalPoolIndex == spotIdx }
     }
 
     /** Tries to find a spot instance in the current time point for the given [spot].
      * It does that by filtering through the names of the instances, which contain the internalPoolIndex.
      * @return either an [InstancedNode.Instance] or null. */
     fun findInstanceFromSpot(spot: Spot): InstancedNode.Instance? {
-        return spotPool.find { it.name.removePrefix("spot_").toInt() == spot.internalPoolIndex }
+        return spotToInstanceMap[spot.internalPoolIndex]
     }
 
     /** Tries to find a link instance for the given [link].
@@ -544,10 +529,10 @@ class SphereLinkNodes(
 
     /** Iterates over all spots of a given timepoint [tp], checks whether there are overlapping spots and merges them. */
     fun mergeOverlappingSpots(tp: Int) {
-        updateQueue.offer {
+        enqueueUpdate("mergeOverlappingSpots(tp=$tp)") {
             val graph = mastodonData.model.graph
             mastodonData.model.setUndoPoint()
-            bridge.bdvNotifier?.lockUpdates = true
+            manvr3d.bdvNotifier?.lockUpdates = true
             val spatialIndex = mastodonData.model.spatioTemporalIndex.getSpatialIndex(tp)
             val queue = RefCollections.createRefDeque(graph.vertices())
             queue.addAll(spatialIndex)
@@ -574,7 +559,7 @@ class SphereLinkNodes(
             }
             mastodonData.model.graph.releaseRef(currentSpot)
             clearSelection()
-            bridge.bdvNotifier?.lockUpdates = false
+            manvr3d.bdvNotifier?.lockUpdates = false
         }
     }
 
@@ -582,7 +567,10 @@ class SphereLinkNodes(
      * Original spots will be removed from the graph and a new merged spot is created.
      * Positions and radii are averaged. */
     fun mergeSpots(spots: RefList<Spot>) {
-        bridge.bdvNotifier?.lockUpdates = true
+        if (spots.isEmpty()) {
+            return
+        }
+        manvr3d.bdvNotifier?.lockUpdates = true
         val graph = mastodonData.model.graph
         val sourceRef = graph.vertexRef()
         val targetRef = graph.vertexRef()
@@ -602,8 +590,6 @@ class SphereLinkNodes(
             .distinctBy { it.internalPoolIndex })
 
         // Accumulate positions and radii
-        logger.info("Merging spots ${spots.map { it.internalPoolIndex }}...")
-        logger.info("Incoming spots: $incomingSpots, outgoing spots: $outgoingSpots")
         spots.forEach { spot ->
             targetRef.refTo(spot)
             targetRef.localize(pos)
@@ -625,7 +611,7 @@ class SphereLinkNodes(
             targetRef.refTo(newSpot)
             val e = graph.addEdge(sourceRef, targetRef)
             e.init()
-            logger.info("Initialized edge $e with source $sourceRef and target $targetRef")
+            logger.debug("Initialized edge $e with source $sourceRef and target $targetRef")
         }
         // Outgoing edges
         outgoingSpots.forEach { spot ->
@@ -633,20 +619,21 @@ class SphereLinkNodes(
             targetRef.refTo(spot)
             val e = graph.addEdge(sourceRef, targetRef)
             e.init()
-            logger.info("Initialized edge $e with source $sourceRef and target $targetRef")
+            logger.debug("Initialized edge $e with source $sourceRef and target $targetRef")
         }
 
         // Remove all old spots
-        spots.forEach {
-            graph.remove(it)
+        spots.forEach { spot ->
+            sourceRef.refTo(spot)
+            graph.remove(sourceRef)
         }
-        logger.info("Newly merged spot now has incoming edges ${newSpot.incomingEdges().map { it.internalPoolIndex }}" +
-                "and outgoing edges ${newSpot.outgoingEdges().map { it.internalPoolIndex }}")
+        logger.debug("Newly merged spot now has incoming edges ${newSpot.incomingEdges().map { it.internalPoolIndex }}" +
+                " and outgoing edges ${newSpot.outgoingEdges().map { it.internalPoolIndex }}")
 
         graph.lock.writeLock().unlock()
         graph.releaseRef(sourceRef)
         graph.releaseRef(targetRef)
-        bridge.bdvNotifier?.lockUpdates = false
+        manvr3d.bdvNotifier?.lockUpdates = false
     }
 
     /** Extension function that allows setting [Spot] covariances via passing a [radius]. */
@@ -666,8 +653,8 @@ class SphereLinkNodes(
     val selectClosestSpotsVR: ((pos: Vector3f, tp: Int, radius: Float, addOnly: Boolean) -> Pair<Spot?, Boolean>) =
         { pos, tp, radius, addOnly ->
             val start = TimeSource.Monotonic.markNow()
-            val localPos = bridge.sciviewToMastodonCoords(pos)
-            val localRadius = bridge.sciviewToMastodonScale().max() * radius
+            val localPos = manvr3d.sciviewToMastodonCoords(pos)
+            val localRadius = manvr3d.sciviewToMastodonScale().max() * radius
             val spots = findSpotsInRange(tp, localPos, localRadius)
             // only proceed if we found at least one spot
             if (spots.isNotEmpty()) {
@@ -695,7 +682,7 @@ class SphereLinkNodes(
 
     private fun selectSpot(spot: Spot) {
         findInstanceFromSpot(spot)?.let {
-            bridge.selectedSpotInstances.add(it)
+            manvr3d.selectedSpotInstances.add(it)
             it.instancedProperties["Color"] = { selectedColor }
             it.instancedParent.updateInstanceBuffers()
             mastodonData.selectionModel.setSelected(spot, true)
@@ -704,7 +691,7 @@ class SphereLinkNodes(
 
     private fun deselectSpot(spot: Spot) {
         findInstanceFromSpot(spot)?.let {
-            bridge.selectedSpotInstances.remove(it)
+            manvr3d.selectedSpotInstances.remove(it)
             it.setColorFromSpot(spot, currentColorizer)
             mastodonData.selectionModel.setSelected(spot, false)
         }
@@ -713,8 +700,8 @@ class SphereLinkNodes(
 
     /** Deletes the currently selected Spots from the graph. */
     val deleteSpots: ((spots: RefSet<Spot>) -> Unit) = { spots ->
-        updateQueue.offer {
-            bridge.bdvNotifier?.lockUpdates = true
+        enqueueUpdate("deleteSpots(count=${spots.size})") {
+            manvr3d.bdvNotifier?.lockUpdates = true
             mastodonData.model.setUndoPoint()
             mastodonData.model.graph.lock.writeLock().lock()
             spots.forEach {
@@ -722,8 +709,8 @@ class SphereLinkNodes(
                 logger.debug("Deleted spot {}", it)
             }
             mastodonData.model.graph.lock.writeLock().unlock()
-            bridge.selectedSpotInstances.clear()
-            bridge.bdvNotifier?.lockUpdates = false
+            this@GeometryHandler.manvr3d.selectedSpotInstances.clear()
+            manvr3d.bdvNotifier?.lockUpdates = false
         }
     }
 
@@ -746,7 +733,7 @@ class SphereLinkNodes(
             logger.info("Trying to merge spot $nearestRef into $selectedRef")
             // Now that we found the nearest spot, let's merge it into the selected one
             nearestRef?.let {
-                bridge.bdvNotifier?.lockUpdates = true
+                manvr3d.bdvNotifier?.lockUpdates = true
                 val sourceRef = graph.vertexRef()
                 val targetRef = graph.vertexRef()
 
@@ -768,14 +755,14 @@ class SphereLinkNodes(
                     logger.debug("Merge event: added outgoing edge {}, deleted old edge {}", e, edge)
                 }
                 graph.remove(nearestRef)
-                bridge.bdvNotifier?.lockUpdates = false
+                manvr3d.bdvNotifier?.lockUpdates = false
                 graph.notifyGraphChanged()
             }
         }
     }
 
     fun clearSelection() {
-        bridge.selectedSpotInstances.clear()
+        manvr3d.selectedSpotInstances.clear()
         mastodonData.focusModel.focusVertex(null)
         mastodonData.selectionModel.clearSelection()
         mastodonData.highlightModel.clearHighlight()
@@ -884,13 +871,6 @@ class SphereLinkNodes(
         return sortedSpots
     }
 
-    /** Takes an integer-encoded RGB value and returns it as [Vector4f] where alpha is 1.0f. */
-    private fun unpackRGB(intColor: Int): Vector4f {
-        val r = (intColor shr 16 and 0x000000FF) / 255f
-        val g = (intColor shr 8 and 0x000000FF) / 255f
-        val b = (intColor and 0x000000FF) / 255f
-        return Vector4f(r, g, b, 1.0f)
-    }
 
     fun updateSphereInstanceScales() {
         val tStart = TimeSource.Monotonic.markNow()
@@ -905,13 +885,13 @@ class SphereLinkNodes(
         sphereScaleFactor -= 0.1f
         if (sphereScaleFactor < 0.1f) sphereScaleFactor = 0.1f
         updateSphereInstanceScales()
-        bridge.associatedUI?.updatePaneValues()
+        manvr3d.associatedUI?.updatePaneValues()
     }
 
     fun increaseSphereInstanceScale() {
         sphereScaleFactor += 0.1f
         updateSphereInstanceScales()
-        bridge.associatedUI?.updatePaneValues()
+        manvr3d.associatedUI?.updatePaneValues()
     }
 
     fun increaseLinkScale() {
@@ -932,10 +912,10 @@ class SphereLinkNodes(
 
     /** Shows or initializes the main links instance, publishes it to the scene and populates it with instances from the current Mastodon graph. */
     fun showInstancedLinks(
-        colorMode: ColorMode,
-        colorizer: GraphColorGenerator<Spot, Link>
+        colorMode: ColorMode = currentColorMode,
+        colorizer: GraphColorGenerator<Spot, Link> = currentColorizer
     ) {
-        updateQueue.offer {
+        enqueueUpdate("showInstancedLinks()") {
             val tStart = TimeSource.Monotonic.markNow()
 
             links.clear()
@@ -1062,25 +1042,23 @@ class SphereLinkNodes(
     /** Traverse and update the colors of all [links] using the provided color mode [cm].
      * When set to [ColorMode.SPOT], it uses the [colorizer] to get the spot colors. */
     fun updateLinkColors (
-        colorizer: GraphColorGenerator<Spot, Link>?,
-        cm: ColorMode =  currentColorMode
+        colorizer: GraphColorGenerator<Spot, Link>? = currentColorizer,
+        cm: ColorMode = currentColorMode
     ) {
         val start = TimeSource.Monotonic.markNow()
         when (cm) {
             LUT -> {
                 links.forEach {link ->
                     val factor = link.value.tp / numTimePoints.toDouble()
-                    val color = unpackRGB(lut.lookupARGB(0.0, 1.0, factor))
+                    val color = lut.lookupARGB(0.0, 1.0, factor).unpackRGB()
                     link.value.instance.instancedProperties["Color"] = { color }
                 }
             }
             SPOT -> {
                 if (colorizer != null) {
-                    for (tp in 0 .. numTimePoints) {
-                        val spots = mastodonData.model.spatioTemporalIndex.getSpatialIndex(tp)
-                        spots.forEach { spot ->
-                            links[spot.hashCode()]?.instance?.setColorFromSpot(spot, colorizer)
-                        }
+                    links.forEach { (edgeIdx, linkNode) ->
+                        // Color based on the target spot
+                        linkNode.instance.setColorFromSpot(linkNode.to, colorizer)
                     }
                 }
             }
@@ -1090,7 +1068,7 @@ class SphereLinkNodes(
         logger.debug("Updating link colors took ${end - start}.")
     }
 
-    fun updateLinkVisibility(currentTP: Int) {
+    fun updateSegmentVisibility(currentTP: Int) {
         links.forEach {link ->
             // turns the link on if it is within range, otherwise turns it off
             link.value.instance.visible = link.value.tp in currentTP - linkBackwardRange..currentTP + linkForwardRange
@@ -1098,26 +1076,40 @@ class SphereLinkNodes(
         mainLinkInstance?.updateInstanceBuffers()
     }
 
-    /** Passed as callback to sciview to send a list of vertices from sciview to Mastodon.
+    fun setSpotVisibility(state: Boolean) {
+        mainSpotInstance?.let {
+            it.visible = state
+            it.updateInstanceBuffers()
+        }
+    }
+
+    fun setTrackVisibility(state: Boolean)  {
+        mainLinkInstance?.let {
+            it.visible = state
+            it.updateInstanceBuffers()
+        }
+    }
+
+    /** Send a list of vertices from sciview to Mastodon.
      * If the boolean is true, the coordinates are in world space and will be converted to local Mastodon space first.
      * The first passed spot indicates that the user wants to start from an existing spot (aka clicked on it for starting the track).
      * The second spot is used to merge into existing spots. */
-    val addTrackToMastodon = fun(
+    fun addTrackToMastodon(
         list: List<Pair<Vector3f, SpineGraphVertex>>?,
         cursorRadius: Float,
         isWorldSpace: Boolean,
         startWithExisting: Spot?,
         mergeSpot: Spot?
     ) {
-        updateQueue.offer {
+        enqueueUpdate("addTrackToMastodon(points=${list?.size ?: trackPointList.size})") {
             val graph = mastodonData.model.graph
             var prevVertex = graph.vertexRef()
-            bridge.bdvNotifier?.lockUpdates = true
+            manvr3d.bdvNotifier?.lockUpdates = true
             // If the list isn't null, it was passed from eyetracking, and we have to treat it accordingly
             if (list != null) {
                 list.forEachIndexed { index, (pos, vertex) ->
                     val v = graph.addVertex()
-                    val r = (bridge.sciviewToMastodonScale().max() * cursorRadius).toDouble()
+                    val r = (manvr3d.sciviewToMastodonScale().max() * cursorRadius).toDouble()
                     v.init(vertex.timepoint, pos.toDoubleArray(), r)
                     logger.debug("added {}", v)
                     // start adding edges once the first vertex was added
@@ -1134,7 +1126,7 @@ class SphereLinkNodes(
                 var localRadius: Float
                 trackPointList.forEachIndexed { index, (pos, tp, pointRadius) ->
                     // Calculate the equivalent radius in Mastodon from the raw radius from the cursor in sciview scale
-                    localRadius = bridge.sciviewToMastodonScale().max() * pointRadius
+                    localRadius = manvr3d.sciviewToMastodonScale().max() * pointRadius
                     // If we reached the last spot in the list and a mergeSpot was passed, use it instead of the spot in the list
                     if (index == trackPointList.size - 1 && mergeSpot != null) {
                         graph.addEdge(mergeSpot, prevVertex)
@@ -1144,7 +1136,7 @@ class SphereLinkNodes(
                             v = startWithExisting
                         } else {
                             v = graph.addVertex()
-                            // val localPos = if (isWorldSpace) bridge.sciviewToMastodonCoords(pos) else pos
+                            // val localPos = if (isWorldSpace) manvr3d.sciviewToMastodonCoords(pos) else pos
                             v.init(tp, pos.toDoubleArray(), localRadius.toDouble())
                             logger.debug("added {}", v)
                         }
@@ -1159,7 +1151,7 @@ class SphereLinkNodes(
                 }
             }
             graph.releaseRef(prevVertex)
-            bridge.bdvNotifier?.lockUpdates = false
+            manvr3d.bdvNotifier?.lockUpdates = false
             // Once we send the new track to Mastodon, we can assume we no longer need the previews and can clear them
             mainLinkInstance?.instances?.removeAll(linkPreviewList.map { it.instance }.toSet())
             linkPreviewList.clear()
@@ -1173,8 +1165,8 @@ class SphereLinkNodes(
      * Takes the timepoint and the sciview position and a flag that determines whether to delete the whole branch.  */
     val addOrRemoveSpots: (tp: Int, sciviewPos: Vector3f, radius: Float, deleteBranch: Boolean, isWorldSpace: Boolean) -> Unit =
         { tp, sciviewPos, radius, deleteBranch, isWorldSpace ->
-        updateQueue.offer {
-            bridge.bdvNotifier?.lockUpdates = true
+            enqueueUpdate("addTrackToMastodon(tp=$tp)") {
+            manvr3d.bdvNotifier?.lockUpdates = true
             // Check if a spot is selected, and perform deletion if true
             val selected = mastodonData.selectionModel.selectedVertices
             if (!selected.isEmpty()) {
@@ -1199,27 +1191,27 @@ class SphereLinkNodes(
             } else {
                 // If no spot is selected, add a new one
                 val pos = if (isWorldSpace) {
-                    bridge.sciviewToMastodonCoords(sciviewPos)
+                    manvr3d.sciviewToMastodonCoords(sciviewPos)
                 } else {
                     sciviewPos
                 }
-                val bb = bridge.volumeNode.boundingBox
+                val bb = manvr3d.volumeNode.boundingBox
                 if (bb != null) {
                     if (bb.isInside(pos)) {
-                        val localRadius = bridge.sciviewToMastodonScale().max() * radius
+                        val localRadius = manvr3d.sciviewToMastodonScale().max() * radius
                         val v = mastodonData.model.graph.addVertex()
                         v.init(tp, pos.toDoubleArray(), localRadius.toDouble())
                         logger.info("Added new spot at position $pos, radius is $localRadius")
                         logger.debug("we now have ${mastodonData.model.graph.vertices().size} spots in total")
                     } else {
                         logger.warn("Not adding new spot, $pos is outside the volume!")
-                        bridge.flashBoundingGrid()
+                        manvr3d.flashVolumeGrid()
                     }
                 } else {
                     logger.warn("Not adding new spot, volume has no bounding box!")
                 }
             }
-            bridge.bdvNotifier?.lockUpdates = false
+            manvr3d.bdvNotifier?.lockUpdates = false
         }
     }
 
@@ -1261,14 +1253,13 @@ class SphereLinkNodes(
     /** Adds a single link instance to the scene for visual feedback during controller based tracking.
      * No data are sent to Mastodon yet, but we keep track of the points in local space in a [trackPointList]. */
     val addTrackedPoint: (pos: Vector3f, tp: Int, rawRadius: Float, preview: Boolean) -> Unit = { pos, tp, radius, preview ->
-        val localPos = bridge.sciviewToMastodonCoords(pos)
+        val localPos = manvr3d.sciviewToMastodonCoords(pos)
         // Once we tracked the first point, we can start adding link previews
         if (trackPointList.isNotEmpty() && mainLinkInstance != null) {
             val inst = mainLinkInstance!!.addInstance()
             val color = Vector4f(0.65f, 1f, 0.22f, 1f)
-//            val localFrom = bridge.sciviewToMastodonCoords(from)
+//            val localFrom = manvr3d.sciviewToMastodonCoords(from)
             inst.instancedProperties["Color"] = { color }
-            inst.name = "${tp}_${localPos}"
             inst.parent = linkParentNode
             inst.visible = preview
             setLinkTransform(trackPointList.last().first, localPos, inst)
@@ -1301,14 +1292,8 @@ class SphereLinkNodes(
         val v = value / 100.0f
 
         val rgbInt = Color.HSBtoRGB(h, s, v)
-        return unpackRGB(rgbInt)
+        return rgbInt.unpackRGB()
     }
 }
 
 data class LinkNode (val instance: InstancedNode.Instance, val from: Spot, val to: Spot, val tp: Int)
-
-/** This extension function pushes updated instance buffers to the GPU.
- * Without calling this function, instances will not update in the renderer. */
-fun InstancedNode.updateInstanceBuffers() {
-    this.metadata["MaxInstanceUpdateCount"] = AtomicInteger(1)
-}
