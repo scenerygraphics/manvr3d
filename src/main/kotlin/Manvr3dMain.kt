@@ -337,6 +337,7 @@ class Manvr3dMain: TimepointObserver {
         (neighborLinkingAction as NearestNeighborLinkingAction).run()
         // Revert to the previous TP
         tpAdapter.timepoint = currentTP
+        geometryHandler.showInstancedLinks()
         sciviewWin.camera?.showMessage("Linked nearest neighbors.", 2f, 0.2f, centered = true)
     }
 
