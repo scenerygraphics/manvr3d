@@ -84,8 +84,10 @@ class GeometryHandler(
     var linkForwardRange: Int
     var linkBackwardRange: Int
 
+    /** Allows finding a spot instance based on a spot pool index. */
     private val spotToInstanceMap = ConcurrentHashMap<Int, InstancedNode.Instance>()
-    private val instanceToSpotMap = ConcurrentHashMap<InstancedNode.Instance, Spot>()
+    /** Allows finding a spot pool index based on a spot instance. */
+    private val instanceToSpotMap = ConcurrentHashMap<InstancedNode.Instance, Int>()
 
     lateinit var currentColorizer: GraphColorGenerator<Spot, Link>
 
@@ -151,12 +153,25 @@ class GeometryHandler(
         logger.info("adding $number ${mainInstance.name} instances took ${TimeSource.Monotonic.markNow()-tStart}.")
     }
 
+    /** Helper method for safe enqueueing. Will drop tasks if the [updateQueue] exceeds its capacity (currently 100),
+     * unless [isCritical] was set to true. */
+    private fun enqueueUpdate(description: String, isCritical: Boolean = false, task: () -> Unit) {
+        if (!updateQueue.offer(task)) {
+            // Queue is full, now warn the user or execute if critical
+            if (isCritical) {
+                task.invoke()
+            } else {
+                logger.warn("Update queue full, dropping: $description")
+            }
+        }
+    }
+
     /** Shows or initializes the main spot instance, publishes it to the scene and populates it with instances from the current time-point. */
     fun showInstancedSpots(
         timepoint: Int,
         colorizer: GraphColorGenerator<Spot, Link>
     ) {
-        updateQueue.offer {
+        enqueueUpdate("showInstancedSpots(tp=$timepoint)") {
             currentColorizer = colorizer
             logger.debug("Called showInstancedSpots")
             val tStart = TimeSource.Monotonic.markNow()
@@ -270,7 +285,7 @@ class GeometryHandler(
                 }
 
                 spotToInstanceMap[vertexRef.internalPoolIndex] = inst
-                instanceToSpotMap[inst] = vertexRef
+                instanceToSpotMap[inst] = vertexRef.internalPoolIndex
 
                 index++
             }
@@ -441,8 +456,8 @@ class GeometryHandler(
      * It does that by filtering through the names of the spots.
      * @return either a [Spot] or null. */
     fun findSpotFromInstance(instance: InstancedNode.Instance): Spot? {
-        val spot = instanceToSpotMap[instance] ?: return null
-        return visibleSpots.find { it.internalPoolIndex == spot.internalPoolIndex }
+        val spotIdx = instanceToSpotMap[instance] ?: return null
+        return visibleSpots.find { it.internalPoolIndex == spotIdx }
     }
 
     /** Tries to find a spot instance in the current time point for the given [spot].
@@ -533,7 +548,7 @@ class GeometryHandler(
 
     /** Iterates over all spots of a given timepoint [tp], checks whether there are overlapping spots and merges them. */
     fun mergeOverlappingSpots(tp: Int) {
-        updateQueue.offer {
+        enqueueUpdate("mergeOverlappingSpots(tp=$tp)") {
             val graph = mastodonData.model.graph
             mastodonData.model.setUndoPoint()
             manvr3d.bdvNotifier?.lockUpdates = true
@@ -594,8 +609,6 @@ class GeometryHandler(
             .distinctBy { it.internalPoolIndex })
 
         // Accumulate positions and radii
-        logger.info("Merging spots ${spots.map { it.internalPoolIndex }}...")
-        logger.info("Incoming spots: $incomingSpots, outgoing spots: $outgoingSpots")
         spots.forEach { spot ->
             targetRef.refTo(spot)
             targetRef.localize(pos)
@@ -617,7 +630,7 @@ class GeometryHandler(
             targetRef.refTo(newSpot)
             val e = graph.addEdge(sourceRef, targetRef)
             e.init()
-            logger.info("Initialized edge $e with source $sourceRef and target $targetRef")
+            logger.debug("Initialized edge $e with source $sourceRef and target $targetRef")
         }
         // Outgoing edges
         outgoingSpots.forEach { spot ->
@@ -625,7 +638,7 @@ class GeometryHandler(
             targetRef.refTo(spot)
             val e = graph.addEdge(sourceRef, targetRef)
             e.init()
-            logger.info("Initialized edge $e with source $sourceRef and target $targetRef")
+            logger.debug("Initialized edge $e with source $sourceRef and target $targetRef")
         }
 
         // Remove all old spots
@@ -633,7 +646,7 @@ class GeometryHandler(
             sourceRef.refTo(spot)
             graph.remove(sourceRef)
         }
-        logger.info("Newly merged spot now has incoming edges ${newSpot.incomingEdges().map { it.internalPoolIndex }}" +
+        logger.debug("Newly merged spot now has incoming edges ${newSpot.incomingEdges().map { it.internalPoolIndex }}" +
                 " and outgoing edges ${newSpot.outgoingEdges().map { it.internalPoolIndex }}")
 
         graph.lock.writeLock().unlock()
@@ -706,7 +719,7 @@ class GeometryHandler(
 
     /** Deletes the currently selected Spots from the graph. */
     val deleteSpots: ((spots: RefSet<Spot>) -> Unit) = { spots ->
-        updateQueue.offer {
+        enqueueUpdate("deleteSpots(count=${spots.size})") {
             manvr3d.bdvNotifier?.lockUpdates = true
             mastodonData.model.setUndoPoint()
             mastodonData.model.graph.lock.writeLock().lock()
@@ -921,7 +934,7 @@ class GeometryHandler(
         colorMode: ColorMode = currentColorMode,
         colorizer: GraphColorGenerator<Spot, Link> = currentColorizer
     ) {
-        updateQueue.offer {
+        enqueueUpdate("showInstancedLinks()") {
             val tStart = TimeSource.Monotonic.markNow()
 
             links.clear()
@@ -1107,7 +1120,7 @@ class GeometryHandler(
         startWithExisting: Spot?,
         mergeSpot: Spot?
     ) {
-        updateQueue.offer {
+        enqueueUpdate("addTrackToMastodon(points=${list?.size ?: trackPointList.size})") {
             val graph = mastodonData.model.graph
             var prevVertex = graph.vertexRef()
             manvr3d.bdvNotifier?.lockUpdates = true
@@ -1171,7 +1184,7 @@ class GeometryHandler(
      * Takes the timepoint and the sciview position and a flag that determines whether to delete the whole branch.  */
     val addOrRemoveSpots: (tp: Int, sciviewPos: Vector3f, radius: Float, deleteBranch: Boolean, isWorldSpace: Boolean) -> Unit =
         { tp, sciviewPos, radius, deleteBranch, isWorldSpace ->
-        updateQueue.offer {
+            enqueueUpdate("addTrackToMastodon(tp=$tp)") {
             manvr3d.bdvNotifier?.lockUpdates = true
             // Check if a spot is selected, and perform deletion if true
             val selected = mastodonData.selectionModel.selectedVertices
