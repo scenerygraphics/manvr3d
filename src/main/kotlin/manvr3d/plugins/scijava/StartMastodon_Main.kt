@@ -1,4 +1,4 @@
-package plugins.scijava
+package manvr3d.plugins.scijava
 
 import graphics.scenery.SceneryBase
 import net.imagej.ImageJ

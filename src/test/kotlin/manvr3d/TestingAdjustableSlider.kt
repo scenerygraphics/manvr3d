@@ -1,6 +1,6 @@
-package org.mastodon.mamut
+package manvr3d
 
-import ui.AdjustableBoundsSlider
+import manvr3d.ui.AdjustableBoundsSlider
 import java.awt.GridBagConstraints
 import java.awt.GridBagLayout
 import javax.swing.JButton

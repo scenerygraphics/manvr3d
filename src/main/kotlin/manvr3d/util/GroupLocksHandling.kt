@@ -1,10 +1,10 @@
-package util
+package manvr3d.util
 
 import graphics.scenery.utils.lazyLogger
 import org.mastodon.app.ui.GroupLocksPanel
 import org.mastodon.grouping.GroupHandle
 import org.mastodon.mamut.ProjectModel
-import Manvr3dMain
+import manvr3d.Manvr3dMain
 import org.mastodon.mamut.model.Link
 import org.mastodon.mamut.model.Spot
 import org.mastodon.model.NavigationListener
@@ -63,7 +63,7 @@ class GroupLocksHandling(//controls sciview via this bridge obj
 
         override fun timepointChanged() {
             logger.debug("timepoint changed to ${myGroupHandle.getModel(projectModel.TIMEPOINT).timepoint}")
-            manvr3d.showTimepoint(myGroupHandle.getModel(projectModel.TIMEPOINT).timepoint)
+            manvr3d.goToTimepoint(myGroupHandle.getModel(projectModel.TIMEPOINT).timepoint)
         }
     }
 

@@ -1,4 +1,4 @@
-package ui
+package manvr3d.ui
 
 import bdv.ui.rangeslider.RangeSlider
 import net.miginfocom.swing.MigLayout

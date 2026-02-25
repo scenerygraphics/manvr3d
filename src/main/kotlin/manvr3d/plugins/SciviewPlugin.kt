@@ -1,6 +1,6 @@
-package plugins
+package manvr3d.plugins
 
-import Manvr3dMain
+import manvr3d.Manvr3dMain
 import org.scijava.command.Command
 import org.scijava.plugin.Menu
 import org.scijava.plugin.Plugin
@@ -58,12 +58,12 @@ class SciviewPlugin : Command {
 
     private fun collectRowsOfText(): Collection<Array<String?>> {
         val rows: MutableCollection<Array<String?>> = ArrayList(15)
-        rows.add(arrayOf(Manvr3dMain.key_DEC_SPH, Manvr3dMain.desc_DEC_SPH))
-        rows.add(arrayOf(Manvr3dMain.key_INC_SPH, Manvr3dMain.desc_INC_SPH))
-        rows.add(arrayOf(Manvr3dMain.key_PREV_TP, Manvr3dMain.desc_PREV_TP))
-        rows.add(arrayOf(Manvr3dMain.key_NEXT_TP, Manvr3dMain.desc_NEXT_TP))
-        rows.add(arrayOf(Manvr3dMain.key_CTRL_WIN, Manvr3dMain.desc_CTRL_WIN))
-        rows.add(arrayOf(Manvr3dMain.key_CTRL_INFO, Manvr3dMain.desc_CTRL_INFO))
+        rows.add(arrayOf(Manvr3dMain.Companion.key_DEC_SPH, Manvr3dMain.Companion.desc_DEC_SPH))
+        rows.add(arrayOf(Manvr3dMain.Companion.key_INC_SPH, Manvr3dMain.Companion.desc_INC_SPH))
+        rows.add(arrayOf(Manvr3dMain.Companion.key_PREV_TP, Manvr3dMain.Companion.desc_PREV_TP))
+        rows.add(arrayOf(Manvr3dMain.Companion.key_NEXT_TP, Manvr3dMain.Companion.desc_NEXT_TP))
+        rows.add(arrayOf(Manvr3dMain.Companion.key_CTRL_WIN, Manvr3dMain.Companion.desc_CTRL_WIN))
+        rows.add(arrayOf(Manvr3dMain.Companion.key_CTRL_INFO, Manvr3dMain.Companion.desc_CTRL_INFO))
         return rows
     }
 }

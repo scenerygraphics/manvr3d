@@ -1,8 +1,10 @@
-package org.mastodon.mamut
+package manvr3d
 
-import Manvr3dMain
 import graphics.scenery.utils.lazyLogger
 import mpicbg.spim.data.SpimDataException
+import org.mastodon.mamut.CloseListener
+import org.mastodon.mamut.MainWindow
+import org.mastodon.mamut.ProjectModel
 import org.mastodon.mamut.io.ProjectLoader
 import org.scijava.Context
 import sc.iview.SciView

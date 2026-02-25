@@ -1,4 +1,4 @@
-package analysis
+package manvr3d.analysis
 
 import graphics.scenery.utils.extensions.minus
 import graphics.scenery.utils.extensions.xyz
@@ -11,7 +11,7 @@ import org.joml.Matrix4f
 import org.joml.Quaternionf
 import org.joml.Vector3f
 import org.slf4j.LoggerFactory
-import util.SpineMetadata
+import manvr3d.util.SpineMetadata
 import java.io.File
 import kotlin.collections.iterator
 import kotlin.math.sqrt

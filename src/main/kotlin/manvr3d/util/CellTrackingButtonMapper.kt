@@ -1,4 +1,4 @@
-package util
+package manvr3d.util
 
 import graphics.scenery.controls.OpenVRHMD
 import graphics.scenery.controls.OpenVRHMD.OpenVRButton

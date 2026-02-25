@@ -1,4 +1,4 @@
-package ui
+package manvr3d.ui
 
 import java.awt.event.KeyEvent
 import java.awt.event.KeyListener
