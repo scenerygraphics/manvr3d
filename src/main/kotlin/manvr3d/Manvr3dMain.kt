@@ -1,5 +1,7 @@
 @file:Suppress("UNCHECKED_CAST")
 
+package manvr3d
+
 import bdv.viewer.Source
 import bdv.viewer.SourceAndConverter
 import graphics.scenery.*
@@ -46,10 +48,9 @@ import org.scijava.ui.behaviour.util.Actions
 import sc.iview.SciView
 import org.mastodon.mamut.ProjectModel
 import graphics.scenery.utils.TimepointObserver
-import vr.EyeTracking
-import util.GeometryHandler
-import vr.CellTrackingBase
-import java.util.Collections
+import manvr3d.util.GeometryHandler
+import manvr3d.vr.CellTrackingBase
+import manvr3d.vr.EyeTracking
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.Executors
 import java.util.concurrent.LinkedBlockingQueue
@@ -62,8 +63,16 @@ import kotlin.math.*
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.TimeSource
 
+/** Main class of Manvr3d. A [mastodon] instance is passed during construction, from which the volume data are taken.
+ * A sciview window ([sciviewWin]) is also passed to the constructor, into which manvr3d then constructs a 3D scene
+ * that consists of the volume data from Mastodon, plus instanced 3D geometry that represents the cell positions and
+ * trajectories, handled by a [geometryHandler].
+ * Manvr3d has strong VR interaction capabilities, e.g. controller-based cell track annotation and editing, handled
+ * through [vrTracking].
+ * Manvr3d also interfaces with the deep learning cell tracking model ELEPHANT, and allows the VR user to interact
+ * with the model training and prediction from within the VR environment. */
 class Manvr3dMain: TimepointObserver {
-    private val logger by lazyLogger(System.getProperty("scenery.LogLevel", "info"))
+    private val logger by lazyLogger()
     //data source stuff
     val mastodon: ProjectModel
     var sourceID = 0
@@ -102,7 +111,7 @@ class Manvr3dMain: TimepointObserver {
     //sink scene graph structuring nodes
     val axesParent: DataAxes
 
-    // Worker queue for async 3D updating
+    /** Worker queue for async updates of graph changes for Mastodon. */
     private val updateQueue = LinkedBlockingQueue<() -> Unit>(100)
     private val workerExecutor = Executors.newSingleThreadExecutor { thread ->
         Thread(thread, "GeometryHandlerUpdateWorker").apply { isDaemon = true }
@@ -161,6 +170,8 @@ class Manvr3dMain: TimepointObserver {
         volumeMipmapLevel: Int,
         targetSciviewWindow: SciView
     ) {
+
+        logger.debug("FIRST DEBUG LOG OF THE YEAR")
         mastodon = mastodonMainWindow
         sciviewWin = targetSciviewWindow
         sciviewWin.setPushMode(true)
@@ -214,7 +225,7 @@ class Manvr3dMain: TimepointObserver {
         }
 
         setMipmapLevel(this.volumeMipmapLevel)
-        setVolumeRanges(
+        prepareVolume(
             volumeNode,
             "Grays.lut",
             Vector3f(sceneScale),
@@ -386,18 +397,15 @@ class Manvr3dMain: TimepointObserver {
         stopAndDetachUI()
         deregisterKeyboardHandlers()
         logger.info("Manvr3d closing procedure: UI and keyboard handlers are removed now")
-//        sciviewWin.setActiveNode(axesParent)
-        logger.info("Manvr3d closing procedure: focus shifted away from our nodes")
         val updateGraceTime = 100L // in ms
         try {
             sciviewWin.deleteNode(volumeNode, true)
             logger.debug("Manvr3d closing procedure: red volume removed")
             Thread.sleep(updateGraceTime)
-//            sciviewWin.deleteNode(sphereParent, true)
             logger.debug("Manvr3d closing procedure: spots were removed")
-        } catch (e: InterruptedException) { /* do nothing */
+        } catch (e: InterruptedException) {
+            logger.error("Error during the manvr3d closing procedure: ${e.message}")
         }
-//        sciviewWin.deleteNode(axesParent, true)
     }
 
     /** Convert a [Vector3f] from sciview space into Mastodon's voxel coordinate space,
@@ -449,25 +457,24 @@ class Manvr3dMain: TimepointObserver {
 
     /** Adds a volume to the sciview scene, scales it by [scale], adjusts the transfer function to a ramp from [0, 0] to [1, 1]
      * and sets the node children visibility to false. */
-    private fun setVolumeRanges(
-        v: Volume?,
+    private fun prepareVolume(
+        v: Volume,
         colorMapName: String,
         scale: Vector3f,
         displayRangeMin: Float,
         displayRangeMax: Float
     ) {
-        v?.let {
-            sciviewWin.setColormap(it, colorMapName)
-            it.spatial().scale = scale
-            it.minDisplayRange = displayRangeMin
-            it.maxDisplayRange = displayRangeMax
-            val tf = TransferFunction()
-            tf.addControlPoint(0f, 0f)
-            tf.addControlPoint(1f, 0.5f)
-            it.transferFunction = tf
-            //make Bounding Box Grid invisible
-            it.children.forEach { n: Node -> n.visible = false }
-        }
+        sciviewWin.setColormap(v, colorMapName)
+        v.spatial().scale = scale
+        v.minDisplayRange = displayRangeMin
+        v.maxDisplayRange = displayRangeMax
+        val tf = TransferFunction()
+        tf.addControlPoint(0f, 0f)
+        tf.addControlPoint(1f, 0.5f)
+        v.transferFunction = tf
+        //make Bounding Box Grid invisible
+        v.children.forEach { n: Node -> n.visible = false }
+
     }
 
     /** We backup the current contrast/min/max values so that we can revert back if we toggle off the auto intensity */
@@ -480,6 +487,7 @@ class Manvr3dMain: TimepointObserver {
 
         if (isVolumeAutoAdjust) {
             var maxVal = 0.0f
+            // Always use the smallest available mipmap level for calculation to prevent lag on large datasets
             val srcImg = spimSource.getSource(0, spimSource.numMipmapLevels - 1) as RandomAccessibleInterval<UnsignedShortType>
             Views.iterable(srcImg).forEach { px -> maxVal = maxVal.coerceAtLeast(px.realFloat) }
             intensity.clampTop = 0.9f * maxVal //very fake 90% percentile...
@@ -549,8 +557,9 @@ class Manvr3dMain: TimepointObserver {
 
         updateSciviewContent()
         bdvNotifier = BdvNotifier(
-            { updateSciviewContent() },
+            { tp -> goToTimepoint(tp) },
             { updateSciviewCameraFromBDV() },
+            { updateSciviewContent() },
             moveSpotInSciview as (Spot?) -> Unit,
             {
                 geometryHandler.showInstancedLinks(geometryHandler.currentColorMode, currentColorizer)
@@ -592,18 +601,20 @@ class Manvr3dMain: TimepointObserver {
 
     /** Calls [updateSciviewTimepointFromBDV] and [GeometryHandler.showInstancedSpots] to update the current volume and corresponding spots. */
     fun updateSciviewContent() {
+        logger.debug("updateSciviewContent called")
         volumeNode.goToTimepoint(currentTimepoint)
         geometryHandler.showInstancedSpots(currentTimepoint, currentColorizer)
         geometryHandler.updateSegmentVisibility(currentTimepoint)
         geometryHandler.updateLinkColors(currentColorizer)
     }
 
-    /** Uses the current [bdvWinParamsProvider] to update the sciview spots of the current timepoint. */
+    /** Update only the sciview spots of the current timepoint. */
     fun redrawSciviewSpots() {
+        logger.debug("redrawSciviewSpots called")
         geometryHandler.showInstancedSpots(currentTimepoint, currentColorizer)
     }
 
-    /** Rebuild all geometry on the sciview side for the default [bdvWinParamsProvider]. */
+    /** Rebuild all geometry on the sciview side for the current timepoint. */
     fun rebuildGeometry() {
         logger.debug("Called rebuildGeometryCallback")
         geometryHandler.showInstancedSpots(currentTimepoint, currentColorizer)
@@ -616,8 +627,8 @@ class Manvr3dMain: TimepointObserver {
         bdvWindow.viewerPanelMamut.state().currentTimepoint = tp
     }
 
-    /** Update the sciview content based on the timepoint from the BDV window.
-     * Returns true if the content was updated. */
+    /** Update the sciview timepoint based on the timepoint from the BDV window.
+     * Returns true if the timepoint was updated. */
     @JvmOverloads
     fun updateSciviewTimepointFromBDV(force: Boolean = false): Boolean {
         if (updateVolAutomatically || force) {
@@ -631,6 +642,7 @@ class Manvr3dMain: TimepointObserver {
         return false
     }
 
+    /** Synchronizes the viewing direction from BDV to the sciview camera. */
     private fun updateSciviewCameraFromBDV() {
         // Let's not move the camera around when the user is in VR
         if (isVRactive) {
@@ -650,6 +662,7 @@ class Manvr3dMain: TimepointObserver {
         camSpatial.position = sciviewWin.camera?.forward!!.normalize().mul(-1f * dist)
     }
 
+    /** Toggles the volume visibility while maintaining the visibility state of the spot/link children. */
     fun setVolumeOnlyVisibility(state: Boolean) {
         val spots = geometryHandler.mainSpotInstance
         val spotVis = spots?.visible ?: false
@@ -671,10 +684,14 @@ class Manvr3dMain: TimepointObserver {
         volumeNode.multiResolutionLevelLimits = level to level + 1
     }
 
-    fun showTimepoint(timepoint: Int) {
+    /** Go to a specified timepoint and update the sciview content accordingly. */
+    fun goToTimepoint(timepoint: Int) {
+        setTimepoint(timepoint)
         geometryHandler.clearSelection()
         updateSciviewContent()
-        vrTracking.volumeTimepointWidget.text = currentTimepoint.toString()
+        if (isVRactive) {
+            vrTracking.volumeTimepointWidget.text = currentTimepoint.toString()
+        }
     }
 
     private fun registerKeyboardHandlers() {
@@ -718,11 +735,9 @@ class Manvr3dMain: TimepointObserver {
                     logger.debug("selected instance {}", selectedSpotInstances)
                     selectedSpotInstances.forEach { s ->
                         geometryHandler.selectSpot2D(s)
-                        geometryHandler.showInstancedSpots(currentTimepoint, currentColorizer)
                     }
                 } else {
                     geometryHandler.clearSelection()
-                    geometryHandler.showInstancedSpots(currentTimepoint, currentColorizer)
                 }
             }
         )
@@ -937,7 +952,7 @@ class Manvr3dMain: TimepointObserver {
             else -> timepoint
         })
         updateBDV_TimepointFromSciview(currentTimepoint)
-        showTimepoint(currentTimepoint)
+        goToTimepoint(currentTimepoint)
     }
 
     /** Quickly flashes the volume's bounding grid to indicate the borders of the volume. */

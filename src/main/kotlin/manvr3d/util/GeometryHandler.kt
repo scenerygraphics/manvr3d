@@ -1,4 +1,4 @@
-package util
+package manvr3d.util
 
 import graphics.scenery.*
 import graphics.scenery.attribute.material.DefaultMaterial
@@ -24,18 +24,16 @@ import org.mastodon.collection.RefCollections
 import org.mastodon.collection.RefList
 import org.mastodon.collection.RefSet
 import org.mastodon.mamut.ProjectModel
-import Manvr3dMain
+import manvr3d.Manvr3dMain
 import org.mastodon.mamut.model.Link
 import org.mastodon.mamut.model.Spot
 import org.mastodon.spatial.SpatialIndex
 import org.mastodon.ui.coloring.GraphColorGenerator
-import org.mastodon.views.bdv.overlay.util.JamaEigenvalueDecomposition
 import org.scijava.event.EventService
 import sc.iview.SciView
-import analysis.HedgehogAnalysis.SpineGraphVertex
+import manvr3d.analysis.HedgehogAnalysis.SpineGraphVertex
+import kotlinx.coroutines.joinAll
 import spim.fiji.spimdata.interestpoints.InterestPoint
-import util.GeometryHandler.ColorMode.LUT
-import util.GeometryHandler.ColorMode.SPOT
 import java.awt.Color
 import java.lang.Math
 import java.util.*
@@ -52,7 +50,7 @@ import kotlin.time.TimeSource
  * It handles initialization, updates and actions like addition, deletion and movement of spots.
  * @param sv The sciview instance to use.
  * @param manvr3d An instance of manvr3d.
- * @param updateQueue Queue that executues scene updates sequentially in its own thread.
+ * @param updateQueue Queue that executes scene updates sequentially in its own thread.
  * @param mastodonData Instance of the Mastodon ProjectModel
  * @param sphereParentNode Parent node for the instanced spheres
  * @param linkParentNode Parent node for the instanced links */
@@ -119,6 +117,7 @@ class GeometryHandler(
      * - [SPOT] uses the spot color from the connected spot */
     enum class ColorMode { LUT, SPOT }
 
+    /** Allocates a [number] of instances to a [pool] that are part of [mainInstance]. */
     private fun addMoreInstances(
         mainInstance: InstancedNode,
         number: Int = 10000,
@@ -149,7 +148,7 @@ class GeometryHandler(
             }
 
             // Wait for all jobs to complete
-            jobs.forEach { it.join() }
+            jobs.joinAll()
         }
 
         logger.info("adding $number ${mainInstance.name} instances took ${TimeSource.Monotonic.markNow()-tStart}.")
@@ -486,6 +485,26 @@ class GeometryHandler(
         }
     }
 
+    /** Given an existing spot, find the closest neighbor in the Mastodon graph. */
+    private fun findNearestSpot(spot: Spot): Spot? {
+        val spatialIndex = mastodonData.model.spatioTemporalIndex.getSpatialIndex(spot.timepoint)
+        if (spatialIndex.size() > 1) {
+            val spotSearch = spatialIndex.incrementalNearestNeighborSearch
+            spotSearch.search(spot)
+            var found = spotSearch.next()
+            // We don't want to accidentally loop forever
+            var safetyIndex = 0
+            // Grab the first spot that is not the spot itself, since it tends to be the first result
+            while (spot == found && safetyIndex < 10) {
+                found = spotSearch.next()
+                safetyIndex++
+            }
+            return found
+        } else {
+            return null
+        }
+    }
+
     /** Returns a list of all spots within the given [radius] around the [origin] in the current [timepoint]. */
     private fun findSpotsInRange(timepoint: Int, origin: Vector3f, radius: Float): RefList<Spot> {
         val spots = RefCollections.createRefList(mastodonData.model.graph.vertices())
@@ -505,26 +524,6 @@ class GeometryHandler(
             }
         }
         return spots
-    }
-
-    /** Given an existing spot, find the closest neighbor in the Mastodon graph. */
-    private fun findNearestSpot(spot: Spot): Spot? {
-        val spatialIndex = mastodonData.model.spatioTemporalIndex.getSpatialIndex(spot.timepoint)
-        if (spatialIndex.size() > 1) {
-            val spotSearch = spatialIndex.incrementalNearestNeighborSearch
-            spotSearch.search(spot)
-            var found = spotSearch.next()
-            // We don't want to accidentally loop forever
-            var safetyIndex = 0
-            // Grab the first spot that is not the spot itself, since it tends to be the first result
-            while (spot == found && safetyIndex < 10) {
-                found = spotSearch.next()
-                safetyIndex++
-            }
-            return found
-        } else {
-            return null
-        }
     }
 
     /** Iterates over all spots of a given timepoint [tp], checks whether there are overlapping spots and merges them. */
@@ -711,53 +710,6 @@ class GeometryHandler(
             mastodonData.model.graph.lock.writeLock().unlock()
             this@GeometryHandler.manvr3d.selectedSpotInstances.clear()
             manvr3d.bdvNotifier?.lockUpdates = false
-        }
-    }
-
-    /** This lambda is used to handle merge events. If the user clicked on an existing spot during controller tracking,
-     * they want to merge into it. The clicked spot will be the selected one,
-     * and the to-be-merged spot is (hopefully) right next to it. */
-    val mergeSelectedToClosestSpot: (() -> Unit) = fun() {
-        if (mastodonData.selectionModel.selectedVertices.size > 0) {
-            val graph = mastodonData.model.graph
-            val selectedRef = graph.vertexRef()
-            val nearestRef = graph.vertexRef()
-            selectedRef.refTo(mastodonData.selectionModel.selectedVertices.first())
-            val nearest = findNearestSpot(selectedRef)
-            if (nearest != null) {
-                nearestRef.refTo(nearest)
-            } else {
-                logger.warn("Nearest spot is null, can't merge!")
-                return
-            }
-            logger.info("Trying to merge spot $nearestRef into $selectedRef")
-            // Now that we found the nearest spot, let's merge it into the selected one
-            nearestRef?.let {
-                manvr3d.bdvNotifier?.lockUpdates = true
-                val sourceRef = graph.vertexRef()
-                val targetRef = graph.vertexRef()
-
-                val incoming = nearestRef.incomingEdges() + selectedRef.incomingEdges()
-                incoming.forEach { edge ->
-                    sourceRef.refTo(edge.source)
-                    graph.remove(edge)
-                    val e = graph.addEdge(sourceRef, selectedRef)
-                    e.init()
-                    logger.debug("Merge event: added incoming edge {}, deleted old edge {}", e, edge)
-                }
-
-                val outgoing = nearestRef.outgoingEdges() + selectedRef.outgoingEdges()
-                outgoing.forEach { edge ->
-                    targetRef.refTo(edge.target)
-                    graph.remove(edge)
-                    val e = graph.addEdge(selectedRef, targetRef)
-                    e.init()
-                    logger.debug("Merge event: added outgoing edge {}, deleted old edge {}", e, edge)
-                }
-                graph.remove(nearestRef)
-                manvr3d.bdvNotifier?.lockUpdates = false
-                graph.notifyGraphChanged()
-            }
         }
     }
 
@@ -1047,14 +999,14 @@ class GeometryHandler(
     ) {
         val start = TimeSource.Monotonic.markNow()
         when (cm) {
-            LUT -> {
+            ColorMode.LUT -> {
                 links.forEach {link ->
                     val factor = link.value.tp / numTimePoints.toDouble()
                     val color = lut.lookupARGB(0.0, 1.0, factor).unpackRGB()
                     link.value.instance.instancedProperties["Color"] = { color }
                 }
             }
-            SPOT -> {
+            ColorMode.SPOT -> {
                 if (colorizer != null) {
                     links.forEach { (edgeIdx, linkNode) ->
                         // Color based on the target spot
