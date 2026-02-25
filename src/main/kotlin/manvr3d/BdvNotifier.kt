@@ -1,3 +1,5 @@
+package manvr3d
+
 import bdv.viewer.TimePointListener
 import bdv.viewer.TransformListener
 import graphics.scenery.utils.lazyLogger
@@ -19,24 +21,26 @@ import java.beans.PropertyChangeListener
  * A shortcut reference (to the underlying Mastodon data that the BDV window
  * operates over) must be provided.
  *
- * @param updateTimepointProcessor  handler of the scene rebuilding event
- * @param updateViewProcessor  handler of the scene viewing-angle event
- * @param updateVertexProcessor handler of individual spot updates
+ * @param updateTimepointProcessor  handler for switching and rebuilding timepoints
+ * @param updateViewProcessor  handler for the scene viewing-angle event
+ * @param updateContentProcessor handler for
+ * @param updateVertexProcessor handler for individual spot updates
  * @param updateGraphProcessor handler that rebuilds the whole graph
  * @param mastodon  the underlying Mastodon data
  * @param bdvWindow  BDV window that operates on the underlying Mastodon data
  */
 class BdvNotifier(
-    updateTimepointProcessor: Runnable,
+    updateTimepointProcessor: (Int) -> Unit,
     updateViewProcessor: Runnable,
+    updateContentProcessor: Runnable,
     updateVertexProcessor: (Spot?) -> Unit,
     updateGraphProcessor: Runnable,
-    mastodon: ProjectModel,
-    bdvWindow: MamutViewBdv,
+    val mastodon: ProjectModel,
+    val bdvWindow: MamutViewBdv,
     // Don't trigger updates while a vertex is being moved from the sciview side
     var lockUpdates: Boolean = false
 ) {
-    private val logger by lazyLogger(System.getProperty("scenery.LogLevel", "info"))
+    private val logger by lazyLogger()
     var movedSpot: Spot? = null
 
     init {
@@ -47,8 +51,13 @@ class BdvNotifier(
         //the most recent data if no updates came from BDV for a little while
         //(this is _delayed_ handling of the data, skipping over any intermediate changes)
         val cumulatingEventsHandlerThread = BdvEventsCatcherThread(
-            bdvUpdateListener, 10,
-            updateTimepointProcessor, updateViewProcessor, updateVertexProcessor, updateGraphProcessor
+            bdvUpdateListener,
+            10,
+            updateTimepointProcessor,
+            updateContentProcessor,
+            updateViewProcessor,
+            updateVertexProcessor,
+            updateGraphProcessor
         )
 
         //register the BDV listener and start the thread
@@ -74,8 +83,7 @@ class BdvNotifier(
     }
 
     /**
-     * This class only registers timestamp of the most recently occurred relevant BDV/Mastodon event, it recognized
-     * two types of events: events requiring scene camera repositioning, and events requiring scene content rebuild. */
+     * This class only registers timestamp of the most recently occurred relevant BDV/Mastodon events. */
     internal inner class BdvEventsWatcher(val thisBDV: MamutViewBdv, val mastodon: ProjectModel) :
         TransformListener<AffineTransform3D?>,
         TimePointListener, GraphChangeListener, VertexPositionListener<Spot>, PropertyChangeListener, FocusListener,
@@ -88,17 +96,21 @@ class BdvNotifier(
         }
         override fun vertexPositionChanged(vertex: Spot) {
             logger.debug("called vertexChanged")
-            vertexChanged(vertex)
+            timeStampOfLastEvent = System.currentTimeMillis()
+            isLastVertexEventValid = true
+            movedSpot = vertex
         }
 
         override fun transformChanged(affineTransform3D: AffineTransform3D?) {
             logger.debug("called transformChanged")
-            viewChanged()
+            timeStampOfLastEvent = System.currentTimeMillis()
+            isLastViewEventValid = true
         }
 
         override fun timePointChanged(timePointIndex: Int) {
             logger.debug("called timePointChanged")
-            contentChanged()
+            timeStampOfLastEvent = System.currentTimeMillis()
+            isLastTimepointEventValid = true
         }
 
         override fun focusChanged() {
@@ -120,17 +132,6 @@ class BdvNotifier(
             timeStampOfLastEvent = System.currentTimeMillis()
             isLastContentEventValid = true
             mastodon.model.setUndoPoint()
-        }
-
-        fun viewChanged() {
-            timeStampOfLastEvent = System.currentTimeMillis()
-            isLastViewEventValid = true
-        }
-
-        fun vertexChanged(vertex: Spot) {
-            timeStampOfLastEvent = System.currentTimeMillis()
-            isLastVertexEventValid = true
-            movedSpot = vertex
         }
 
         override fun graphRebuilt() {
@@ -158,6 +159,7 @@ class BdvNotifier(
         var isLastVertexEventValid = false
         var isLastViewEventValid = false
         var isLastGraphEventValid = false
+        var isLastTimepointEventValid = false
         var timeStampOfLastEvent: Long = 0
     }
 
@@ -176,7 +178,8 @@ class BdvNotifier(
     internal inner class BdvEventsCatcherThread(
         val eventsSource: BdvEventsWatcher,
         val updateInterval: Long,
-        val timepointProcessor: Runnable,
+        val timepointProcessor: (Int) -> Unit,
+        val contentProcessor: Runnable,
         val viewEventProcessor: Runnable,
         val vertexEventProcessor: (Spot?) -> Unit,
         val graphEventProcessor: Runnable
@@ -198,7 +201,7 @@ class BdvNotifier(
                         if (eventsSource.isLastContentEventValid) {
                             logger.debug("$SERVICE_NAME: content event and silence detected -> processing it now")
                             eventsSource.isLastContentEventValid = false
-                            timepointProcessor.run()
+                            contentProcessor.run()
                         }
                         if (eventsSource.isLastViewEventValid) {
                             logger.debug("$SERVICE_NAME: view event and silence detected -> processing it now")
@@ -214,6 +217,12 @@ class BdvNotifier(
                             logger.debug("$SERVICE_NAME: graph event and silence detected -> processing it now")
                             eventsSource.isLastGraphEventValid = false
                             graphEventProcessor.run()
+                        }
+                        if (eventsSource.isLastTimepointEventValid) {
+                            logger.debug("$SERVICE_NAME: timepoint event and silence detected -> processing it now")
+                            val tp = bdvWindow.groupHandle.getModel(mastodon.TIMEPOINT).timepoint
+                            eventsSource.isLastTimepointEventValid = false
+                            timepointProcessor.invoke(tp)
                         }
                     } else sleep(updateInterval / 10)
                 }
