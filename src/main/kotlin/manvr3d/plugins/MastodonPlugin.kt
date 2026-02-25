@@ -25,8 +25,9 @@
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-package plugins
+package manvr3d.plugins
 
+import manvr3d.plugins.scijava.MastodonSidePlugin
 import org.mastodon.app.ui.ViewMenuBuilder
 import org.mastodon.mamut.ProjectModel
 import org.mastodon.mamut.plugin.MamutPlugin
@@ -40,7 +41,6 @@ import org.scijava.ui.behaviour.io.gui.CommandDescriptions
 import org.scijava.ui.behaviour.util.AbstractNamedAction
 import org.scijava.ui.behaviour.util.Actions
 import org.scijava.ui.behaviour.util.RunnableAction
-import plugins.scijava.MastodonSidePlugin
 
 @Plugin(type = MamutPlugin::class)
 class MastodonPlugin : AbstractContextual(), MamutPlugin {

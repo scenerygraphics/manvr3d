@@ -2,10 +2,10 @@ package org.mastodon.mamut.ui
 
 import graphics.scenery.utils.lazyLogger
 import net.miginfocom.swing.MigLayout
-import Manvr3dMain
-import ui.AdjustableBoundsRangeSlider
-import util.GroupLocksHandling
-import util.GeometryHandler
+import manvr3d.Manvr3dMain
+import manvr3d.ui.AdjustableBoundsRangeSlider
+import manvr3d.util.GroupLocksHandling
+import manvr3d.util.GeometryHandler
 import java.awt.event.ActionListener
 import javax.swing.JButton
 import javax.swing.JCheckBox

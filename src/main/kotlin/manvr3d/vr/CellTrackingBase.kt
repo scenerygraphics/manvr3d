@@ -1,6 +1,6 @@
-package vr
+package manvr3d.vr
 
-import Manvr3dMain
+import manvr3d.Manvr3dMain
 import graphics.scenery.*
 import graphics.scenery.attribute.material.Material
 import graphics.scenery.controls.*
@@ -21,15 +21,14 @@ import org.mastodon.mamut.model.Spot
 import org.scijava.ui.behaviour.ClickBehaviour
 import org.scijava.ui.behaviour.DragBehaviour
 import sc.iview.SciView
-import analysis.HedgehogAnalysis.SpineGraphVertex
+import manvr3d.analysis.HedgehogAnalysis.SpineGraphVertex
 import graphics.scenery.controls.behaviours.MultiButtonManager
 import graphics.scenery.controls.behaviours.VR2HandNodeTransform
 import graphics.scenery.controls.behaviours.VRGrabTheWorld
 import graphics.scenery.utils.TimepointObservable
-import org.checkerframework.checker.units.qual.m
-import util.CellTrackingButtonMapper
-import util.GeometryHandler
-import util.SpineMetadata
+import manvr3d.util.GeometryHandler
+import manvr3d.util.SpineMetadata
+import manvr3d.util.CellTrackingButtonMapper
 import java.io.BufferedWriter
 import java.io.FileWriter
 import java.nio.file.Path

@@ -1,7 +1,6 @@
-package vr
+package manvr3d.vr
 
-import Manvr3dMain
-import graphics.scenery.Scene
+import manvr3d.Manvr3dMain
 import graphics.scenery.controls.OpenVRHMD
 import graphics.scenery.controls.TrackedDeviceType
 import graphics.scenery.controls.TrackerRole

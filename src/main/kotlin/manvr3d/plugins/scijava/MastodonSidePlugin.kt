@@ -1,9 +1,9 @@
-package plugins.scijava
+package manvr3d.plugins.scijava
 
 import graphics.scenery.utils.lazyLogger
 import org.mastodon.mamut.CloseListener
 import org.mastodon.mamut.ProjectModel
-import Manvr3dMain
+import manvr3d.Manvr3dMain
 import org.scijava.command.Command
 import org.scijava.command.CommandService
 import org.scijava.command.DynamicCommand

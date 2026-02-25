@@ -1,4 +1,4 @@
-package util
+package manvr3d.util
 
 import org.joml.Quaternionf
 import org.joml.Vector3f

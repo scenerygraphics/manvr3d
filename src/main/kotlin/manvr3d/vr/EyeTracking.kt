@@ -1,6 +1,6 @@
-package vr
+package manvr3d.vr
 
-import Manvr3dMain
+import manvr3d.Manvr3dMain
 import graphics.scenery.BoundingGrid
 import graphics.scenery.Box
 import graphics.scenery.BufferUtils
@@ -13,9 +13,6 @@ import graphics.scenery.controls.eyetracking.PupilEyeTracker
 import graphics.scenery.primitives.Cylinder
 import graphics.scenery.primitives.TextBoard
 import graphics.scenery.textures.Texture
-import graphics.scenery.ui.Button
-import graphics.scenery.ui.Column
-import graphics.scenery.ui.ToggleButton
 import graphics.scenery.utils.SystemHelpers
 import graphics.scenery.utils.extensions.minus
 import graphics.scenery.utils.extensions.plus
@@ -35,9 +32,9 @@ import org.joml.Vector3i
 import org.joml.Vector4f
 import org.scijava.ui.behaviour.ClickBehaviour
 import sc.iview.SciView
-import analysis.HedgehogAnalysis
-import util.GeometryHandler
-import util.SpineMetadata
+import manvr3d.analysis.HedgehogAnalysis
+import manvr3d.util.GeometryHandler
+import manvr3d.util.SpineMetadata
 import java.awt.image.DataBufferByte
 import java.io.ByteArrayInputStream
 import java.nio.file.Files

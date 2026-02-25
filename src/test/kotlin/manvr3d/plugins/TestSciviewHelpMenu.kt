@@ -1,6 +1,6 @@
-package org.mastodon.mamut.plugins
+package manvr3d.plugins
 
-import plugins.SciviewPlugin
+import manvr3d.plugins.SciviewPlugin
 
 object TestSciviewHelpMenu {
     @JvmStatic
