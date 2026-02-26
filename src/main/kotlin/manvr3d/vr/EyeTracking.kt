@@ -21,7 +21,7 @@ import graphics.scenery.utils.extensions.xyz
 import graphics.scenery.utils.extensions.xyzw
 import graphics.scenery.utils.gaussSmoothing
 import graphics.scenery.utils.localMaxima
-import graphics.scenery.utils.toVector3f
+import graphics.scenery.utils.extensions.toVector3f
 import net.imglib2.type.numeric.integer.UnsignedByteType
 import org.apache.commons.math3.ml.clustering.Clusterable
 import org.apache.commons.math3.ml.clustering.DBSCANClusterer

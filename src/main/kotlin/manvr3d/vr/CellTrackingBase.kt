@@ -23,7 +23,7 @@ import org.scijava.ui.behaviour.DragBehaviour
 import sc.iview.SciView
 import manvr3d.analysis.HedgehogAnalysis.SpineGraphVertex
 import graphics.scenery.controls.behaviours.MultiButtonManager
-import graphics.scenery.controls.behaviours.VR2HandNodeTransform
+import graphics.scenery.controls.behaviours.VRTwoHandNodeTransform
 import graphics.scenery.controls.behaviours.VRGrabTheWorld
 import graphics.scenery.utils.TimepointObservable
 import manvr3d.util.GeometryHandler
@@ -571,7 +571,7 @@ open class CellTrackingBase(
         buttonMapper.setKeyBindAndBehavior(hmd, "radiusDecrease", scaleCursorOrSpotsDown)
 
         /** Local class that handles double assignment of the left A key which is used to cycle menus as well as
-         * reset the rotation when pressed while the [VR2HandNodeTransform] is active. */
+         * reset the rotation when pressed while the [VRTwoHandNodeTransform] is active. */
         class CycleMenuAndLockAxisBehavior(val button: OpenVRHMD.OpenVRButton, val role: TrackerRole)
             : DragBehaviour {
             fun registerConfig() {
@@ -675,7 +675,7 @@ open class CellTrackingBase(
             1.5f
         )
 
-        VR2HandNodeTransform.createAndSet(
+        VRTwoHandNodeTransform.createAndSet(
             hmd,
             OpenVRHMD.OpenVRButton.Side,
             sciview.currentScene,
