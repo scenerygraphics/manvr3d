@@ -241,7 +241,7 @@ class EyeTracking(
             eyeTrackingActive = !eyeTrackingActive
         }
 
-        buttonMapper.setKeyBindAndBehavior(hmd, "eyeTracking", toggleTracking)
+        buttonMapper.mapper.bind(hmd, "eyeTracking", toggleTracking)
     }
 
     private fun calibrateEyeTrackers(force: Boolean = false) {
