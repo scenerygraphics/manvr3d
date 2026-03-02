@@ -8,9 +8,15 @@
 
 ### Changed
 
+- Major refactoring of codebase and connections between scenery, sciview and manvr3d ([#29](https://github.com/scenerygraphics/manvr3d/pull/29))
+- Improved spot selection and draw performance by using bidirectional hashmaps and caches ([#29](https://github.com/scenerygraphics/manvr3d/pull/29))
+
 ### Fixed
 
-- fix timepoint widget not showing text inside volumes
+- Fix timepoint widget not showing text inside volumes ([#29](https://github.com/scenerygraphics/manvr3d/pull/29))
+- Optimize geometry redraw calls (remove hidden double redraws) ([#29](https://github.com/scenerygraphics/manvr3d/pull/29))
+- Make spot merging more robust ([#29](https://github.com/scenerygraphics/manvr3d/pull/29)
+- Fix position of timepoint when predicting single timepoints ([#29](https://github.com/scenerygraphics/manvr3d/pull/29)))
 
 ## [0.3] - 2026-01-29
 

@@ -212,6 +212,9 @@ class HedgehogAnalysis(val spines: List<SpineMetadata>, val localToWorld: Matrix
 
 		fun zScore(value: Float, m: Float, sd: Float) = ((value - m)/sd)
 
+		// The following is commented out because these pruning steps as described in bionic tracking are not compatible
+		// with Mastodon in the sense that Mastodon requires a vertex per timepoint for a track
+
 		//step4: if some path is longer than multiple average length, it should be removed
 		// TODO Don't remove vertices along the path, as that doesn't translate well to Mastodon tracks. Find a different way?
 //		while (shortestPath.any { it.distance() >= removeTooFarThreshold * avgPathLength }) {
