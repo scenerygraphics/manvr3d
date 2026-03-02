@@ -18,7 +18,7 @@ import javax.swing.SpinnerModel
 import javax.swing.SpinnerNumberModel
 import javax.swing.event.ChangeListener
 
-class Manvr3dUIMig(manvr3dContext: Manvr3dMain, populateThisContainer: JPanel) {
+class Manvr3dWindowLayout(manvr3dContext: Manvr3dMain, populateThisContainer: JPanel) {
     var manvr3dContext: Manvr3dMain?
     val windowPanel: JPanel
     private val logger by lazyLogger(System.getProperty("scenery.LogLevel", "info"))
@@ -55,9 +55,9 @@ class Manvr3dUIMig(manvr3dContext: Manvr3dMain, populateThisContainer: JPanel) {
 
         // MIPMAP Level
         mipmapSpinner = addLabeledSpinner("Choose Mipmap Level", SpinnerNumberModel(0, 0, 6, 1)) { level ->
-            this@Manvr3dUIMig.manvr3dContext?.setMipmapLevel(level.toInt())
+            this@Manvr3dWindowLayout.manvr3dContext?.setMipmapLevel(level.toInt())
         }
-        this@Manvr3dUIMig.manvr3dContext?.let {
+        this@Manvr3dWindowLayout.manvr3dContext?.let {
             setMaxMipmapLevel(it.spimSource.numMipmapLevels - 1)
         }
 
@@ -270,7 +270,7 @@ class Manvr3dUIMig(manvr3dContext: Manvr3dMain, populateThisContainer: JPanel) {
         visToggleSpots.removeActionListener(toggleSpotsVisibility)
         visToggleVols.removeActionListener(toggleVolumeVisibility)
         autoIntensityBtn.removeActionListener(autoAdjustIntensity)
-        this@Manvr3dUIMig.manvr3dContext = null
+        this@Manvr3dWindowLayout.manvr3dContext = null
 
     }
 

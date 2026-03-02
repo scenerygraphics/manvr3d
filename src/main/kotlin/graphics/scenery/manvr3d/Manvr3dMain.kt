@@ -34,7 +34,7 @@ import org.mastodon.adapter.TimepointModelAdapter
 import org.mastodon.collection.RefCollections
 import org.mastodon.mamut.model.Link
 import org.mastodon.mamut.model.Spot
-import org.mastodon.mamut.ui.Manvr3dUIMig
+import org.mastodon.mamut.ui.Manvr3dWindowLayout
 import org.mastodon.mamut.views.bdv.MamutViewBdv
 import org.mastodon.model.tag.TagSetStructure
 import org.mastodon.ui.coloring.DefaultGraphColorGenerator
@@ -138,7 +138,7 @@ class Manvr3dMain: TimepointObserver {
         get() = getCurrentColorizer(bdvWindow)
 
     var moveSpotInSciview: (Spot?) -> Unit?
-    var associatedUI: org.mastodon.mamut.ui.Manvr3dUIMig? = null
+    var associatedUI: org.mastodon.mamut.ui.Manvr3dWindowLayout? = null
     var uiFrame: JFrame? = null
     private var isRunning = true
     var isVRactive = false
@@ -982,7 +982,7 @@ class Manvr3dMain: TimepointObserver {
             val panel = JPanel()
             add(panel)
             setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE)
-            associatedUI = Manvr3dUIMig(this@Manvr3dMain, panel)
+            associatedUI = Manvr3dWindowLayout(this@Manvr3dMain, panel)
             pack()
             isVisible = true
         }
