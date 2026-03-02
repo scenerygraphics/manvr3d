@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+### Removed
+
+### Changed
+
+### Fixed
+
+- fix timepoint widget not showing text inside volumes
+
 ## [0.3] - 2026-01-29
 
 ### Added
