@@ -35,7 +35,6 @@ import org.mastodon.collection.RefCollections
 import org.mastodon.mamut.model.Link
 import org.mastodon.mamut.model.Spot
 import org.mastodon.mamut.ui.Manvr3dUIMig
-import org.mastodon.mamut.util.DataAxes
 import org.mastodon.mamut.views.bdv.MamutViewBdv
 import org.mastodon.model.tag.TagSetStructure
 import org.mastodon.ui.coloring.DefaultGraphColorGenerator
@@ -170,8 +169,6 @@ class Manvr3dMain: TimepointObserver {
         volumeMipmapLevel: Int,
         targetSciviewWindow: SciView
     ) {
-
-        logger.debug("FIRST DEBUG LOG OF THE YEAR")
         mastodon = mastodonMainWindow
         sciviewWin = targetSciviewWindow
         sciviewWin.setPushMode(true)
@@ -287,7 +284,7 @@ class Manvr3dMain: TimepointObserver {
 
     /** Predict spots with ELEPHANT. If [predictAll] is true, all timepoints will be predicted.
      * Otherwise, just the current timepoint will be predicted. */
-    fun preditSpots(predictAll: Boolean) {
+    fun predictSpots(predictAll: Boolean) {
         if (predictSpotsAction == null) {
             predictSpotsAction = pluginActions.actionMap.get("[elephant] predict spots")
         }

@@ -109,11 +109,12 @@ open class CellTrackingBase(
         sciview.toggleVRRendering(resolutionScale = resolutionScale)
         hmd = sciview.hub.getWorkingHMD() as? OpenVRHMD ?: throw IllegalStateException("Could not find headset")
 
-        // Try to load the correct button mapping corresponding to the controller layout
-        val isProfileLoaded = buttonMapper.loadProfile(hmd.manufacturer)
-        if (!isProfileLoaded) {
-            throw IllegalStateException("Could not load profile, headset type unknown!")
+        // Load profile for this headset
+        if (!buttonMapper.loadProfileForHMD(hmd)) {
+            logger.warn("Failed to load controller profile")
+            return
         }
+
         val shell = Box(Vector3f(20.0f, 20.0f, 20.0f), insideNormals = true)
         shell.ifMaterial {
             cullingMode = Material.CullingMode.Front
@@ -277,8 +278,8 @@ open class CellTrackingBase(
                 when (mode) {
                     ElephantMode.StageSpots -> manvr3d.stageSpots()
                     ElephantMode.TrainAll -> manvr3d.trainSpots()
-                    ElephantMode.PredictTP -> manvr3d.preditSpots(false)
-                    ElephantMode.PredictAll -> manvr3d.preditSpots(true)
+                    ElephantMode.PredictTP -> manvr3d.predictSpots(false)
+                    ElephantMode.PredictAll -> manvr3d.predictSpots(true)
                     ElephantMode.NNLinking -> manvr3d.linkNearestNeighbors()
                 }
                 lastButtonTime = buttonTime
@@ -447,14 +448,17 @@ open class CellTrackingBase(
     {
         val cam = sciview.camera ?: throw IllegalStateException("Could not find camera")
 
+        val mapper = buttonMapper.mapper
+
+        // Get the existing movement behaviors from sciview and map them to the VR controllers
         sciview.sceneryInputHandler?.let { handler ->
-            listOf(
-                "move_forward_fast",
-                "move_back_fast",
-                "move_left_fast",
-                "move_right_fast").forEach { name ->
+            mapOf(
+                buttonMapper.MOVE_FORWARD to "move_forward_fast",
+                buttonMapper.MOVE_BACKWARD to "move_back_fast",
+                buttonMapper.MOVE_LEFT to "move_left_fast",
+                buttonMapper.MOVE_RIGHT to "move_right_fast").forEach { (binding, name) ->
                 handler.getBehaviour(name)?.let { behaviour ->
-                    buttonMapper.setKeyBindAndBehavior(hmd, name, behaviour)
+                    mapper.bind(hmd, binding, behaviour)
                 }
             }
         }
@@ -563,12 +567,12 @@ open class CellTrackingBase(
                 )
             })
 
-        buttonMapper.setKeyBindAndBehavior(hmd, "stepFwd", nextTimepoint)
-        buttonMapper.setKeyBindAndBehavior(hmd, "stepBwd", prevTimepoint)
+        mapper.bind(hmd, buttonMapper.STEP_FWD, nextTimepoint)
+        mapper.bind(hmd, buttonMapper.STEP_BWD, prevTimepoint)
 
-        buttonMapper.setKeyBindAndBehavior(hmd, "playback", playPause)
-        buttonMapper.setKeyBindAndBehavior(hmd, "radiusIncrease", scaleCursorOrSpotsUp)
-        buttonMapper.setKeyBindAndBehavior(hmd, "radiusDecrease", scaleCursorOrSpotsDown)
+        mapper.bind(hmd, buttonMapper.PLAYBACK, playPause)
+        mapper.bind(hmd, buttonMapper.RADIUS_INCREASE, scaleCursorOrSpotsUp)
+        mapper.bind(hmd, buttonMapper.RADIUS_DECREASE, scaleCursorOrSpotsDown)
 
         /** Local class that handles double assignment of the left A key which is used to cycle menus as well as
          * reset the rotation when pressed while the [VRTwoHandNodeTransform] is active. */
@@ -593,10 +597,10 @@ open class CellTrackingBase(
         val leftAButtonBehavior = CycleMenuAndLockAxisBehavior(OpenVRHMD.OpenVRButton.A, TrackerRole.LeftHand)
         leftAButtonBehavior.let {
             it.registerConfig()
-            buttonMapper.setKeyBindAndBehavior(hmd, "cycleMenu", it)
+            mapper.bind(hmd, buttonMapper.CYCLE_MENU, it)
         }
 
-        buttonMapper.setKeyBindAndBehavior(hmd, "controllerTracking", trackCellsWithController)
+        mapper.bind(hmd, buttonMapper.CONTROLLER_TRACKING, trackCellsWithController)
 
         /** Several behaviors mapped per default to the right menu button. If controller tracking is active,
          * end the tracking. If not, clicking will either create or delete a spot, depending on whether the user
@@ -638,7 +642,7 @@ open class CellTrackingBase(
             }
         }
 
-        buttonMapper.setKeyBindAndBehavior(hmd, "addDeleteReset", AddDeleteResetBehavior())
+        mapper.bind(hmd, "addDeleteReset", AddDeleteResetBehavior())
 
         class DragSelectBehavior: DragBehaviour {
             var time = System.currentTimeMillis()
@@ -661,7 +665,7 @@ open class CellTrackingBase(
             }
         }
 
-        buttonMapper.setKeyBindAndBehavior(hmd, "select", DragSelectBehavior())
+        mapper.bind(hmd, "select", DragSelectBehavior())
 
         // this behavior is needed for touching the menu buttons
         VRTouch.createAndSet(sciview.currentScene, hmd, listOf(TrackerRole.RightHand), false, customTip = cursor.cursor)
