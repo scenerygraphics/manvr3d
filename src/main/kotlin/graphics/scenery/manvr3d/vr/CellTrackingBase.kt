@@ -74,7 +74,7 @@ open class CellTrackingBase(
 
     private lateinit var lightTetrahedron: List<PointLight>
 
-    val volumeTimepointWidget = TextBoard()
+    val volumeTimepointWidget = TextBoard(inFront = true)
 
     /** determines whether the volume and hedgehogs should keep listening for updates or not */
     var cellTrackingActive: Boolean = false
