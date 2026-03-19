@@ -1,15 +1,12 @@
 # Changelog
 
-## Unreleased
-
-### Added
-
-### Removed
+## [0.3.1] - 2026-03-19
 
 ### Changed
 
 - Major refactoring of codebase and connections between scenery, sciview and manvr3d ([#29](https://github.com/scenerygraphics/manvr3d/pull/29))
-- Improved spot selection and draw performance by using bidirectional hashmaps and caches ([#29](https://github.com/scenerygraphics/manvr3d/pull/29))
+- Improve spot selection and draw performance by using bidirectional hashmaps and caches ([#29](https://github.com/scenerygraphics/manvr3d/pull/29))
+- log level can now be changed with `-Dorg.slf4j.simpleLogger.log.manvr3d=debug` (in manvr3d.args in ./bin)
 
 ### Fixed
 
