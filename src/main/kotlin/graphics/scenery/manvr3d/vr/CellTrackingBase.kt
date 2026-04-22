@@ -375,10 +375,29 @@ open class CellTrackingBase(
 
 
         leftWristMenu.addColumn("Toggle Menu")
-        leftWristMenu.addToggleButton("Toggle Menu", "Volume off", "Volume on", command = {
-            val state = volume.visible
-            manvr3d.setVolumeOnlyVisibility(!state)
-        }, color = color, pressedColor = pressedColor, touchingColor = touchingColor, defaultState = true)
+
+        val decTransparencyBtn = Button(
+            " - ", command = {
+                manvr3d.shiftVolumeTransparency(delta = -0.1f)
+            }, byTouch = true, depressDelay = 250,
+            defaultColor = color, pressedColor = pressedColor, touchingColor = touchingColor
+        )
+
+        val incTransparencyBtn = Button(
+            " + ", command = {
+                manvr3d.shiftVolumeTransparency(delta = 0.1f)
+            }, byTouch = true, depressDelay = 250,
+            defaultColor = color, pressedColor = pressedColor, touchingColor = touchingColor
+        )
+
+        val volumeToggleBtn = ToggleButton(
+            "Volume off", "Volume on", command = {
+                val state = volume.visible
+                manvr3d.setVolumeOnlyVisibility(!state)
+            }, defaultColor = color, pressedColor = pressedColor, touchingColor = touchingColor, default = true)
+
+        leftWristMenu.addRow("Toggle Menu", volumeToggleBtn, decTransparencyBtn, incTransparencyBtn)
+
         leftWristMenu.addToggleButton("Toggle Menu", "Tracks off", "Tracks on",
             command = {
                 trackVisibility = !trackVisibility
