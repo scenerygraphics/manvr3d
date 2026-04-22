@@ -476,8 +476,10 @@ class Manvr3dMain: TimepointObserver {
 
     /** Shifts the transparency of the last control point in the transfer function of a volume [v] by [delta]. */
     fun shiftVolumeTransparency(v: Volume = volumeNode, delta: Float) {
-        val current = v.transferFunction.controlPoints().last().value
-        v.transferFunction.controlPoints().last().value = (current + delta).coerceIn(0f, 1f)
+        val tf = TransferFunction()
+        tf.addControlPoint(0f, 0f)
+        tf.addControlPoint(1f, v.transferFunction.controlPoints().last().factor + delta)
+        v.transferFunction = tf
     }
 
     /** We backup the current contrast/min/max values so that we can revert back if we toggle off the auto intensity */

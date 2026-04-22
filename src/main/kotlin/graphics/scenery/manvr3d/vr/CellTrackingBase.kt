@@ -394,7 +394,7 @@ open class CellTrackingBase(
             "Volume off", "Volume on", command = {
                 val state = volume.visible
                 manvr3d.setVolumeOnlyVisibility(!state)
-            }, defaultColor = color, pressedColor = pressedColor, touchingColor = touchingColor, default = true)
+            }, byTouch = true, defaultColor = color, pressedColor = pressedColor, touchingColor = touchingColor, default = true)
 
         leftWristMenu.addRow("Toggle Menu", volumeToggleBtn, decTransparencyBtn, incTransparencyBtn)
 
