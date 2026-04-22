@@ -703,6 +703,11 @@ class Manvr3dMain: TimepointObserver {
 
         val handler = sciviewWin.sceneryInputHandler ?: throw IllegalStateException("Could not find input handler!")
 
+        // Ctrl+Scroll moves nodes forward/backward, but we can't easily hook a child update routine to the parent node update,
+        // so we remove the keybinding instead (the spot/track instances don't inherit parent transforms per default)
+        handler.removeKeyBinding("node: move selected one closer or further away")
+        handler.removeBehaviour("node: move selected one closer or further away")
+
         val behaviourCollection = arrayOf(
             BehaviourTriple(desc_DEC_SPH, key_DEC_SPH, { _, _ -> geometryHandler.decreaseSphereInstanceScale(); updateUI() }),
             BehaviourTriple(desc_INC_SPH, key_INC_SPH, { _, _ -> geometryHandler.increaseSphereInstanceScale(); updateUI() }),
