@@ -687,7 +687,7 @@ open class CellTrackingBase(
         mapper.bind(hmd, "select", DragSelectBehavior())
 
         // this behavior is needed for touching the menu buttons
-        VRTouch.createAndSet(sciview.currentScene, hmd, listOf(TrackerRole.RightHand), false, customTip = cursor.cursor)
+        VRTouch.createAndSet(sciview.currentScene, hmd, listOf(TrackerRole.RightHand), false, customTip = cursor.cursorSphere)
 
         VRGrabTheWorld.createAndSet(
             sciview.currentScene,
