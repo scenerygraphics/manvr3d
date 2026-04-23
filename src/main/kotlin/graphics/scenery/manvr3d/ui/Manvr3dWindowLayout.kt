@@ -225,6 +225,7 @@ class Manvr3dWindowLayout(manvr3dContext: Manvr3dMain, populateThisContainer: JP
         val spots = manvr3dContext.volumeNode.getChildrenByName("SpotInstance").first()
         val newState = !spots.visible
         spots.visible = newState
+        manvr3dContext.isSpotVisible = newState
     }
     val toggleVolumeVisibility = ActionListener {
         val newState = !manvr3dContext.volumeNode.visible
@@ -234,6 +235,7 @@ class Manvr3dWindowLayout(manvr3dContext: Manvr3dMain, populateThisContainer: JP
         val links = manvr3dContext.volumeNode.getChildrenByName("LinkInstance").first()
         val newState = !links.visible
         links.visible = newState
+        manvr3dContext.isTrackVisible = newState
     }
 
     val autoAdjustIntensity = ActionListener {

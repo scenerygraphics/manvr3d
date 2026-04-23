@@ -36,7 +36,6 @@ import org.mastodon.mamut.model.Link
 import org.mastodon.mamut.model.Spot
 import org.mastodon.mamut.ui.Manvr3dWindowLayout
 import org.mastodon.mamut.views.bdv.MamutViewBdv
-import org.mastodon.model.tag.TagSetStructure
 import org.mastodon.ui.coloring.DefaultGraphColorGenerator
 import org.mastodon.ui.coloring.GraphColorGenerator
 import org.mastodon.ui.coloring.TagSetGraphColorGenerator
@@ -126,7 +125,7 @@ class Manvr3dMain: TimepointObserver {
     var selectedSpotInstances = CopyOnWriteArrayList<InstancedNode.Instance>()
     // the event watcher for BDV, needed here for the lock handling to prevent BDV from
     // triggering the event watcher while a spot is edited in Sciview
-    var bdvNotifier: graphics.scenery.manvr3d.BdvNotifier? = null
+    var bdvNotifier: BdvNotifier? = null
     lateinit var bdvWindow: MamutViewBdv
     var currentTimepoint: Int = 0
         private set
@@ -134,8 +133,9 @@ class Manvr3dMain: TimepointObserver {
         private set
     var maxTimepoint: Int = 0
         private set
-    val currentColorizer: GraphColorGenerator<Spot, Link>
-        get() = getCurrentColorizer(bdvWindow)
+
+    val noTSColorizer = DefaultGraphColorGenerator<Spot, Link>()
+    var currentColorizer: GraphColorGenerator<Spot, Link> = noTSColorizer
 
     var moveSpotInSciview: (Spot?) -> Unit?
     var associatedUI: org.mastodon.mamut.ui.Manvr3dWindowLayout? = null
@@ -149,6 +149,11 @@ class Manvr3dMain: TimepointObserver {
     var defaultVolumePosition: Vector3f
     var defaultVolumeScale: Vector3f
     var defaultVolumeRotation: Quaternionf
+
+    // This is mostly to store the states before temporarily enabling/disabling visibilities during dataset movement
+    var isVolumeVisible = true
+    var isTrackVisible = true
+    var isSpotVisible = true
 
     lateinit var vrTracking: graphics.scenery.manvr3d.vr.CellTrackingBase
 
@@ -259,12 +264,11 @@ class Manvr3dMain: TimepointObserver {
 
         pluginActions = mastodon.plugins.pluginActions
 
-
         openSyncedBDV()
-
-        registerKeyboardHandlers()
+        setColorizer(bdvWindow)
 
         submitToTaskExecutor()
+        registerKeyboardHandlers()
     }
 
     val eventService: EventService?
@@ -555,7 +559,8 @@ class Manvr3dMain: TimepointObserver {
         volumeIntensityProcessing(srcImg)
     }
 
-    /** Create a BDV window and launch a [BdvNotifier] instance to synchronize time point and viewing direction. */
+    /** Create a BDV window and launch a [BdvNotifier] instance to synchronize timepoint and viewing direction,
+     * as well as update handling for changes in color, vertices or the graph. */
     fun openSyncedBDV() {
         bdvWindow = mastodon.windowManager.createView(MamutViewBdv::class.java)
         bdvWindow.frame.setTitle("BDV linked to ${sciviewWin.getName()}")
@@ -570,26 +575,28 @@ class Manvr3dMain: TimepointObserver {
                 geometryHandler.showInstancedLinks(geometryHandler.currentColorMode, currentColorizer)
                 geometryHandler.showInstancedSpots(currentTimepoint, currentColorizer)
             },
+            {
+                logger.info("ColoringProcessor was triggered")
+                setColorizer(bdvWindow, true)
+            },
             mastodon,
             bdvWindow
         )
     }
 
-    private var recentTagSet: TagSetStructure.TagSet? = null
-    var recentColorizer: GraphColorGenerator<Spot, Link>? = null
-    val noTSColorizer = DefaultGraphColorGenerator<Spot, Link>()
-
-    private fun getCurrentColorizer(forThisBdv: MamutViewBdv): GraphColorGenerator<Spot, Link> {
-        //NB: trying to avoid re-creating of new TagSetGraphColorGenerator objs with every new content rendering
+    private fun setColorizer(forThisBdv: MamutViewBdv, updateGeometry: Boolean = false) {
         val ts = forThisBdv.coloringModel.tagSet
-        if (ts != null) {
-            if (ts !== recentTagSet) {
-                recentColorizer = TagSetGraphColorGenerator(mastodon.model.tagSetModel, ts)
-                recentTagSet = ts
-            }
-            return recentColorizer!!
+        logger.info("Set colorizer to tag set $ts")
+        currentColorizer = if (ts != null) {
+            TagSetGraphColorGenerator(mastodon.model.tagSetModel, ts)
+        } else {
+            noTSColorizer
         }
-        return noTSColorizer
+        if (updateGeometry) {
+            logger.info("SetColorizer is updating geometry now")
+            geometryHandler.showInstancedSpots(currentTimepoint, currentColorizer)
+            geometryHandler.updateLinkColors(currentColorizer)
+        }
     }
 
     fun setTimepoint(tp: Int) {
