@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.4-snapshot]
+
+### Added
+
+- Add +/- buttons to quickly adjust volume transparency inside VR ([#30](https://github.com/scenerygraphics/manvr3d/pull/30))
+
+### Removed
+
+- Disable Ctrl-Scroll behavior from sciview in manvr3d, as this would cause the volume to shift forward/backward without the 3D instances to inherit the transformation ([#30](https://github.com/scenerygraphics/manvr3d/pull/30))
+
+
+### Changed
+
+
+### Fixed
+- Moving the dataset is now possible when the volume is invisible (it will be turned visible for the duration of the transformation) ([#30](https://github.com/scenerygraphics/manvr3d/pull/30))
+- Using cosmetic spot scaling now also influences the apparent size of the cursor, making it consistent ([#30](https://github.com/scenerygraphics/manvr3d/pull/30), [#823](https://github.com/scenerygraphics/scenery/pull/823)) 
+- Link colors update immediately on color mode changes ([#30](https://github.com/scenerygraphics/manvr3d/pull/30))
+- Link colors now properly reflect the assigned tag sets ([#30](https://github.com/scenerygraphics/manvr3d/pull/30))
+- Moving the dataset now respects the user-defined track visibility window ([#30](https://github.com/scenerygraphics/manvr3d/pull/30)
+
+
 ## [0.3.1] - 2026-03-19
 
 ### Changed
