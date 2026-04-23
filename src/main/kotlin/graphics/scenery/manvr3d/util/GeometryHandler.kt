@@ -93,6 +93,17 @@ class GeometryHandler(
 
     private var selectedColor = Vector4f(1f, 0.25f, 0.25f, 1f)
 
+    data class LinkNode (val instance: InstancedNode.Instance, val link: Link, val tp: Int)
+
+    data class LinkPreview( val instance: InstancedNode.Instance, val from: Vector3f, val to: Vector3f , val tp: Int)
+
+    /** This list is populated point by point during the controller tracking. Each point contains the position, timepoint and radius. */
+    val trackPointList = mutableListOf<Triple<Vector3f, Int, Float>>()
+    val linkPreviewList = mutableListOf<LinkPreview>()
+    val linkSize = 2.0
+    // list of all link segments
+    var links: ConcurrentHashMap<Int, LinkNode> = ConcurrentHashMap()
+
     init {
         events = sv.scijavaContext?.getService(EventService::class.java)
         numTimePoints = mastodonData.maxTimepoint
@@ -173,8 +184,13 @@ class GeometryHandler(
         colorizer: GraphColorGenerator<Spot, Link>
     ) {
         enqueueUpdate("showInstancedSpots(tp=$timepoint)") {
+            // Skip the rest if spots aren't visible
+            if (!manvr3d.isSpotVisible) {
+                return@enqueueUpdate
+            }
+
             currentColorizer = colorizer
-            logger.debug("Called showInstancedSpots")
+            logger.info("Called showInstancedSpots")
             val tStart = TimeSource.Monotonic.markNow()
             // only create and add the main instance once during initialization
             if (mainSpotInstance == null) {
@@ -868,8 +884,16 @@ class GeometryHandler(
         colorizer: GraphColorGenerator<Spot, Link> = currentColorizer
     ) {
         enqueueUpdate("showInstancedLinks()") {
+            // Skip the rest if links aren't visible
+            if (!manvr3d.isTrackVisible) {
+                return@enqueueUpdate
+            }
+
             val tStart = TimeSource.Monotonic.markNow()
 
+            links.forEach {
+                mastodonData.model.graph.releaseRef(it.value.link)
+            }
             links.clear()
             if (mainLinkInstance == null) {
                 cylinder.setMaterial(
@@ -916,8 +940,6 @@ class GeometryHandler(
                 // otherwise create a new instance and add it to the pool
                 else {
                     inst = mainLink.addInstance()
-//                inst.addAttribute(Material::class.java, cylinder.material())
-                    inst.parent = linkParentNode
                     linkPool.add(inst)
                 }
 
@@ -929,7 +951,7 @@ class GeometryHandler(
                 inst.name = "${edge.internalPoolIndex}"
                 inst.parent = linkParentNode
                 // add a new key-value pair to the hash map
-                links[edge.internalPoolIndex] = LinkNode(inst, from, to, to.timepoint)
+                links[edge.internalPoolIndex] = LinkNode(inst, graph.edgeRef().refTo(edge), to.timepoint)
 
                 index++
             }
@@ -941,9 +963,8 @@ class GeometryHandler(
             while (i < linkPool.size) {
                 linkPool[i++].visible = false
             }
-
+            // treat link previews (placeholders during tracking) separately
             linkPreviewList.forEach { link ->
-
                 setLinkTransform(link.from, link.to, link.instance)
             }
 
@@ -952,10 +973,10 @@ class GeometryHandler(
             val end = TimeSource.Monotonic.markNow()
 
             logger.debug("Edge traversel took ${end - start}.")
-            // first update the link colors without providing a colorizer, because no BDV window has been opened yet
-            updateLinkColors(colorizer)
 
-            mainLink.updateInstanceBuffers()
+            updateLinkColors(currentColorizer)
+            updateSegmentVisibility(manvr3d.currentTimepoint)
+//            mainLink.updateInstanceBuffers()
 
             val tElapsed = TimeSource.Monotonic.markNow() - tStart
             logger.debug("Total link updates (with coloring) took $tElapsed")
@@ -1000,24 +1021,31 @@ class GeometryHandler(
         val start = TimeSource.Monotonic.markNow()
         when (cm) {
             ColorMode.LUT -> {
-                links.forEach {link ->
-                    val factor = link.value.tp / numTimePoints.toDouble()
+                links.forEach { (edgeIdx, linkNode) ->
+                    val factor = linkNode.tp / numTimePoints.toDouble()
                     val color = lut.lookupARGB(0.0, 1.0, factor).unpackRGB()
-                    link.value.instance.instancedProperties["Color"] = { color }
+                    linkNode.instance.instancedProperties["Color"] = { color }
                 }
             }
             ColorMode.SPOT -> {
                 if (colorizer != null) {
+                    var link: Link
                     links.forEach { (edgeIdx, linkNode) ->
                         // Color based on the target spot
-                        linkNode.instance.setColorFromSpot(linkNode.to, colorizer)
+                        link = linkNode.link
+                        var intColor = colorizer.color(link, link.source, link.target)
+                        if (intColor == 0x00000000) {
+                            intColor = DEFAULT_COLOR
+                        }
+                        val col = intColor.unpackRGB()
+                        linkNode.instance.instancedProperties["Color"] = { col }
                     }
                 }
             }
         }
         val end = TimeSource.Monotonic.markNow()
         mainLinkInstance?.updateInstanceBuffers()
-        logger.debug("Updating link colors took ${end - start}.")
+        logger.info("Updating link colors took ${end - start}.")
     }
 
     fun updateSegmentVisibility(currentTP: Int) {
@@ -1195,13 +1223,6 @@ class GeometryHandler(
         return spotList
     }
 
-    data class LinkPreview( val instance: InstancedNode.Instance, val from: Vector3f, val to: Vector3f , val tp: Int)
-
-    /** This list is populated point by point during the controller tracking. Each point contains the position, timepoint and radius. */
-    val trackPointList = mutableListOf<Triple<Vector3f, Int, Float>>()
-
-    val linkPreviewList = mutableListOf<LinkPreview>()
-
     /** Adds a single link instance to the scene for visual feedback during controller based tracking.
      * No data are sent to Mastodon yet, but we keep track of the points in local space in a [trackPointList]. */
     val addTrackedPoint: (pos: Vector3f, tp: Int, rawRadius: Float, preview: Boolean) -> Unit = { pos, tp, radius, preview ->
@@ -1233,11 +1254,6 @@ class GeometryHandler(
         mainLinkInstance?.updateInstanceBuffers()
     }
 
-    val linkSize = 2.0
-
-    // list of all link segments
-    var links: ConcurrentHashMap<Int, LinkNode> = ConcurrentHashMap()
-
     fun hsvToRGBA(hue: Int, saturation: Int, value: Int): Vector4f {
         val h = hue / 360.0f
         val s = saturation / 100.0f
@@ -1248,4 +1264,3 @@ class GeometryHandler(
     }
 }
 
-data class LinkNode (val instance: InstancedNode.Instance, val from: Spot, val to: Spot, val tp: Int)

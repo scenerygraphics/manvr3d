@@ -86,8 +86,7 @@ open class CellTrackingBase(
     enum class ElephantMode { StageSpots, TrainAll, PredictTP, PredictAll, NNLinking }
 
     var hedgehogVisibility = HedgehogVisibility.Hidden
-    var trackVisibility = true
-    var spotVisibility = true
+
 
     var leftVRController: TrackedDevice? = null
     var rightVRController: TrackedDevice? = null
@@ -400,13 +399,13 @@ open class CellTrackingBase(
 
         leftWristMenu.addToggleButton("Toggle Menu", "Tracks off", "Tracks on",
             command = {
-                trackVisibility = !trackVisibility
-                geometryHandler.setTrackVisibility(trackVisibility)
+                manvr3d.isTrackVisible = !manvr3d.isTrackVisible
+                geometryHandler.setTrackVisibility(manvr3d.isTrackVisible)
             }, color = color, pressedColor = pressedColor, touchingColor = touchingColor, defaultState = true )
         leftWristMenu.addToggleButton("Toggle Menu", "Spots off", "Spots on",
             command = {
-                spotVisibility = !spotVisibility
-                geometryHandler.setSpotVisibility(spotVisibility)
+                manvr3d.isSpotVisible = !manvr3d.isSpotVisible
+                geometryHandler.setSpotVisibility(manvr3d.isSpotVisible)
             }, color = color, pressedColor = pressedColor, touchingColor = touchingColor, defaultState = true )
         leftWristMenu.addToggleButton("Toggle Menu", "Preview Off", "Preview On", command = {
             enableTrackingPreview = !enableTrackingPreview
@@ -707,12 +706,21 @@ open class CellTrackingBase(
             onStartCallback = {
                 geometryHandler.setSpotVisibility(false)
                 geometryHandler.setTrackVisibility(false)
+                // always set volume to true during movement
+                manvr3d.isVolumeVisible = volume.visible
+                manvr3d.setVolumeOnlyVisibility(true)
             },
             onEndCallback = {
-                manvr3d.rebuildGeometry()
-                // Only re-enable the spots or tracks if they were enabled in the first place
-                geometryHandler.setSpotVisibility(spotVisibility)
-                geometryHandler.setTrackVisibility(trackVisibility)
+                thread {
+                    manvr3d.rebuildGeometry()
+                    // Only re-enable the spots or tracks if they were enabled in the first place
+                    geometryHandler.setSpotVisibility(manvr3d.isSpotVisible)
+                    geometryHandler.setTrackVisibility(manvr3d.isTrackVisible)
+                    // change volume visibility to what it was before
+                    manvr3d.setVolumeOnlyVisibility(manvr3d.isVolumeVisible)
+                    manvr3d.geometryHandler.mainLinkInstance?.updateInstanceBuffers()
+                }
+
             },
             resetRotationBtnManager = resetRotationBtnManager,
             resetRotationButton = MultiButtonManager.ButtonConfig(leftAButtonBehavior.button, leftAButtonBehavior.role)
