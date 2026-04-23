@@ -13,6 +13,7 @@ import org.mastodon.mamut.views.bdv.MamutViewBdv
 import org.mastodon.model.FocusListener
 import org.mastodon.spatial.VertexPositionListener
 import org.mastodon.ui.coloring.ColoringModel.ColoringChangedListener
+import org.mastodon.ui.coloring.feature.FeatureColorModeManager.FeatureColorModesListener
 import java.beans.PropertyChangeEvent
 import java.beans.PropertyChangeListener
 
@@ -35,6 +36,7 @@ class BdvNotifier(
     updateContentProcessor: Runnable,
     updateVertexProcessor: (Spot?) -> Unit,
     updateGraphProcessor: Runnable,
+    updateColoringProcessor: Runnable,
     val mastodon: ProjectModel,
     val bdvWindow: MamutViewBdv,
     // Don't trigger updates while a vertex is being moved from the sciview side
@@ -57,7 +59,8 @@ class BdvNotifier(
             updateContentProcessor,
             updateViewProcessor,
             updateVertexProcessor,
-            updateGraphProcessor
+            updateGraphProcessor,
+            updateColoringProcessor,
         )
 
         //register the BDV listener and start the thread
@@ -125,7 +128,7 @@ class BdvNotifier(
 
         override fun coloringChanged() {
             logger.debug("called coloringChanged")
-            contentChanged()
+            isLastColoringEventValid = true
         }
 
         fun contentChanged() {
@@ -160,6 +163,7 @@ class BdvNotifier(
         var isLastViewEventValid = false
         var isLastGraphEventValid = false
         var isLastTimepointEventValid = false
+        var isLastColoringEventValid = false
         var timeStampOfLastEvent: Long = 0
     }
 
@@ -182,7 +186,8 @@ class BdvNotifier(
         val contentProcessor: Runnable,
         val viewEventProcessor: Runnable,
         val vertexEventProcessor: (Spot?) -> Unit,
-        val graphEventProcessor: Runnable
+        val graphEventProcessor: Runnable,
+        val coloringProcessor: Runnable,
     ) : Thread(SERVICE_NAME) {
         var keepWatching = true
         fun stopTheWatching() {
@@ -194,7 +199,7 @@ class BdvNotifier(
             try {
                 while (keepWatching) {
                     if ((eventsSource.isLastContentEventValid || eventsSource.isLastVertexEventValid || eventsSource.isLastGraphEventValid
-                        || eventsSource.isLastViewEventValid &&
+                        || eventsSource.isLastViewEventValid || eventsSource.isLastColoringEventValid &&
                         System.currentTimeMillis() - eventsSource.timeStampOfLastEvent > updateInterval)
                         && !lockUpdates
                     ) {
@@ -223,6 +228,10 @@ class BdvNotifier(
                             val tp = bdvWindow.groupHandle.getModel(mastodon.TIMEPOINT).timepoint
                             eventsSource.isLastTimepointEventValid = false
                             timepointProcessor.invoke(tp)
+                        }
+                        if (eventsSource.isLastColoringEventValid) {
+                            eventsSource.isLastColoringEventValid = false
+                            coloringProcessor.run()
                         }
                     } else sleep(updateInterval / 10)
                 }
