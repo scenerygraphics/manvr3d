@@ -234,6 +234,8 @@ class GeometryHandler(
             spotToInstanceMap.clear()
 
             val selectedSpotRef = mastodonData.selectionModel.selectedVertices
+
+            logger.debug("Selected spots: ${selectedSpotRef.map{ it.internalPoolIndex}}")
             visibleSpots = mastodonData.model.spatioTemporalIndex.getSpatialIndex(timepoint)
             sv.blockOnNewNodes = false
 
@@ -272,8 +274,8 @@ class GeometryHandler(
                 }
 
                 inst.setColorFromSpot(vertexRef, currentColorizer)
-                // highlight the spots currently selected in BDV
-                selectedSpotRef.find { it.internalPoolIndex == vertexRef.internalPoolIndex }?.let {
+                // highlight the spots currently selected or focused in BDV or trackscheme
+                if (selectedSpotRef.any { it.internalPoolIndex == vertexRef.internalPoolIndex }) {
                     inst.instancedProperties["Color"] = { selectedColor }
                 }
 
@@ -282,6 +284,7 @@ class GeometryHandler(
 
                 index++
             }
+
             manvr3d.bdvNotifier?.lockUpdates = false
             mastodonData.model.graph.lock.readLock().unlock()
             // turn all leftover spots from the pool invisible
@@ -295,6 +298,19 @@ class GeometryHandler(
             val tElapsed = TimeSource.Monotonic.markNow() - tStart
             logger.debug("Spot updates took $tElapsed")
         }
+    }
+
+    fun highlightFocusedSpot() {
+        logger.debug("Triggered focus spot highlighting.")
+        val vertexRef = mastodonData.model.graph.vertexRef()
+        val focused = mastodonData.focusModel.getFocusedVertex(vertexRef)
+        focused?.let {
+            spotToInstanceMap[it.internalPoolIndex]?.let { inst ->
+                inst.instancedProperties["Color"] = { selectedColor }
+                mainSpotInstance?.updateInstanceBuffers()
+            }
+        }
+        mastodonData.model.graph.releaseRef(vertexRef)
     }
 
     private fun computeEigen(covariance: Array2DRowRealMatrix): Pair<DoubleArray, RealMatrix> {
