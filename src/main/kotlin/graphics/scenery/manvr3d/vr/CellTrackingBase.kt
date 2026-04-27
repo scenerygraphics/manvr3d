@@ -182,43 +182,44 @@ open class CellTrackingBase(
 
     var controllerTrackingActive = false
 
+    /** This class combines information from tracked points during tracking. Supports storing spots if the user
+     * wants to connect existing spots instead of creating new ones. */
+    data class TrackedPoint( val pos: Vector3f, val tp: Int, val radius: Float, val spot: Spot? = null )
+
     /** Intermediate storage for a single track created with the controllers.
-     * Once tracking is finished, this track is sent to Mastodon. */
-    var controllerTrackList = mutableListOf<Vector3f>()
-    var startWithExistingSpot: Spot? = null
+     * Once tracking is finished, this track is sent to Mastodon. Each point contains the position, timepoint and radius,
+     * and possibly existing spots that were selected. */
+    val trackPointList = mutableListOf<TrackedPoint>()
 
     /** This lambda is called every time the user performs a click with controller-based tracking. */
     val trackCellsWithController = ClickBehaviour { _, _ ->
+        // First, ensure the tracking flag is active
         if (!controllerTrackingActive) {
             controllerTrackingActive = true
             cursor.setColor(cursorTrackingColor)
             // we dont want animation, because we track step by step
             playing = false
-            // Assume the user didn't click on an existing spot to start the track.
-            startWithExistingSpot = null
         }
         // play the volume backwards, step by step, so cell split events can simply be turned into a merge event
-        if (volume.currentTimepoint > 0) {
-            val p = cursor.getPosition()
-            // did the user click on an existing cell and wants to merge the track into it?
-            val (selected, isValidSelection) =
-                geometryHandler.selectClosestSpotsVR(p, volume.currentTimepoint, cursor.radius, false) ?: (null to false)
-            // If this is the first spot we track, and its a valid existing spot, mark it as such
-            if (isValidSelection && controllerTrackList.size == 0) {
-                startWithExistingSpot = selected
-                logger.debug("Set startWithExistingPost to $startWithExistingSpot")
-            } else {
-                controllerTrackList.add(p)
-            }
-            logger.debug("Tracked a new spot at position $p")
-            logger.debug("Do we want to merge? $isValidSelection. Selected spot is $selected")
-            // Create a placeholder link during tracking for immediate feedback
-            geometryHandler.addTrackedPoint(p, volume.currentTimepoint, cursor.radius, enableTrackingPreview)
 
+        val p = cursor.getPosition()
+        // did the user click on an existing cell?
+        val (selected, isValidSelection) =
+            geometryHandler.selectClosestSpotsVR(p, volume.currentTimepoint, cursor.radius, false)
+
+        logger.debug("Tracked a new spot at position $p")
+        logger.debug("Selected spot is $selected")
+        // Create a placeholder link during tracking for immediate feedback
+        geometryHandler.addTrackedPoint(
+            p, volume.currentTimepoint, cursor.radius, selected, enableTrackingPreview, trackPointList
+        )
+
+        if (volume.currentTimepoint > 0) {
             volume.goToTimepoint(volume.currentTimepoint - 1)
-            // If the user clicked a cell and its *not* the first in the track, we assume it is a merge event and end the tracking
-            if (isValidSelection && controllerTrackList.size > 1) {
-                endControllerTracking(selected)
+            // If the user clicked a cell, and it is *not* the first in the track, we assume it is a merge event and end the tracking,
+            // but only if the selected spot already has an edge. We continue tracking/linking when the selected spot has no connections
+            if (isValidSelection && trackPointList.size > 1 && selected!!.edges().size() > 0) {
+                endControllerTracking()
             }
             // This will also redraw all geometry using Mastodon as source
             notifyObservers(volume.currentTimepoint)
@@ -230,14 +231,13 @@ open class CellTrackingBase(
         }
     }
 
+
     /** Stops the current controller tracking process and sends the created track to Mastodon. */
-    private fun endControllerTracking(mergeSpot: Spot? = null) {
+    private fun endControllerTracking() {
         if (controllerTrackingActive) {
-            logger.info("Ending controller tracking now and sending ${controllerTrackList.size} spots to Mastodon to chew on.")
+            logger.info("Ending controller tracking now and sending ${trackPointList.size} spots to Mastodon to chew on.")
             controllerTrackingActive = false
-            // Radius can be 0 because the actual radii were already captured during tracking
-            geometryHandler.addTrackToMastodon(null, 0f, true, startWithExistingSpot, mergeSpot)
-            controllerTrackList.clear()
+            geometryHandler.addTrackToMastodon(trackPointList)
             cursor.resetColor()
         }
     }
