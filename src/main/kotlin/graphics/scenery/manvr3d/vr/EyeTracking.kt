@@ -405,7 +405,7 @@ class EyeTracking(
             return
         }
 
-        geometryHandler.addTrackToMastodon(track.points, cursor.radius,false, null, null)
+        geometryHandler.addEyeTrackToMastodon(track.points, cursor.radius)
         manvr3d.rebuildGeometry()
 
         writeTrackToFile(track.points, hedgehogId)

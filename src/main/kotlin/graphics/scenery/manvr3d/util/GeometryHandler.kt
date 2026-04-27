@@ -32,6 +32,7 @@ import org.mastodon.ui.coloring.GraphColorGenerator
 import org.scijava.event.EventService
 import sc.iview.SciView
 import graphics.scenery.manvr3d.analysis.HedgehogAnalysis.SpineGraphVertex
+import graphics.scenery.manvr3d.vr.CellTrackingBase.TrackedPoint
 import kotlinx.coroutines.joinAll
 import spim.fiji.spimdata.interestpoints.InterestPoint
 import java.awt.Color
@@ -92,13 +93,11 @@ class GeometryHandler(
     lateinit var currentColorizer: GraphColorGenerator<Spot, Link>
 
     private var selectedColor = Vector4f(1f, 0.25f, 0.25f, 1f)
-
+    /** Class that connects link data with their corresponding instances.  */
     data class LinkNode (val instance: InstancedNode.Instance, val link: Link, val tp: Int)
-
+    /** A segment of a link, used during tracking to preview the tracking history. */
     data class LinkPreview( val instance: InstancedNode.Instance, val from: Vector3f, val to: Vector3f , val tp: Int)
 
-    /** This list is populated point by point during the controller tracking. Each point contains the position, timepoint and radius. */
-    val trackPointList = mutableListOf<Triple<Vector3f, Int, Float>>()
     val linkPreviewList = mutableListOf<LinkPreview>()
     val linkSize = 2.0
     // list of all link segments
@@ -1070,18 +1069,55 @@ class GeometryHandler(
         }
     }
 
-    /** Send a list of vertices from sciview to Mastodon.
-     * If the boolean is true, the coordinates are in world space and will be converted to local Mastodon space first.
-     * The first passed spot indicates that the user wants to start from an existing spot (aka clicked on it for starting the track).
-     * The second spot is used to merge into existing spots. */
-    fun addTrackToMastodon(
+    /** Send a list of tracked points from sciview to Mastodon, stored in [trackPointList]. */
+    fun addTrackToMastodon(trackPointList: MutableList<TrackedPoint>) {
+        enqueueUpdate("addTrackToMastodon(points=${trackPointList.size})") {
+            val graph = mastodonData.model.graph
+            val prevVertex = graph.vertexRef()
+            val vertex = graph.vertexRef()
+            manvr3d.bdvNotifier?.lockUpdates = true
+            // If the list isn't null, it was passed from eyetracking, and we have to treat it accordingly
+            // Otherwise we did controller tracking and the points are inside trackPointList and not in list
+            var localRadius: Float
+            trackPointList.forEachIndexed { index, trackedPoint ->
+                logger.info("Iteration $index: $trackedPoint")
+                // Calculate the equivalent radius in Mastodon from the cursor's raw radius in sciview scale
+                localRadius = manvr3d.sciviewToMastodonScale().max() * trackedPoint.radius
+
+                if (trackedPoint.spot != null) {
+                    vertex.refTo(trackedPoint.spot)
+                } else {
+                    val v = graph.addVertex()
+                    // val localPos = if (isWorldSpace) manvr3d.sciviewToMastodonCoords(pos) else pos
+                    v.init(trackedPoint.tp, trackedPoint.pos.toDoubleArray(), localRadius.toDouble())
+                    vertex.refTo(v)
+                    logger.debug("added {}", v)
+                }
+                // start adding edges once the first vertex was added
+                if (index > 0) {
+                    val e = graph.addEdge(vertex, prevVertex)
+                    e.init()
+                    logger.debug("added {}", e)
+                }
+                prevVertex.refTo(vertex)
+            }
+
+            graph.releaseRef(prevVertex)
+            graph.releaseRef(vertex)
+            manvr3d.bdvNotifier?.lockUpdates = false
+            // Once we send the new track to Mastodon, we can assume we no longer need the previews and can clear them
+            mainLinkInstance?.instances?.removeAll(linkPreviewList.map { it.instance }.toSet())
+            linkPreviewList.clear()
+            trackPointList.clear()
+            clearSelection()
+        }
+    }
+
+    fun addEyeTrackToMastodon(
         list: List<Pair<Vector3f, SpineGraphVertex>>?,
-        cursorRadius: Float,
-        isWorldSpace: Boolean,
-        startWithExisting: Spot?,
-        mergeSpot: Spot?
+        cursorRadius: Float
     ) {
-        enqueueUpdate("addTrackToMastodon(points=${list?.size ?: trackPointList.size})") {
+        enqueueUpdate("addEyeTrackToMastodon(points=${list?.size})") {
             val graph = mastodonData.model.graph
             var prevVertex = graph.vertexRef()
             manvr3d.bdvNotifier?.lockUpdates = true
@@ -1101,42 +1137,7 @@ class GeometryHandler(
                     prevVertex = graph.vertexRef().refTo(v)
                 }
 
-            } else {
-                // Otherwise we did controller tracking and the points are inside trackPointList and not in list
-                var localRadius: Float
-                trackPointList.forEachIndexed { index, (pos, tp, pointRadius) ->
-                    // Calculate the equivalent radius in Mastodon from the raw radius from the cursor in sciview scale
-                    localRadius = manvr3d.sciviewToMastodonScale().max() * pointRadius
-                    // If we reached the last spot in the list and a mergeSpot was passed, use it instead of the spot in the list
-                    if (index == trackPointList.size - 1 && mergeSpot != null) {
-                        graph.addEdge(mergeSpot, prevVertex)
-                    } else {
-                        val v: Spot
-                        if (index == 0 && startWithExisting != null) {
-                            v = startWithExisting
-                        } else {
-                            v = graph.addVertex()
-                            // val localPos = if (isWorldSpace) manvr3d.sciviewToMastodonCoords(pos) else pos
-                            v.init(tp, pos.toDoubleArray(), localRadius.toDouble())
-                            logger.debug("added {}", v)
-                        }
-                        // start adding edges once the first vertex was added
-                        if (index > 0) {
-                            val e = graph.addEdge(v, prevVertex)
-                            e.init()
-                            logger.debug("added {}", e)
-                        }
-                        prevVertex = graph.vertexRef().refTo(v)
-                    }
-                }
             }
-            graph.releaseRef(prevVertex)
-            manvr3d.bdvNotifier?.lockUpdates = false
-            // Once we send the new track to Mastodon, we can assume we no longer need the previews and can clear them
-            mainLinkInstance?.instances?.removeAll(linkPreviewList.map { it.instance }.toSet())
-            linkPreviewList.clear()
-            trackPointList.clear()
-            clearSelection()
         }
     }
 
@@ -1223,26 +1224,34 @@ class GeometryHandler(
         return spotList
     }
 
+
     /** Adds a single link instance to the scene for visual feedback during controller based tracking.
      * No data are sent to Mastodon yet, but we keep track of the points in local space in a [trackPointList]. */
-    val addTrackedPoint: (pos: Vector3f, tp: Int, rawRadius: Float, preview: Boolean) -> Unit = { pos, tp, radius, preview ->
+    fun addTrackedPoint(
+        pos: Vector3f,
+        tp: Int,
+        radius: Float,
+        spot: Spot?,
+        preview: Boolean,
+        trackPointList: MutableList<TrackedPoint>
+    ) {
         val localPos = manvr3d.sciviewToMastodonCoords(pos)
         // Once we tracked the first point, we can start adding link previews
         if (trackPointList.isNotEmpty() && mainLinkInstance != null) {
             val inst = mainLinkInstance!!.addInstance()
             val color = Vector4f(0.65f, 1f, 0.22f, 1f)
-//            val localFrom = manvr3d.sciviewToMastodonCoords(from)
             inst.instancedProperties["Color"] = { color }
             inst.parent = linkParentNode
             inst.visible = preview
-            setLinkTransform(trackPointList.last().first, localPos, inst)
-            val link = LinkPreview(inst, trackPointList.last().first, localPos, tp)
+            setLinkTransform(trackPointList.last().pos, localPos, inst)
+            val link = LinkPreview(inst, trackPointList.last().pos, localPos, tp)
             linkPreviewList.add(link)
             mainLinkInstance?.updateInstanceBuffers()
             mainSpotInstance?.updateInstanceBuffers()
             logger.debug("Added a new preview link from {} to {}. Visibility is {}", link.from, link.to, preview)
         }
-        trackPointList.add(Triple(localPos, tp, radius))
+        logger.info("Adding tracked point to trackPointList now")
+        trackPointList.add(TrackedPoint(localPos, tp, radius, spot))
     }
 
     /** Toggle the preview links that are rendered during controller tracking */
