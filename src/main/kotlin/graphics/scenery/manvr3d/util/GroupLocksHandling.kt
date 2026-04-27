@@ -53,6 +53,7 @@ class GroupLocksHandling(//controls sciview via this bridge obj
     }
 
     internal inner class NavigationRequestsHandler : NavigationListener<Spot, Link>, TimepointListener {
+        private var lastHandledTimepoint = -1
         override fun navigateToVertex(vertex: Spot) {
 //            if (isActive) focusSciviewToNode(vertex.label)
         }
@@ -62,7 +63,13 @@ class GroupLocksHandling(//controls sciview via this bridge obj
         }
 
         override fun timepointChanged() {
-            logger.debug("timepoint changed to ${myGroupHandle.getModel(projectModel.TIMEPOINT).timepoint}")
+            val tp = myGroupHandle.getModel(projectModel.TIMEPOINT).timepoint
+            if (tp == lastHandledTimepoint) {
+                logger.debug("Skipping duplicate timepoint event for tp=$tp")
+                return
+            }
+            logger.debug("timepoint changed to ${tp}")
+            lastHandledTimepoint = tp
             manvr3d.goToTimepoint(myGroupHandle.getModel(projectModel.TIMEPOINT).timepoint)
         }
     }

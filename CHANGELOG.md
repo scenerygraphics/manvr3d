@@ -5,6 +5,7 @@
 ### Added
 
 - Add +/- buttons to quickly adjust volume transparency inside VR ([#30](https://github.com/scenerygraphics/manvr3d/pull/30))
+- Unconnected spots can be linked continuously with the controller tracking tool ([#30](https://github.com/scenerygraphics/manvr3d/pull/30))
 
 ### Removed
 
@@ -20,6 +21,7 @@
 - Link colors update immediately on color mode changes ([#30](https://github.com/scenerygraphics/manvr3d/pull/30))
 - Link colors now properly reflect the assigned tag sets ([#30](https://github.com/scenerygraphics/manvr3d/pull/30))
 - Moving the dataset now respects the user-defined track visibility window ([#30](https://github.com/scenerygraphics/manvr3d/pull/30)
+- Fix focus & timepoint syncing when using arrow keys in trackscheme together with manvr3d in a group lock ([#30](https://github.com/scenerygraphics/manvr3d/pull/30))
 
 
 ## [0.3.1] - 2026-03-19

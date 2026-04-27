@@ -37,7 +37,9 @@ class BdvNotifier(
     updateVertexProcessor: (Spot?) -> Unit,
     updateGraphProcessor: Runnable,
     updateColoringProcessor: Runnable,
+    updateFocusProcessor: Runnable,
     val mastodon: ProjectModel,
+    val manvr3d: Manvr3dMain,
     val bdvWindow: MamutViewBdv,
     // Don't trigger updates while a vertex is being moved from the sciview side
     var lockUpdates: Boolean = false
@@ -61,6 +63,7 @@ class BdvNotifier(
             updateVertexProcessor,
             updateGraphProcessor,
             updateColoringProcessor,
+            updateFocusProcessor
         )
 
         //register the BDV listener and start the thread
@@ -118,7 +121,7 @@ class BdvNotifier(
 
         override fun focusChanged() {
             logger.debug("called focusChanged")
-            contentChanged()
+            isLastFocusEventValid = true
         }
 
         override fun propertyChange(propertyChangeEvent: PropertyChangeEvent) {
@@ -164,6 +167,7 @@ class BdvNotifier(
         var isLastGraphEventValid = false
         var isLastTimepointEventValid = false
         var isLastColoringEventValid = false
+        var isLastFocusEventValid = false
         var timeStampOfLastEvent: Long = 0
     }
 
@@ -188,6 +192,7 @@ class BdvNotifier(
         val vertexEventProcessor: (Spot?) -> Unit,
         val graphEventProcessor: Runnable,
         val coloringProcessor: Runnable,
+        val focusProcessor: Runnable
     ) : Thread(SERVICE_NAME) {
         var keepWatching = true
         fun stopTheWatching() {
@@ -199,7 +204,7 @@ class BdvNotifier(
             try {
                 while (keepWatching) {
                     if ((eventsSource.isLastContentEventValid || eventsSource.isLastVertexEventValid || eventsSource.isLastGraphEventValid
-                        || eventsSource.isLastViewEventValid || eventsSource.isLastColoringEventValid &&
+                        || eventsSource.isLastViewEventValid || eventsSource.isLastColoringEventValid || eventsSource.isLastFocusEventValid &&
                         System.currentTimeMillis() - eventsSource.timeStampOfLastEvent > updateInterval)
                         && !lockUpdates
                     ) {
@@ -223,11 +228,21 @@ class BdvNotifier(
                             eventsSource.isLastGraphEventValid = false
                             graphEventProcessor.run()
                         }
+                        if (eventsSource.isLastFocusEventValid) {
+                            logger.debug("$SERVICE_NAME: focus event and silence detected -> processing it now")
+                            eventsSource.isLastFocusEventValid = false
+                            focusProcessor.run()
+                        }
                         if (eventsSource.isLastTimepointEventValid) {
                             logger.debug("$SERVICE_NAME: timepoint event and silence detected -> processing it now")
                             val tp = bdvWindow.groupHandle.getModel(mastodon.TIMEPOINT).timepoint
                             eventsSource.isLastTimepointEventValid = false
-                            timepointProcessor.invoke(tp)
+                            // Don't accidentally retrigger redraw events (which could happen through group handling events
+                            if (tp != manvr3d.currentTimepoint) {
+                                timepointProcessor.invoke(tp)
+                            } else {
+                                logger.debug("Skipping redundant timepoint event for tp=$tp")
+                            }
                         }
                         if (eventsSource.isLastColoringEventValid) {
                             eventsSource.isLastColoringEventValid = false

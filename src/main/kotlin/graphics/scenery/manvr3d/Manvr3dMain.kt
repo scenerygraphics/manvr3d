@@ -105,7 +105,7 @@ class Manvr3dMain: TimepointObserver {
 
     //data sink stuff
     val sciviewWin: SciView
-    val geometryHandler: graphics.scenery.manvr3d.util.GeometryHandler
+    val geometryHandler: GeometryHandler
     //sink scene graph structuring nodes
     val axesParent: org.mastodon.mamut.util.DataAxes
 
@@ -138,7 +138,7 @@ class Manvr3dMain: TimepointObserver {
     var currentColorizer: GraphColorGenerator<Spot, Link> = noTSColorizer
 
     var moveSpotInSciview: (Spot?) -> Unit?
-    var associatedUI: org.mastodon.mamut.ui.Manvr3dWindowLayout? = null
+    var associatedUI: Manvr3dWindowLayout? = null
     var uiFrame: JFrame? = null
     private var isRunning = true
     var isVRactive = false
@@ -155,7 +155,7 @@ class Manvr3dMain: TimepointObserver {
     var isTrackVisible = true
     var isSpotVisible = true
 
-    lateinit var vrTracking: graphics.scenery.manvr3d.vr.CellTrackingBase
+    lateinit var vrTracking: CellTrackingBase
 
     private val pluginActions: Actions
     private var predictSpotsAction: Action? = null
@@ -579,7 +579,13 @@ class Manvr3dMain: TimepointObserver {
                 logger.info("ColoringProcessor was triggered")
                 setColorizer(bdvWindow, true)
             },
+            {
+              redrawSciviewSpots()
+                geometryHandler.highlightFocusedSpot()
+
+            },
             mastodon,
+            this,
             bdvWindow
         )
     }
@@ -699,7 +705,6 @@ class Manvr3dMain: TimepointObserver {
     /** Go to a specified timepoint and update the sciview content accordingly. */
     fun goToTimepoint(timepoint: Int) {
         setTimepoint(timepoint)
-        geometryHandler.clearSelection()
         updateSciviewContent()
         if (isVRactive) {
             vrTracking.volumeTimepointWidget.text = currentTimepoint.toString()
