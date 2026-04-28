@@ -475,6 +475,7 @@ class Manvr3dMain: TimepointObserver {
         v.transferFunction = tf
         //make Bounding Box Grid invisible
         v.children.forEach { n: Node -> n.visible = false }
+        v.lensingRadius = 0.2f
 
     }
 

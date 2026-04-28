@@ -178,6 +178,7 @@ open class CellTrackingBase(
         cellTrackingActive = true
         manvr3d.rebuildGeometry()
         launchUpdaterThread()
+        launchLensingThread()
     }
 
     var controllerTrackingActive = false
@@ -397,6 +398,28 @@ open class CellTrackingBase(
 
         leftWristMenu.addRow("Toggle Menu", volumeToggleBtn, decTransparencyBtn, incTransparencyBtn)
 
+        val lensToggleButton = ToggleButton(
+            "Lens off", "Lens on", command = {
+                isLensingActive = !isLensingActive
+            }, byTouch = true, defaultColor = color, pressedColor = pressedColor, touchingColor = touchingColor, default = false)
+
+        val lensRadiusDownBtn = Button(
+            " R- ", command = {
+                changeLensingRadius(0.8f)
+            }, byTouch = true, depressDelay = 250,
+            defaultColor = color, pressedColor = pressedColor, touchingColor = touchingColor
+        )
+
+        val lensRadiusUpBtn = Button(
+            " R+ ", command = {
+                changeLensingRadius(1.2f)
+            }, byTouch = true, depressDelay = 250,
+            defaultColor = color, pressedColor = pressedColor, touchingColor = touchingColor
+        )
+
+        leftWristMenu.addRow("Toggle Menu", lensToggleButton, lensRadiusDownBtn, lensRadiusUpBtn)
+
+
         leftWristMenu.addToggleButton("Toggle Menu", "Tracks off", "Tracks on",
             command = {
                 manvr3d.isTrackVisible = !manvr3d.isTrackVisible
@@ -426,6 +449,29 @@ open class CellTrackingBase(
         leftWristMenu.addButton("Cleanup Menu", "Delete TP", command = {
             manvr3d.deleteTimepointAndUpdate(volume.currentTimepoint)
         }, byTouch = true, color = color, pressedColor = pressedColor, touchingColor = touchingColor)
+    }
+
+    var isLensingActive = false
+        set(value) {
+            manvr3d.volumeNode.slicingMode = if (value) Volume.SlicingMode.LensingSmooth else Volume.SlicingMode.None
+            field = value
+        }
+
+    fun changeLensingRadius(factor: Float) {
+        manvr3d.volumeNode.lensingRadius *= factor
+    }
+
+    fun launchLensingThread() {
+        thread {
+            while (sciview.running && cellTrackingActive) {
+                if (isLensingActive) {
+                    manvr3d.volumeNode.lensingPosition = cursor.getPosition()
+                    Thread.sleep(20)
+                } else {
+                    Thread.sleep(200)
+                }
+            }
+        }
     }
 
     fun addHedgehog() {
