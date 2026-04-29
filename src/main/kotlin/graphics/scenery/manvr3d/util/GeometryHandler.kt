@@ -34,6 +34,9 @@ import sc.iview.SciView
 import graphics.scenery.manvr3d.analysis.HedgehogAnalysis.SpineGraphVertex
 import graphics.scenery.manvr3d.vr.CellTrackingBase.TrackedPoint
 import kotlinx.coroutines.joinAll
+import net.imglib2.KDTree
+import net.imglib2.RealPoint
+import net.imglib2.neighborsearch.RadiusNeighborSearchOnKDTree
 import spim.fiji.spimdata.interestpoints.InterestPoint
 import java.awt.Color
 import java.lang.Math
@@ -94,9 +97,12 @@ class GeometryHandler(
 
     private var selectedColor = Vector4f(1f, 0.25f, 0.25f, 1f)
     /** Class that connects link data with their corresponding instances.  */
-    data class LinkNode (val instance: InstancedNode.Instance, val link: Link, val tp: Int)
+    data class LinkNode (val instance: InstancedNode.Instance, val link: Link, val tp: Int, val center: Vector3f)
     /** A segment of a link, used during tracking to preview the tracking history. */
     data class LinkPreview( val instance: InstancedNode.Instance, val from: Vector3f, val to: Vector3f , val tp: Int)
+
+    /** Accelerated data structure for storing [LinkNode]s for fast spatial querying during selections. */
+    private var edgeCenterTree: KDTree<LinkNode>? = null
 
     val linkPreviewList = mutableListOf<LinkPreview>()
     val linkSize = 2.0
@@ -588,7 +594,7 @@ class GeometryHandler(
                 }
             }
             mastodonData.model.graph.releaseRef(currentSpot)
-            clearSelection()
+            clearSpotSelection()
             manvr3d.bdvNotifier?.lockUpdates = false
         }
     }
@@ -690,6 +696,7 @@ class GeometryHandler(
             if (spots.isNotEmpty()) {
                 spots.forEach { spot ->
                     if (mastodonData.selectionModel.isSelected(spot) && !addOnly) {
+                        // if the spot is already selected and we have a click event, deselect it
                         deselectSpot(spot)
                     } else {
                         selectSpot(spot)
@@ -702,13 +709,48 @@ class GeometryHandler(
             } else {
                 // Only clear the selection if no drag select behavior is currently active
                 if (!addOnly) {
-                    clearSelection()
+                    clearSpotSelection()
                     mastodonData.model.graph.notifyGraphChanged()
                 }
                 mainSpotInstance?.updateInstanceBuffers()
                 Pair(spots.firstOrNull(), false)
             }
         }
+
+    fun selectClosestEdgesVR (pos: Vector3f, radius: Float, addOnly: Boolean) {
+        val time = TimeSource.Monotonic.markNow()
+        val localPos = manvr3d.sciviewToMastodonCoords(pos)
+        val localRadius = manvr3d.sciviewToMastodonScale().max() * radius
+
+        val tree = edgeCenterTree ?: return
+
+        val search = RadiusNeighborSearchOnKDTree(tree)
+
+        search.search(RealPoint(localPos.x.toDouble(),
+            localPos.y.toDouble(),
+            localPos.z.toDouble()),
+            // Add a bit of margin for selecting the edge centers
+            localRadius.toDouble() * 1.1, true)
+
+        val anyHit = search.numNeighbors() > 0
+        var linkNode: LinkNode
+
+        for (i in 0 until search.numNeighbors()) {
+            linkNode = search.getSampler(i).get()
+            if (mastodonData.selectionModel.isSelected(linkNode.link) && !addOnly) {
+                deselectLink(linkNode, false)
+            } else {
+                selectLink(linkNode, false)
+            }
+        }
+        // Clicking away clears the selection, but only on click events, not with drag
+        if (!anyHit && !addOnly) {
+            manvr3d.selectedLinkNodes.forEach { deselectLink(it, false) }
+        }
+        mainLinkInstance?.updateInstanceBuffers()
+
+        logger.debug("Selecting links took ${TimeSource.Monotonic.markNow() - time}, got ${search.numNeighbors()} hits")
+    }
 
     private fun selectSpot(spot: Spot) {
         findInstanceFromSpot(spot)?.let {
@@ -725,7 +767,25 @@ class GeometryHandler(
             it.setColorFromSpot(spot, currentColorizer)
             mastodonData.selectionModel.setSelected(spot, false)
         }
+    }
 
+    private fun selectLink(linkNode: LinkNode, updateBuffers: Boolean = true) {
+        logger.trace("Selecting link ${linkNode.link.internalPoolIndex}")
+        val linkNode = links[linkNode.link.internalPoolIndex] ?: return
+        linkNode.instance.instancedProperties["Color"] = { selectedColor }
+        manvr3d.selectedLinkNodes.add(linkNode)
+        mastodonData.selectionModel.setSelected(linkNode.link, true)
+        if (updateBuffers) {
+            mainLinkInstance?.updateInstanceBuffers()
+        }
+    }
+
+    private fun deselectLink(linkNode: LinkNode, updateBuffers: Boolean = true) {
+        logger.trace("Deselecting link ${linkNode.link.internalPoolIndex}")
+        manvr3d.selectedLinkNodes.remove(linkNode)
+        mastodonData.selectionModel.setSelected(linkNode.link, false)
+        // We defer the instance buffer updates to after all links are updated in selectClosestEdgesVR
+        updateLinkColors( currentColorizer, linkList = listOf(linkNode), updateBuffers = updateBuffers)
     }
 
     /** Deletes the currently selected Spots from the graph. */
@@ -744,7 +804,7 @@ class GeometryHandler(
         }
     }
 
-    fun clearSelection() {
+    fun clearSpotSelection() {
         manvr3d.selectedSpotInstances.clear()
         mastodonData.focusModel.focusVertex(null)
         mastodonData.selectionModel.clearSelection()
@@ -965,8 +1025,19 @@ class GeometryHandler(
                 inst.instancedProperties["Color"] = { Vector4f(1f, 1f, 1f, 1f) }
                 inst.name = "${edge.internalPoolIndex}"
                 inst.parent = linkParentNode
+
+                // Calculate the edge center, which will then be used for edge selection
+                val fromPos = FloatArray(3).also { from.localize(it) }
+                val toPos = FloatArray(3).also { to.localize(it) }
+                val center = Vector3f(
+                    (fromPos[0] + toPos[0]) * 0.5f,
+                    (fromPos[1] + toPos[1]) * 0.5f,
+                    (fromPos[2] + toPos[2]) * 0.5f
+                )
+
                 // add a new key-value pair to the hash map
-                links[edge.internalPoolIndex] = LinkNode(inst, graph.edgeRef().refTo(edge), to.timepoint)
+                links[edge.internalPoolIndex] =
+                    LinkNode(inst, graph.edgeRef().refTo(edge), to.timepoint, center)
 
                 index++
             }
@@ -983,19 +1054,33 @@ class GeometryHandler(
                 setLinkTransform(link.from, link.to, link.instance)
             }
 
+            // Build a KD tree for fast spatial querying of edges
+            val points = links.values.map { linkNode ->
+                // KDTree needs RealLocalizable points
+                val point = RealPoint(
+                    linkNode.center.x.toDouble(),
+                    linkNode.center.y.toDouble(),
+                    linkNode.center.z.toDouble()
+                )
+                Pair(point, linkNode)
+            }
+            edgeCenterTree = KDTree(
+                points.map { it.second },  // values
+                points.map { it.first }    // positions
+            )
+
             logger.debug("${links.size} links in the hashmap, ${linkPool.size} link instances in the pool. " +
                     "Mastodon provides ${mastodonData.model.graph.edges().size} links.")
             val end = TimeSource.Monotonic.markNow()
 
             logger.debug("Edge traversel took ${end - start}.")
 
-            updateLinkColors(currentColorizer)
+            updateLinkColors(currentColorizer, linkList = null)
             updateSegmentVisibility(manvr3d.currentTimepoint)
 //            mainLink.updateInstanceBuffers()
 
             val tElapsed = TimeSource.Monotonic.markNow() - tStart
             logger.debug("Total link updates (with coloring) took $tElapsed")
-
         }
     }
 
@@ -1028,15 +1113,19 @@ class GeometryHandler(
     }
 
     /** Traverse and update the colors of all [links] using the provided color mode [cm].
+     * Only updates the colors of certain links when a [linkList] is passed.
      * When set to [ColorMode.SPOT], it uses the [colorizer] to get the spot colors. */
     fun updateLinkColors (
         colorizer: GraphColorGenerator<Spot, Link>? = currentColorizer,
-        cm: ColorMode = currentColorMode
+        cm: ColorMode = currentColorMode,
+        linkList: List<LinkNode>? = null,
+        updateBuffers: Boolean = true
     ) {
         val start = TimeSource.Monotonic.markNow()
+        val links = linkList ?: links.entries.map { it.value }
         when (cm) {
             ColorMode.LUT -> {
-                links.forEach { (edgeIdx, linkNode) ->
+                links.forEach { linkNode ->
                     val factor = linkNode.tp / numTimePoints.toDouble()
                     val color = lut.lookupARGB(0.0, 1.0, factor).unpackRGB()
                     linkNode.instance.instancedProperties["Color"] = { color }
@@ -1045,7 +1134,7 @@ class GeometryHandler(
             ColorMode.SPOT -> {
                 if (colorizer != null) {
                     var link: Link
-                    links.forEach { (edgeIdx, linkNode) ->
+                    links.forEach { linkNode ->
                         // Color based on the target spot
                         link = linkNode.link
                         var intColor = colorizer.color(link, link.source, link.target)
@@ -1058,9 +1147,21 @@ class GeometryHandler(
                 }
             }
         }
+        // Repaint either all selected edges or only the ones that are also part of the passed linkList
+        val selectedLinks = if (linkList != null) {
+            manvr3d.selectedLinkNodes.intersect(linkList.toSet())
+        } else {
+            manvr3d.selectedLinkNodes
+        }
+        selectedLinks.forEach { link ->
+            link.instance.instancedProperties["Color"] = { selectedColor }
+        }
+
         val end = TimeSource.Monotonic.markNow()
-        mainLinkInstance?.updateInstanceBuffers()
-        logger.info("Updating link colors took ${end - start}.")
+        if (updateBuffers) {
+            mainLinkInstance?.updateInstanceBuffers()
+        }
+        logger.debug("Updating link colors took ${end - start}.")
     }
 
     fun updateSegmentVisibility(currentTP: Int) {
@@ -1125,7 +1226,7 @@ class GeometryHandler(
             mainLinkInstance?.instances?.removeAll(linkPreviewList.map { it.instance }.toSet())
             linkPreviewList.clear()
             trackPointList.clear()
-            clearSelection()
+            clearSpotSelection()
         }
     }
 
@@ -1182,7 +1283,7 @@ class GeometryHandler(
                         mastodonData.model.graph.remove(it)
                     }
                     mastodonData.model.graph.lock.writeLock().unlock()
-                    clearSelection()
+                    clearSpotSelection()
                 }
                 mastodonData.model.graph.notifyGraphChanged()
             } else {

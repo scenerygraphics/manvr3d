@@ -121,8 +121,11 @@ class Manvr3dMain: TimepointObserver {
     var sac: SourceAndConverter<*>
     var isVolumeAutoAdjust = false
     val sceneScale: Float = 10f
-    // keep track of the currently selected spot globally so that edit behaviors can access it
+    // keep track of the currently selected spots globally so that edit behaviors can access it
     var selectedSpotInstances = CopyOnWriteArrayList<InstancedNode.Instance>()
+    // Same with links
+    var selectedLinkNodes = CopyOnWriteArrayList<GeometryHandler.LinkNode>()
+
     // the event watcher for BDV, needed here for the lock handling to prevent BDV from
     // triggering the event watcher while a spot is edited in Sciview
     var bdvNotifier: BdvNotifier? = null
@@ -752,7 +755,7 @@ class Manvr3dMain: TimepointObserver {
             action = { result, _, _ ->
                 if (result.matches.isNotEmpty()) {
                     // Remove previous selections first
-                    geometryHandler.clearSelection()
+                    geometryHandler.clearSpotSelection()
                     // Try to cast the result to an instance, or clear the existing selection if it fails
                     selectedSpotInstances.add(result.matches.first().node as InstancedNode.Instance)
                     logger.debug("selected instance {}", selectedSpotInstances)
@@ -760,7 +763,7 @@ class Manvr3dMain: TimepointObserver {
                         geometryHandler.selectSpot2D(s)
                     }
                 } else {
-                    geometryHandler.clearSelection()
+                    geometryHandler.clearSpotSelection()
                 }
             }
         )
@@ -860,7 +863,7 @@ class Manvr3dMain: TimepointObserver {
         val spots = RefCollections.createRefList(mastodon.model.graph.vertices())
         spots.addAll(selectedSpotInstances.map { geometryHandler.findSpotFromInstance(it) }.distinct())
         geometryHandler.mergeSpots(spots)
-        geometryHandler.clearSelection()
+        geometryHandler.clearSpotSelection()
         geometryHandler.showInstancedSpots(currentTimepoint, currentColorizer)
     }
 

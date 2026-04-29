@@ -708,6 +708,8 @@ open class CellTrackingBase(
 
         mapper.bind(hmd, "addDeleteReset", AddDeleteResetBehavior())
 
+        /** This behavior selects/deselects spots and edges on click,
+         * and performs paint stroke-like selection drawing on drag events. */
         class DragSelectBehavior: DragBehaviour {
             var time = System.currentTimeMillis()
             override fun init(x: Int, y: Int) {
@@ -715,12 +717,14 @@ open class CellTrackingBase(
                 val p = cursor.getPosition()
                 cursor.setColor(cursorSelectColor)
                 geometryHandler.selectClosestSpotsVR(p, volume.currentTimepoint, cursor.radius, false)
+                geometryHandler.selectClosestEdgesVR(p, cursor.radius, false)
             }
             override fun drag(x: Int, y: Int) {
                 // Only perform the selection method ten times a second
-                if (System.currentTimeMillis() - time > 100) {
+                if (System.currentTimeMillis() - time > 50) {
                     val p = cursor.getPosition()
                     geometryHandler.selectClosestSpotsVR(p, volume.currentTimepoint, cursor.radius, true)
+                    geometryHandler.selectClosestEdgesVR(p, cursor.radius, true)
                     time = System.currentTimeMillis()
                 }
             }
