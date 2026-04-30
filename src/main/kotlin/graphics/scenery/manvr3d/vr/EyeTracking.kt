@@ -505,7 +505,7 @@ class EyeTracking(
         }
         logger.info("Sampling volume and spot extraction took ${TimeSource.Monotonic.markNow() - start}")
         spots.filterNotNull().forEach { spot ->
-            geometryHandler.addOrRemoveSpots(volume.currentTimepoint, spot, cursor.radius, false, false)
+            geometryHandler.addOrRemoveSpotsAndEdges(volume.currentTimepoint, spot, cursor.radius, false, false)
         }
     }
 
