@@ -858,7 +858,7 @@ class Manvr3dMain: TimepointObserver {
         }
     }
 
-    /**  */
+    /** Merge the currently selected spots and then update the scene geometry. */
     fun mergeSelectionAndUpdate() {
         val spots = RefCollections.createRefList(mastodon.model.graph.vertices())
         spots.addAll(selectedSpotInstances.map { geometryHandler.findSpotFromInstance(it) }.distinct())
@@ -867,9 +867,10 @@ class Manvr3dMain: TimepointObserver {
         geometryHandler.showInstancedSpots(currentTimepoint, currentColorizer)
     }
 
+    /** Find all spots that overlap and then rebuild the spot */
     fun mergeOverlapsAndUpdate(tp: Int = volumeNode.currentTimepoint) {
         geometryHandler.mergeOverlappingSpots(tp)
-        geometryHandler.showInstancedSpots(currentTimepoint, currentColorizer)
+        rebuildGeometry()
     }
 
     /** Deletes the whole graph and updates the geometry. */

@@ -195,7 +195,7 @@ class GeometryHandler(
             }
 
             currentColorizer = colorizer
-            logger.info("Called showInstancedSpots")
+            logger.debug("Called showInstancedSpots")
             val tStart = TimeSource.Monotonic.markNow()
             // only create and add the main instance once during initialization
             if (mainSpotInstance == null) {
@@ -788,7 +788,7 @@ class GeometryHandler(
         updateLinkColors( currentColorizer, linkList = listOf(linkNode), updateBuffers = updateBuffers)
     }
 
-    /** Deletes the currently selected Spots from the graph. */
+    /** Deletes the passed spots from the graph. */
     val deleteSpots: ((spots: RefSet<Spot>) -> Unit) = { spots ->
         enqueueUpdate("deleteSpots(count=${spots.size})") {
             manvr3d.bdvNotifier?.lockUpdates = true
@@ -1064,10 +1064,10 @@ class GeometryHandler(
                 )
                 Pair(point, linkNode)
             }
-            edgeCenterTree = KDTree(
+            edgeCenterTree = if (points.isNotEmpty()) KDTree(
                 points.map { it.second },  // values
                 points.map { it.first }    // positions
-            )
+            ) else null
 
             logger.debug("${links.size} links in the hashmap, ${linkPool.size} link instances in the pool. " +
                     "Mastodon provides ${mastodonData.model.graph.edges().size} links.")
@@ -1197,7 +1197,7 @@ class GeometryHandler(
             // Otherwise we did controller tracking and the points are inside trackPointList and not in list
             var localRadius: Float
             trackPointList.forEachIndexed { index, trackedPoint ->
-                logger.info("Iteration $index: $trackedPoint")
+                logger.debug("Adding track to Mastodon. Iteration $index: $trackedPoint")
                 // Calculate the equivalent radius in Mastodon from the cursor's raw radius in sciview scale
                 localRadius = manvr3d.sciviewToMastodonScale().max() * trackedPoint.radius
 
@@ -1258,24 +1258,29 @@ class GeometryHandler(
         }
     }
 
-    /** Lambda that is passed to sciview to send individual spots from sciview to Mastodon
-     * or delete them if a spot is already selected, as we use the same VR button for creation and deletion.
-     * Takes the timepoint and the sciview position and a flag that determines whether to delete the whole branch.  */
-    val addOrRemoveSpots: (tp: Int, sciviewPos: Vector3f, radius: Float, deleteBranch: Boolean, isWorldSpace: Boolean) -> Unit =
-        { tp, sciviewPos, radius, deleteBranch, isWorldSpace ->
-            enqueueUpdate("addTrackToMastodon(tp=$tp)") {
+    /** Send individual spots from sciview to Mastodon or delete them if a spot is already selected,
+     * as we use the same VR button for creation and deletion.
+     * @param tp the current timepoint
+     * @param sciviewPos a sciview position
+     * @param deleteBranch a flag that determines whether to delete the whole branch.  */
+    fun addOrRemoveSpotsAndEdges (tp: Int, sciviewPos: Vector3f, radius: Float, deleteBranch: Boolean, isWorldSpace: Boolean) {
+        enqueueUpdate("addTrackToMastodon(tp=$tp)") {
             manvr3d.bdvNotifier?.lockUpdates = true
             // Check if a spot is selected, and perform deletion if true
-            val selected = mastodonData.selectionModel.selectedVertices
-            if (!selected.isEmpty()) {
+            val anySelection =
+                mastodonData.selectionModel.selectedVertices.isNotEmpty() || mastodonData.selectionModel.selectedEdges.isNotEmpty()
+            val selectedSpots = mastodonData.selectionModel.selectedVertices
+            var selectedEdges = mastodonData.selectionModel.selectedEdges
+            // Treat spots first
+            if (!selectedSpots.isEmpty()) {
                 if (!deleteBranch) {
-                    deleteSpots.invoke(selected)
+                    deleteSpots.invoke(selectedSpots)
                 } else {
                     logger.info("Deleting the whole branch...")
                     val spotList = mutableListOf<Spot>()
                     // Perform a recursive forward and backward search for each selected spot
                     // This deletes all branches connected to the selected spot(s)
-                    selected.forEach {
+                    selectedSpots.forEach {
                         spotList.addAll(selectBranch(it))
                     }
                     mastodonData.model.graph.lock.writeLock().lock()
@@ -1287,28 +1292,46 @@ class GeometryHandler(
                 }
                 mastodonData.model.graph.notifyGraphChanged()
             } else {
-                // If no spot is selected, add a new one
-                val pos = if (isWorldSpace) {
-                    manvr3d.sciviewToMastodonCoords(sciviewPos)
-                } else {
-                    sciviewPos
-                }
-                val bb = manvr3d.volumeNode.boundingBox
-                if (bb != null) {
-                    if (bb.isInside(pos)) {
-                        val localRadius = manvr3d.sciviewToMastodonScale().max() * radius
-                        val v = mastodonData.model.graph.addVertex()
-                        v.init(tp, pos.toDoubleArray(), localRadius.toDouble())
-                        logger.info("Added new spot at position $pos, radius is $localRadius")
-                        logger.debug("we now have ${mastodonData.model.graph.vertices().size} spots in total")
+                // Only add a new spot if the edges are empty too (otherwise delete the edges later on)
+                if (selectedEdges.isEmpty()) {
+                    // If no spot is selected, add a new one
+                    val pos = if (isWorldSpace) {
+                        manvr3d.sciviewToMastodonCoords(sciviewPos)
                     } else {
-                        logger.warn("Not adding new spot, $pos is outside the volume!")
-                        manvr3d.flashVolumeGrid()
+                        sciviewPos
                     }
-                } else {
-                    logger.warn("Not adding new spot, volume has no bounding box!")
+                    val bb = manvr3d.volumeNode.boundingBox
+                    if (bb != null) {
+                        if (bb.isInside(pos)) {
+                            val localRadius = manvr3d.sciviewToMastodonScale().max() * radius
+                            val v = mastodonData.model.graph.addVertex()
+                            v.init(tp, pos.toDoubleArray(), localRadius.toDouble())
+                            logger.info("Added new spot at position $pos, radius is $localRadius")
+                            logger.debug("we now have ${mastodonData.model.graph.vertices().size} spots in total")
+                        } else {
+                            logger.warn("Not adding new spot, $pos is outside the volume!")
+                            manvr3d.flashVolumeGrid()
+                        }
+                    } else {
+                        logger.warn("Not adding new spot, volume has no bounding box!")
+                    }
                 }
             }
+            // Update the selected edges to see whether there are still some left after deleting the spots
+            selectedEdges = mastodonData.selectionModel.selectedEdges
+            if (!selectedEdges.isEmpty()) {
+                mastodonData.model.setUndoPoint()
+                manvr3d.bdvNotifier?.lockUpdates = true
+                mastodonData.model.graph.lock.writeLock().lock()
+                selectedEdges.forEach { edge ->
+                    mastodonData.model.graph.remove(edge)
+                }
+                mastodonData.model.graph.lock.writeLock().unlock()
+                manvr3d.bdvNotifier?.lockUpdates = false
+                manvr3d.selectedLinkNodes.clear()
+                mastodonData.model.graph.notifyGraphChanged()
+            }
+
             manvr3d.bdvNotifier?.lockUpdates = false
         }
     }
@@ -1367,7 +1390,7 @@ class GeometryHandler(
             mainSpotInstance?.updateInstanceBuffers()
             logger.debug("Added a new preview link from {} to {}. Visibility is {}", link.from, link.to, preview)
         }
-        logger.info("Adding tracked point to trackPointList now")
+        logger.debug("Adding tracked point to trackPointList now")
         trackPointList.add(TrackedPoint(localPos, tp, radius, spot))
     }
 

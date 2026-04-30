@@ -677,9 +677,10 @@ open class CellTrackingBase(
                 wasExecuted = false
             }
             override fun drag(x: Int, y: Int) {
+                // If the button was pressed for more than 0.5s, delete the branch
                 if (System.currentTimeMillis() - start > 500 && !wasExecuted) {
                     val p = cursor.getPosition()
-                    geometryHandler.addOrRemoveSpots(
+                    geometryHandler.addOrRemoveSpotsAndEdges(
                         volume.currentTimepoint,
                         p,
                         cursor.radius,
@@ -695,7 +696,7 @@ open class CellTrackingBase(
                     val p = cursor.getPosition()
                     logger.debug("Got cursor position: $p")
                     if (!wasExecuted) {
-                        geometryHandler.addOrRemoveSpots(
+                        geometryHandler.addOrRemoveSpotsAndEdges(
                             volume.currentTimepoint,
                             p,
                             cursor.radius,
