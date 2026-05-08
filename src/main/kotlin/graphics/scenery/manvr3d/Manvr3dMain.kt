@@ -49,10 +49,12 @@ import graphics.scenery.utils.TimepointObserver
 import graphics.scenery.manvr3d.util.GeometryHandler
 import graphics.scenery.manvr3d.vr.CellTrackingBase
 import graphics.scenery.manvr3d.vr.EyeTracking
+import org.mastodon.graph.GraphChangeListener
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.Executors
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 import javax.swing.Action
 import javax.swing.JFrame
 import javax.swing.JPanel
@@ -289,6 +291,39 @@ class Manvr3dMain: TimepointObserver {
         sciviewWin.camera?.showMessage("Training took ${start.elapsedNow()} ms", 2f, 0.2f, centered = true)
     }
 
+    /** Listen to graph changes during the prediction and move the timepoint along with the highest predicted timepoint.
+     * Automatically removes the listener once the highest timepoint is reached. */
+    private inner class ElephantListener(val enableListener: Boolean) : GraphChangeListener {
+        var timeSinceUpdate = TimeSource.Monotonic.markNow()
+        var isActive = AtomicBoolean(false)
+
+        override fun graphChanged() {
+            if (TimeSource.Monotonic.markNow().minus(timeSinceUpdate) > 0.1.seconds) {
+                timeSinceUpdate = TimeSource.Monotonic.markNow()
+                if (enableListener) {
+                    val highestTimepoint = mastodon.model.graph.vertices()?.maxOf { it.timepoint } ?: 0
+                    logger.debug("Elephant listener got triggered, changing timepoint to $highestTimepoint")
+                    goToTimepoint(highestTimepoint)
+                }
+            }
+        }
+        /** Launches a loop that waits until the last timepoint is reached before remove the listener from Mastodon. */
+        fun run() {
+            isActive.set(true)
+            thread {
+                while (isActive.get()) {
+                    // Remove the listener once we reached the last timepoint
+                    if (volumeNode.currentTimepoint == volumeNode.timepointCount - 1) {
+                        isActive.set(false)
+                        mastodon.model.graph.removeGraphChangeListener(this)
+                        logger.debug("Removed ElephantListener")
+                    }
+                    Thread.sleep(200)
+                }
+            }
+        }
+    }
+
     /** Predict spots with ELEPHANT. If [predictAll] is true, all timepoints will be predicted.
      * Otherwise, just the current timepoint will be predicted. */
     fun predictSpots(predictAll: Boolean) {
@@ -299,27 +334,25 @@ class Manvr3dMain: TimepointObserver {
         // So we have to temporarily move to the last TP and set the time range to the size of all TPs
         val settings = ElephantMainSettingsManager.getInstance().forwardDefaultStyle
         settings.timeRange = if (predictAll) volumeNode.timepointCount else 1
-        logger.info("Elephant settings.timeRange was set to ${settings.timeRange}.")
-        val start = TimeSource.Monotonic.markNow()
+        logger.info("Predicting with Elephant. Prediction time range was set to ${settings.timeRange}.")
         val currentTP = currentTimepoint
         val groupHandle = mastodon.groupManager.createGroupHandle()
         groupHandle.groupId = 0
         val tpAdapter = TimepointModelAdapter(groupHandle.getModel(mastodon.TIMEPOINT))
 
         if (predictAll) {
-            tpAdapter.timepoint = volumeNode.timepointCount
+            tpAdapter.timepoint = volumeNode.timepointCount - 1
         } else {
             tpAdapter.timepoint = currentTP
         }
-        (predictSpotsAction as PredictSpotsAction).run()
-        logger.info("Predicting spots took ${start.elapsedNow()} ms")
+        // Add a listener that advances the current timepoint if we perform prediction for all timepoints
+        val elephantListener = ElephantListener(predictAll)
         if (predictAll) {
-            tpAdapter.timepoint = currentTP
+            elephantListener.run()
         }
-        geometryHandler.showInstancedSpots(currentTimepoint,
-            currentColorizer)
-        sciviewWin.camera?.showMessage("Prediction took ${start.elapsedNow()} ms", 2f, 0.2f, centered = true)
 
+        mastodon.model.graph.addGraphChangeListener(elephantListener)
+        (predictSpotsAction as PredictSpotsAction).run()
     }
 
     /** Prepare all spots in the scene for ELEPHANT training. */
@@ -596,14 +629,13 @@ class Manvr3dMain: TimepointObserver {
 
     private fun setColorizer(forThisBdv: MamutViewBdv, updateGeometry: Boolean = false) {
         val ts = forThisBdv.coloringModel.tagSet
-        logger.info("Set colorizer to tag set $ts")
         currentColorizer = if (ts != null) {
             TagSetGraphColorGenerator(mastodon.model.tagSetModel, ts)
         } else {
             noTSColorizer
         }
         if (updateGeometry) {
-            logger.info("SetColorizer is updating geometry now")
+            logger.debug("SetColorizer is updating geometry now")
             geometryHandler.showInstancedSpots(currentTimepoint, currentColorizer)
             geometryHandler.updateLinkColors(currentColorizer)
         }
