@@ -12,7 +12,7 @@ and extends the bridge with eye tracking, real-time data synchronization and VR 
 > If in doubt, ask Samuel on [Zulip](https://imagesc.zulipchat.com/#narrow/channel/327470-Mastodon/topic/sciview.20bridge/with/507278423).
 
 # How to compile
-This project is now a **gradle build system project** with the official current content on the `master` branch.
+This project is a **gradle build system project** with the official current content on the `main` branch.
 It is a gradle project because scenery and sciview are gradle projects, and thus it was the most natural choice when developing or contributing to this project.
 
 ## Development
@@ -21,7 +21,7 @@ be immediately accessible in this project, the gradle settings of this project i
 Therefore, the following layout is expected:
 
 ```shell
-├── mastodon-sciview-take2
+├── manvr3d
 │   ├── build
 │   ├── build.gradle.kts
 │   ├── gradle
@@ -29,7 +29,7 @@ Therefore, the following layout is expected:
 │   ├── gradlew.bat
 │   ├── settings.gradle.kts
 │   └── src
-├── sciview
+├── sciview # (<- optional, for latest features)
 │   └── ...
 └── scenery # (<- optional, for latest features)
     └── ...

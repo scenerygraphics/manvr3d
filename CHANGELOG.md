@@ -7,7 +7,8 @@
 - Add +/- buttons to quickly adjust volume transparency inside VR ([#30](https://github.com/scenerygraphics/manvr3d/pull/30))
 - Unconnected spots can be linked continuously with the controller tracking tool ([#30](https://github.com/scenerygraphics/manvr3d/pull/30))
 - Added volume lensing toggle to aid dataset exploration and annotation in dense areas ([#30](https://github.com/scenerygraphics/manvr3d/pull/30), [#823](https://github.com/scenerygraphics/scenery/pull/823))
-- Edges can be selected and deleted with the same behaviors as spots ([#30](https://github.com/scenerygraphics/manvr3d/pull/30))
+- Edges can be selected and deleted with the same behaviors as spots (single click selects/deselects; dragging paints selections; clicking "delete" only deletes the connection, not the connected spots; holding "delete" will delete the connected branch including spots) ([#30](https://github.com/scenerygraphics/manvr3d/pull/30))
+- When the graph is empty and Elephant is set to predict all timepoints, the view automatically updates to the most recently predicted timepoint ([#30](https://github.com/scenerygraphics/manvr3d/pull/30))
 
 ### Removed
 
