@@ -33,7 +33,7 @@ where the timepoint defines the color of each link, or using the corresponding s
 
 ## Getting started
 
-The packaged version of manvr3d in the release section is only for testing purposes and not ready yet for day to day use. A list of known issues is listed below.
+You can find packaged versions of manvr3d in the release section. They are primarily intended for testing purposes and may not be ready for day to day use use. A list of known issues is listed below.
 
 Simply execute the `manvr3d.bat` batch file in the `bin` folder. At this time, we only support the Windows platform due to support of VR hardware.
 After launch, a Mastodon and a Fiji window will open. From the Mastodon window, you can open existing projects or create new ones from your image dataset.
@@ -71,9 +71,7 @@ One can (temporarily) hide some of the displayed content or alter its appearance
 the toggles in the bridge UI or via the VR buttons.
 
 ## Viewing options
-However, controls relevant to the tracking context (plus convenience shortcut controls) are put together in the controls panel.
-The panel, for example, summarizes [how (copies of the) pixel data are additionally processed in order to improve their appearance](doc/CONTROLS.md),
-and allows to adjust parameters of it:
+Controls relevant to the tracking context (plus convenience shortcut controls) are put together in the controls panel.
 
 ![The controls panel dialog window](doc/UI_v0.3.jpg)
 
@@ -85,9 +83,9 @@ that BDV's view. That said, the change of *view angle* (but not panning nor zoom
 sciview look at the same piece of data. Enabled colors (tags) in that BDV are also immediately effective in sciview. Last but not least, selecting
 a spot in Mastodon selects it also in the sciview and displays it's sphere in bright red.
 This works also in the opposite direction: selecting a sphere in sciview forces Mastodon to focus on the counterpart spot.
-Which time point is currently displayed  is also linked between the two.
+Which time point is currently displayed  is also linked between the two windows.
 
-Additionally, the controls panel contains the same three locks as it is in Mastodon, and it works as expected.
+Additionally, the controls panel contains the same three lock group buttons as found elsewhere in Mastodon.
 
 ## Keyboard shortcuts
 The summary of the currently available keyboard keys can be opened into a separate, non-model window by selecting the menu `Help -> Mastodon Bridge` in sciview.
@@ -97,19 +95,19 @@ Sometimes, it is necessary to (right) mouse click into the main viewing pane of 
 
 ## VR interaction
 
-> Use of eye trackers is currently only tested to work with a pair of Pupil eye trackers that require running Pupil Service alongside the bridge.
+> Use of eye trackers is currently only tested to work with a pair of Pupil eye trackers that require running Pupil Service alongside manvr3d.
 
-> Controller tracking should work with any modern headset, but the control scheme was only tested to work with a Meta Quest 2 and HTC Vive for now.
+> Controller tracking should work with any modern headset, but the control scheme was only tested to work with a Meta Quest 2/3 and HTC Vive for now.
 
 You can launch a VR session by clicking "Start VR" in the control panel. Only select the "Launch with Eye Tracking" toggle
 if you want to use eye tracking and have compatible eye tracking hardware.
 
-Currently, the controller scheme looks like this:
-![controller_layout_manvr3d_0.3.png](doc/controller_layout_manvr3d_0.3.png)
+![controller_layout_manvr3d_0.4.png](doc/controller_layout_manvr3d_0.4.png)
+*Controller scheme of manvr3d v0.4.*
 
 The **grab buttons** are the most important navigation interactions. They allow you to position the dataset (left grab) and scale/rotate the dataset (both grabs). For fast movements through the scene you can use the **left joystick**.
 
-The **right joystick** allows you to cycle through the timepoints (left/right). Moving the joystick up and down will change the size of the 3D cursor. This has several effects. For one, it changes the size of the annotated cells, and it also allows you to select larger chunks of cells at the same time by pressing or holding the right **A** button. Note that pressing buttons on your left wrist is also done with the cursor, in which case you might want to scale the cursor down.
+The **right joystick** allows you to cycle through the timepoints (left/right). Moving the joystick up and down will change the size of the 3D cursor. This has several effects. For one, it changes the size of the cells you annotate, and it also allows you to select larger chunks of cells at the same time by pressing or holding the right **A** button. Note that interacting with buttons on your left wrist menu is also done with this cursor, in which case you might want to scale the cursor down.
 
 ### Controller tracking
 1. Move to the last timepoint by tapping the `>|` button in the playback control menu (Point 4 will explain why).  You can cycle between menus with the left **X** button.
@@ -127,11 +125,19 @@ Starting from manvr3d v0.3, you can switch to an experimental "annotation by gaz
 ### VR Editing
 - You can click into existing cells with the right trigger button to start tracking **from** them. This will automatically extend the existing track.
 - Clicking into an existing cell **while tracking is active** will merge the active track into the existing track and create a cell division.
+- Clicking into existing cells this way thus allows you to simply merge partial branches and fill gaps.
+- If you clicked into a cell that does not have any connecting links yet, the tracking procedure will continue to the next timepoint automatically. This is useful for manually linking existing cell annotations over time. You can abort the tracking at any point by clicking the right **B** button.
 - Select or deselect cells by moving the 3D cursor into them and press the **A** button. If you press it in thin air, it will clear the current selection. You can also hold and drag the **A** button to draw selections of several cells at once (you can select large areas at once by increasing the cursor size with the right joystick).
 - Selected cells can be moved around by holding the **right grab button**.
 - Selected cells can be deleted by pressing the **B** button. You can hold **B** for half a second to delete the whole track with all connected branches.
 - Selected cells can be scaled up or down by moving the **right joystick** up or down.
 - You can add new cells in the current timepoint with the **B** button. This works as long as no selection is active (otherwise **B** will delete the selected cells).
+- Starting with version 0.4, selecting links is possible in the same way you select cells:
+  - Single clicks select/deselect links. Clicking away also removes the selection
+  - Dragging paints selections
+  - Clicking "delete" (**B** button) only deletes the connection, not the connected spots
+  - Holding "delete" will delete the connected branch including spots
+  - For performance reasons, only clicking the center of the link will select it
 
 ### Cursor Colors
 - Blue: default
@@ -148,4 +154,4 @@ Starting from manvr3d v0.3, you can switch to an experimental "annotation by gaz
 
 - Spot editing events can trigger a full graph redraw. This is not a problem for small to medium-sized datasets. ([↗](https://github.com/scenerygraphics/manvr3d/issues/23))
 
-- Selecting a mipmap level in the popup during the manvr3d initialization phase doesn't apply that mipmap level correctly to the volume (likely because the volume wasn't fully loaded yet). For now, use the mipmap spinner in the GUI. ([↗](https://github.com/scenerygraphics/manvr3d/issues/28))
+- Selecting a mipmap level in the popup during the manvr3d initialization phase doesn't apply that mipmap level correctly to the volume (likely because the volume wasn't fully loaded yet). For now, use the mipmap spinner in the GUI to change the mipmap level after the volume was loaded. ([↗](https://github.com/scenerygraphics/manvr3d/issues/28))
