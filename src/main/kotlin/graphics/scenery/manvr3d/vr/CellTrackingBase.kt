@@ -672,6 +672,7 @@ open class CellTrackingBase(
         class AddDeleteResetBehavior : DragBehaviour {
             var start = System.currentTimeMillis()
             var wasExecuted = false
+
             override fun init(x: Int, y: Int) {
                 start = System.currentTimeMillis()
                 wasExecuted = false
@@ -712,24 +713,33 @@ open class CellTrackingBase(
         /** This behavior selects/deselects spots and edges on click,
          * and performs paint stroke-like selection drawing on drag events. */
         class DragSelectBehavior: DragBehaviour {
-            var time = System.currentTimeMillis()
+            var lastUpdate = System.currentTimeMillis()
+            var startTime = System.currentTimeMillis()
+            var wasDragged = false
+
             override fun init(x: Int, y: Int) {
-                time = System.currentTimeMillis()
-                val p = cursor.getPosition()
+                lastUpdate = System.currentTimeMillis()
                 cursor.setColor(cursorSelectColor)
-                geometryHandler.selectClosestSpotsVR(p, volume.currentTimepoint, cursor.radius, false)
-                geometryHandler.selectClosestEdgesVR(p, cursor.radius, false)
+                startTime = System.currentTimeMillis()
+                wasDragged = false
             }
             override fun drag(x: Int, y: Int) {
-                // Only perform the selection method ten times a second
-                if (System.currentTimeMillis() - time > 50) {
+                // Only perform the selection method twenty times a second and when the button was pressed for more than 200ms
+                if (System.currentTimeMillis() - lastUpdate > 50 && System.currentTimeMillis() - startTime > 200) {
                     val p = cursor.getPosition()
                     geometryHandler.selectClosestSpotsVR(p, volume.currentTimepoint, cursor.radius, true)
                     geometryHandler.selectClosestEdgesVR(p, cursor.radius, true)
-                    time = System.currentTimeMillis()
+                    lastUpdate = System.currentTimeMillis()
+                    wasDragged = true
                 }
             }
             override fun end(x: Int, y: Int) {
+                // If this wasn't a drag event but a click event, perform the selection now
+                if (!wasDragged) {
+                    val p = cursor.getPosition()
+                    geometryHandler.selectClosestSpotsVR(p, volume.currentTimepoint, cursor.radius, false)
+                    geometryHandler.selectClosestEdgesVR(p, cursor.radius, false)
+                }
                 cursor.resetColor()
             }
         }

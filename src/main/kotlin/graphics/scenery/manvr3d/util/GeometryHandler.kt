@@ -37,6 +37,7 @@ import kotlinx.coroutines.joinAll
 import net.imglib2.KDTree
 import net.imglib2.RealPoint
 import net.imglib2.neighborsearch.RadiusNeighborSearchOnKDTree
+import org.mastodon.collection.RefCollection
 import spim.fiji.spimdata.interestpoints.InterestPoint
 import java.awt.Color
 import java.lang.Math
@@ -682,12 +683,11 @@ class GeometryHandler(
         })
     }
 
-    /** Lambda that performs incremental nearest neighbor search in the current timepoint (Int),
-     * based on a position given by the VR controller (Vector3f) and a search radius.
-     * The Boolean addOnly specifies whether to only add to the selection. If false, clicking away from a spot will deselect everything.
-     * @return a Pair of the first selected spot itself and a boolean if the selection was valid (in the spot radius). */
-    val selectClosestSpotsVR: ((pos: Vector3f, tp: Int, radius: Float, addOnly: Boolean) -> Pair<Spot?, Boolean>) =
-        { pos, tp, radius, addOnly ->
+    /** Perform incremental nearest neighbor search in the current timepoint [tp],
+     * based on a position given by the VR controller [pos] and a search [radius].
+     * [addOnly] specifies whether to only add to the selection. If false, clicking away from a spot will deselect everything.
+     * @return a Pair of the first selected spot itself and a boolean if the selection was valid (within the spot radius). */
+    fun selectClosestSpotsVR (pos: Vector3f, tp: Int, radius: Float, addOnly: Boolean) : Pair<Spot?, Boolean> {
             val start = TimeSource.Monotonic.markNow()
             val localPos = manvr3d.sciviewToMastodonCoords(pos)
             val localRadius = manvr3d.sciviewToMastodonScale().max() * radius
@@ -696,7 +696,7 @@ class GeometryHandler(
             if (spots.isNotEmpty()) {
                 spots.forEach { spot ->
                     if (mastodonData.selectionModel.isSelected(spot) && !addOnly) {
-                        // if the spot is already selected and we have a click event, deselect it
+                        // if the spot is already selected, and we have a click event, deselect it
                         deselectSpot(spot)
                     } else {
                         selectSpot(spot)
@@ -705,7 +705,7 @@ class GeometryHandler(
                 logger.debug("Selecting spots in range took ${TimeSource.Monotonic.markNow() - start}")
                 mainSpotInstance?.updateInstanceBuffers()
                 // Return the first spot if we found one
-                Pair(spots.firstOrNull(), true)
+                return Pair(spots.firstOrNull(), true)
             } else {
                 // Only clear the selection if no drag select behavior is currently active
                 if (!addOnly) {
@@ -713,10 +713,12 @@ class GeometryHandler(
                     mastodonData.model.graph.notifyGraphChanged()
                 }
                 mainSpotInstance?.updateInstanceBuffers()
-                Pair(spots.firstOrNull(), false)
+                return Pair(spots.firstOrNull(), false)
             }
         }
 
+    /** Search for edges within a [radius] around [pos]. If [addOnly] is true, new edges will be added to the selection,
+     * otherwise old selections will be cleared when a new selection event occurs. */
     fun selectClosestEdgesVR (pos: Vector3f, radius: Float, addOnly: Boolean) {
         val time = TimeSource.Monotonic.markNow()
         val localPos = manvr3d.sciviewToMastodonCoords(pos)
@@ -754,7 +756,7 @@ class GeometryHandler(
 
     private fun selectSpot(spot: Spot) {
         findInstanceFromSpot(spot)?.let {
-            manvr3d.selectedSpotInstances.add(it)
+            manvr3d.selectedSpotInstances.addIfAbsent(it)
             it.instancedProperties["Color"] = { selectedColor }
             it.instancedParent.updateInstanceBuffers()
             mastodonData.selectionModel.setSelected(spot, true)
@@ -770,10 +772,10 @@ class GeometryHandler(
     }
 
     private fun selectLink(linkNode: LinkNode, updateBuffers: Boolean = true) {
-        logger.trace("Selecting link ${linkNode.link.internalPoolIndex}")
+        logger.debug("Selecting link ${linkNode.link.internalPoolIndex}")
         val linkNode = links[linkNode.link.internalPoolIndex] ?: return
         linkNode.instance.instancedProperties["Color"] = { selectedColor }
-        manvr3d.selectedLinkNodes.add(linkNode)
+        manvr3d.selectedLinkNodes.addIfAbsent(linkNode)
         mastodonData.selectionModel.setSelected(linkNode.link, true)
         if (updateBuffers) {
             mainLinkInstance?.updateInstanceBuffers()
@@ -781,7 +783,7 @@ class GeometryHandler(
     }
 
     private fun deselectLink(linkNode: LinkNode, updateBuffers: Boolean = true) {
-        logger.trace("Deselecting link ${linkNode.link.internalPoolIndex}")
+        logger.debug("Deselecting link ${linkNode.link.internalPoolIndex}")
         manvr3d.selectedLinkNodes.remove(linkNode)
         mastodonData.selectionModel.setSelected(linkNode.link, false)
         // We defer the instance buffer updates to after all links are updated in selectClosestEdgesVR
@@ -1267,8 +1269,6 @@ class GeometryHandler(
         enqueueUpdate("addTrackToMastodon(tp=$tp)") {
             manvr3d.bdvNotifier?.lockUpdates = true
             // Check if a spot is selected, and perform deletion if true
-            val anySelection =
-                mastodonData.selectionModel.selectedVertices.isNotEmpty() || mastodonData.selectionModel.selectedEdges.isNotEmpty()
             val selectedSpots = mastodonData.selectionModel.selectedVertices
             var selectedEdges = mastodonData.selectionModel.selectedEdges
             // Treat spots first
@@ -1323,8 +1323,23 @@ class GeometryHandler(
                 mastodonData.model.setUndoPoint()
                 manvr3d.bdvNotifier?.lockUpdates = true
                 mastodonData.model.graph.lock.writeLock().lock()
-                selectedEdges.forEach { edge ->
-                    mastodonData.model.graph.remove(edge)
+                if (deleteBranch) {
+                    // Delete the branches corresponding the selected edges
+                    val selectedSpots = RefCollections.createRefList(mastodonData.model.graph.vertices())
+                    selectedEdges.forEach { edge ->
+                        if (!selectedSpots.contains(edge.source)) {
+                            logger.info("Adding spots to the list from edge ${edge.internalPoolIndex}")
+                            selectedSpots.addAll(selectBranch(edge.source))
+                        }
+                    }
+                    selectedSpots.forEach {
+                        mastodonData.model.graph.remove(it)
+                    }
+                } else {
+                    // Otherwise only delete edges and don't touch the spots themselves
+                    selectedEdges.forEach { edge ->
+                        mastodonData.model.graph.remove(edge)
+                    }
                 }
                 mastodonData.model.graph.lock.writeLock().unlock()
                 manvr3d.bdvNotifier?.lockUpdates = false
