@@ -166,6 +166,7 @@ open class CellTrackingBase(
                         )
                         setupElephantMenu()
                         setupGeneralMenu()
+                        onLeftHandReady()
                         leftWristMenu.hideAll()
                     }
 
@@ -180,6 +181,8 @@ open class CellTrackingBase(
         launchUpdaterThread()
         launchLensingThread()
     }
+
+    protected open fun onLeftHandReady() {}
 
     var controllerTrackingActive = false
 
@@ -474,18 +477,6 @@ open class CellTrackingBase(
         }
     }
 
-    fun addHedgehog() {
-        logger.info("added hedgehog")
-        val hedgehog = Cylinder(0.005f, 1.0f, 16)
-        hedgehog.visible = false
-        hedgehog.setMaterial(ShaderMaterial.fromFiles("DeferredInstancedColor.frag", "DeferredInstancedColor.vert"))
-        val hedgehogInstanced = InstancedNode(hedgehog)
-        hedgehogInstanced.visible = false
-        hedgehogInstanced.instancedProperties["ModelMatrix"] = { hedgehog.spatial().world}
-        hedgehogInstanced.instancedProperties["Metadata"] = { Vector4f(0.0f, 0.0f, 0.0f, 0.0f) }
-        hedgehogs.addChild(hedgehogInstanced)
-    }
-
     /** Attach a spherical cursor to the right controller. */
     private fun attachCursorAndTimepointWidget(debug: Boolean = false) {
         // Only attach if not already attached
@@ -527,29 +518,6 @@ open class CellTrackingBase(
             }
         }
 
-        val toggleHedgehog = ClickBehaviour { _, _ ->
-            val current = HedgehogVisibility.entries.indexOf(hedgehogVisibility)
-            hedgehogVisibility = HedgehogVisibility.entries.get((current + 1) % 3)
-
-            when (hedgehogVisibility) {
-                HedgehogVisibility.Hidden -> {
-                    hedgehogs.visible = false
-                    hedgehogs.runRecursive { it.visible = false }
-                    cam.showMessage("Hedgehogs hidden", distance = 2f, size = 0.2f, centered = true)
-                }
-
-                HedgehogVisibility.PerTimePoint -> {
-                    hedgehogs.visible = true
-                    cam.showMessage("Hedgehogs shown per timepoint", distance = 2f, size = 0.2f, centered = true)
-                }
-
-                HedgehogVisibility.Visible -> {
-                    hedgehogs.visible = true
-                    cam.showMessage("Hedgehogs visible", distance = 2f, size = 0.2f, centered = true)
-                }
-            }
-        }
-
         val nextTimepoint = ClickBehaviour { _, _ ->
             skipToNext = true
         }
@@ -582,16 +550,6 @@ open class CellTrackingBase(
 
         val scaleCursorOrSpotsDown = AnalogInputWrapper(ScaleCursorOrSpotsBehavior(0.98f), sciview.currentScene)
 
-        val faster = ClickBehaviour { _, _ ->
-            volumesPerSecond = maxOf(minOf(volumesPerSecond+0.2f, 20f), 1f)
-            cam.showMessage("Speed: ${"%.1f".format(volumesPerSecond)} vol/s",distance = 1.2f, size = 0.2f, centered = true)
-        }
-
-        val slower = ClickBehaviour { _, _ ->
-            volumesPerSecond = maxOf(minOf(volumesPerSecond-0.2f, 20f), 1f)
-            cam.showMessage("Speed: ${"%.1f".format(volumesPerSecond)} vol/s",distance = 2f, size = 0.2f, centered = true)
-        }
-
         val playPause = ClickBehaviour { _, _ ->
             playing = !playing
             if (playing) {
@@ -600,36 +558,6 @@ open class CellTrackingBase(
                 cam.showMessage("Paused", distance = 2f, size = 0.2f, centered = true)
             }
         }
-
-        val deleteLastHedgehog = ConfirmableClickBehaviour(
-            armedAction = { timeout ->
-                cam.showMessage("Deleting last track, press again to confirm.",distance = 2f, size = 0.2f,
-                    messageColor = Vector4f(1.0f, 1.0f, 1.0f, 1.0f),
-                    backgroundColor = Vector4f(1.0f, 0.2f, 0.2f, 1.0f),
-                    duration = timeout.toInt(),
-                    centered = true)
-
-            },
-            confirmAction = {
-                hedgehogs.children.removeLast()
-                volume.children.last { it.name.startsWith("Track-") }?.let { lastTrack ->
-                    volume.removeChild(lastTrack)
-                }
-                val hedgehogId = hedgehogIds.get()
-                val hedgehogFile = sessionDirectory.resolve("Hedgehog_${hedgehogId}_${SystemHelpers.formatDateTime()}.csv").toFile()
-                val hedgehogFileWriter = BufferedWriter(FileWriter(hedgehogFile, true))
-                hedgehogFileWriter.newLine()
-                hedgehogFileWriter.newLine()
-                hedgehogFileWriter.write("# WARNING: TRACK $hedgehogId IS INVALID\n")
-                hedgehogFileWriter.close()
-
-                cam.showMessage("Last track deleted.",distance = 2f, size = 0.2f,
-                    messageColor = Vector4f(1.0f, 0.2f, 0.2f, 1.0f),
-                    backgroundColor = Vector4f(1.0f, 1.0f, 1.0f, 1.0f),
-                    duration = 1000,
-                    centered = true
-                )
-            })
 
         mapper.bind(hmd, buttonMapper.STEP_FWD, nextTimepoint)
         mapper.bind(hmd, buttonMapper.STEP_BWD, prevTimepoint)
@@ -931,8 +859,8 @@ open class CellTrackingBase(
                 spine.metadata["spine"] = metadata
                 spine.instancedProperties["ModelMatrix"] = { spine.spatial().world }
                 // TODO: Show confidence as color for the spine
-                spine.instancedProperties["Metadata"] =
-                    { Vector4f(confidence, timepoint.toFloat() / volume.timepointCount, count.toFloat(), 0.0f) }
+                spine.instancedProperties["Color"] =
+                    { Vector4f(confidence, timepoint.toFloat() / volume.timepointCount, count.toFloat(), 1.0f) }
             }
         }
     }
