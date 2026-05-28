@@ -8,6 +8,7 @@ import graphics.scenery.DetachedHeadCamera
 import graphics.scenery.Icosphere
 import graphics.scenery.InstancedNode
 import graphics.scenery.Mesh
+import graphics.scenery.ShaderMaterial
 import graphics.scenery.controls.TrackedDeviceType
 import graphics.scenery.controls.eyetracking.PupilEyeTracker
 import graphics.scenery.primitives.Cylinder
@@ -36,7 +37,9 @@ import graphics.scenery.manvr3d.analysis.HedgehogAnalysis
 import graphics.scenery.manvr3d.util.GeometryHandler
 import graphics.scenery.manvr3d.util.SpineMetadata
 import java.awt.image.DataBufferByte
+import java.io.BufferedWriter
 import java.io.ByteArrayInputStream
+import java.io.FileWriter
 import java.nio.file.Files
 import java.nio.file.Paths
 import java.util.concurrent.CompletableFuture
@@ -185,12 +188,7 @@ class EyeTracking(
         debugBoard.visible = false
         sciview.camera?.addChild(debugBoard)
 
-        hmd.events.onDeviceConnect.add { hmd, device, timestamp ->
-            if (device.type == TrackedDeviceType.Controller) {
-                setupEyeTracking()
-                setupEyeTrackingMenu()
-            }
-        }
+
 
         // Attach a behavior to the main loop that stops the eye tracking once we reached the first time point
         // and analyzes the created track.
@@ -208,6 +206,10 @@ class EyeTracking(
 
     }
 
+    override fun onLeftHandReady() {
+        setupEyeTracking()
+        setupEyeTrackingMenu()
+    }
 
     private fun setupEyeTracking() {
         val cam = sciview.camera as? DetachedHeadCamera ?: return
@@ -352,21 +354,20 @@ class EyeTracking(
 
     private fun setupEyeTrackingMenu() {
 
+        logger.debug("Setting up Eye Tracking menu")
+
+        val cam = sciview.camera ?: throw IllegalStateException("Could not find camera")
+
+        val color = Vector3f(0.8f)
+        val pressedColor = Vector3f(0.95f, 0.35f, 0.25f)
+        val touchingColor = Vector3f(0.7f, 0.55f, 0.55f)
+
         leftWristMenu.addColumn("Eye Tracking")
         leftWristMenu.addButton(
             "Eye Tracking", "Calibrate",
             command = { calibrateEyeTrackers() }, depressDelay = 500
         )
-        leftWristMenu.addToggleButton(
-            "Eye Tracking", "Hedgehogs Off",
-            "Hedgehogs On",
-            command = {
-                hedgehogVisibility = if (hedgehogVisibility == HedgehogVisibility.Hidden) {
-                    HedgehogVisibility.PerTimePoint
-                } else {
-                    HedgehogVisibility.Hidden
-                }
-            })
+
         leftWristMenu.addToggleButton(
             "Eye Tracking", "Follow Cell",
             "Count Cells",
@@ -376,9 +377,66 @@ class EyeTracking(
                 } else {
                     TrackingType.Follow
                 }
-            }, color = Vector3f(0.65f, 1f, 0.22f),
-            pressedColor = Vector3f(0.15f, 0.2f, 1f)
+            }, color = Vector3f(0.65f, 1f, 0.22f), pressedColor = Vector3f(0.15f, 0.2f, 1f)
         )
+        leftWristMenu.addToggleButton(
+            "Eye Tracking", "Hedgehogs Off", "Hedgehogs On",
+            command = {
+                hedgehogVisibility = if (hedgehogVisibility == HedgehogVisibility.Hidden) {
+                    HedgehogVisibility.PerTimePoint
+                } else {
+                    HedgehogVisibility.Hidden
+                }
+
+                when (hedgehogVisibility) {
+                    HedgehogVisibility.Hidden -> {
+                        hedgehogs.visible = false
+                        hedgehogs.runRecursive { it.visible = false }
+                        cam.showMessage("Hedgehogs hidden", distance = 2f, size = 0.2f, centered = true)
+                    }
+
+                    HedgehogVisibility.PerTimePoint -> {
+                        hedgehogs.visible = true
+                        cam.showMessage("Hedgehogs shown per timepoint", distance = 2f, size = 0.2f, centered = true)
+                    }
+
+                    else -> {}
+                }
+            }, byTouch = true, color = color, pressedColor = pressedColor, touchingColor = touchingColor, defaultState = false
+        )
+
+        leftWristMenu.addButton(
+            "Eye Tracking", "Del. last HH",
+            command = {
+                hedgehogs.children.removeLast()
+                val hedgehogId = hedgehogIds.get()
+                val hedgehogFile = sessionDirectory.resolve("Hedgehog_${hedgehogId}_${SystemHelpers.formatDateTime()}.csv").toFile()
+                val hedgehogFileWriter = BufferedWriter(FileWriter(hedgehogFile, true))
+                hedgehogFileWriter.newLine()
+                hedgehogFileWriter.newLine()
+                hedgehogFileWriter.write("# WARNING: TRACK $hedgehogId IS INVALID\n")
+                hedgehogFileWriter.close()
+
+                cam.showMessage("Last track deleted.",distance = 2f, size = 0.2f,
+                    messageColor = Vector4f(1.0f, 0.2f, 0.2f, 1.0f),
+                    backgroundColor = Vector4f(1.0f, 1.0f, 1.0f, 1.0f),
+                    duration = 1000,
+                    centered = true
+                )
+            }
+        )
+    }
+
+    fun addHedgehog() {
+        logger.info("added hedgehog")
+        val hedgehog = Cylinder(0.005f, 1.0f, 16)
+        hedgehog.visible = false
+        hedgehog.setMaterial(ShaderMaterial.fromFiles("DeferredInstancedColor.frag", "DeferredInstancedColor.vert"))
+        val hedgehogInstanced = InstancedNode(hedgehog)
+        hedgehogInstanced.visible = false
+        hedgehogInstanced.instancedProperties["ModelMatrix"] = { hedgehog.spatial().world}
+        hedgehogInstanced.instancedProperties["Metadata"] = { Vector4f(0.0f, 0.0f, 0.0f, 0.0f) }
+        hedgehogs.addChild(hedgehogInstanced)
     }
 
     /** Writes the accumulated gazes (hedgehog) to a file, analyzes it,
