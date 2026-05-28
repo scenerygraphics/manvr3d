@@ -1051,11 +1051,15 @@ class GeometryHandler(
             while (i < linkPool.size) {
                 linkPool[i++].visible = false
             }
+
+            val transformStart = TimeSource.Monotonic.markNow()
             // treat link previews (placeholders during tracking) separately
             linkPreviewList.forEach { link ->
                 setLinkTransform(link.from, link.to, link.instance)
             }
+            logger.debug("Link transform updates took ${TimeSource.Monotonic.markNow() - transformStart}")
 
+            val treeStart = TimeSource.Monotonic.markNow()
             // Build a KD tree for fast spatial querying of edges
             val points = links.values.map { linkNode ->
                 // KDTree needs RealLocalizable points
@@ -1070,6 +1074,8 @@ class GeometryHandler(
                 points.map { it.second },  // values
                 points.map { it.first }    // positions
             ) else null
+
+            logger.debug("Link kd tree building took ${TimeSource.Monotonic.markNow() - treeStart}")
 
             logger.debug("${links.size} links in the hashmap, ${linkPool.size} link instances in the pool. " +
                     "Mastodon provides ${mastodonData.model.graph.edges().size} links.")
