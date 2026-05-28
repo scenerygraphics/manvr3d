@@ -147,6 +147,7 @@ class Manvr3dMain: TimepointObserver {
     var uiFrame: JFrame? = null
     private var isRunning = true
     var isVRactive = false
+    var useEyeTracking = false
     /** Factor to scale the native headset resolution by. Useful to increase performance at little visual impact.
      * Can only be changed through the UI, and is only applied when VR is started. */
     private var vrResolutionScale = 0.75f
@@ -940,7 +941,7 @@ class Manvr3dMain: TimepointObserver {
     /** Starts the sciview VR environment and optionally the eye tracking environment,
      * depending on the user's selection in the UI. Sends spot and track manipulation callbacks to the VR environment. */
     fun launchVR(wantEyeTracking: Boolean = true): Boolean {
-        var useEyeTrackers = wantEyeTracking
+
         // Test whether a headset is connected before starting sciview's VR launch routines
         val hmd = OpenVRHMD(false, true)
         if (!hmd.initializedAndWorking()) {
@@ -954,12 +955,15 @@ class Manvr3dMain: TimepointObserver {
 
         thread {
 
-            vrTracking = if (useEyeTrackers) {
+            vrTracking = if (wantEyeTracking) {
+                // Try to establish a connection to the eyetrackers
                 val eyeTracking = EyeTracking(sciviewWin, this, geometryHandler, vrResolutionScale)
                 if (eyeTracking.establishEyeTrackerConnection()) {
+                    useEyeTracking = true
                     eyeTracking
                 } else {
-                    useEyeTrackers = false
+                    // If connection failed, resort to default VR environment
+                    useEyeTracking = false
                     CellTrackingBase(sciviewWin, this, geometryHandler, vrResolutionScale)
                 }
             } else {
@@ -971,7 +975,7 @@ class Manvr3dMain: TimepointObserver {
             // allowing us to get updates via the onTimepointChanged() function
             vrTracking.registerObserver(this)
 
-            if (useEyeTrackers) {
+            if (useEyeTracking) {
                 (vrTracking as EyeTracking).run()
             } else {
                 vrTracking.run()
@@ -985,7 +989,7 @@ class Manvr3dMain: TimepointObserver {
         isVRactive = false
         vrTracking.unregisterObserver(this)
         logger.info("Removed timepoint observer from VR bindings.")
-        if (associatedUI!!.eyeTrackingToggle.isSelected) {
+        if (useEyeTracking) {
             (vrTracking as EyeTracking).stop()
         } else {
             vrTracking.stop()
