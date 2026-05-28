@@ -175,12 +175,17 @@ class HedgehogAnalysis(val spines: List<SpineMetadata>, val localToWorld: Matrix
 
 		logger.info("SpineGraphVertices extracted")
 
+		if (candidates.isEmpty()) {
+			logger.warn("No candidates were found, aborting hedgehog analysis")
+			return null
+		}
+
 		// step3: connect localMaximal points between 2 candidate spines according to the shortest path principle
 		// get the initial vertex, this one is assumed to always be in front, and have a local maximum - aka, what
 		// the user looks at first is assumed to be the actual cell they want to track
 		val initial = candidates.first().first { it.value > startingThreshold }
 		var current = initial
-		var shortestPath = candidates.drop(1).mapIndexedNotNull { time, vs ->
+		val shortestPath = candidates.drop(1).mapIndexedNotNull { time, vs ->
 			// calculate world-space distances between current point, and all candidate
 			// vertices, sorting them by distance
 			val vertices = vs
