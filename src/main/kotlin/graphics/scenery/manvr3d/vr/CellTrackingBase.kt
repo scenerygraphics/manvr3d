@@ -151,26 +151,30 @@ open class CellTrackingBase(
                 device.model?.let { hmd.attachToNode(device, it, sciview.camera) }
                 when (device.role) {
                     TrackerRole.Invalid -> {}
-                    TrackerRole.LeftHand -> leftVRController = device
-                    TrackerRole.RightHand -> rightVRController = device
-                }
-                if (device.role == TrackerRole.RightHand) {
-                    attachCursorAndTimepointWidget()
-                    device.model?.name = "rightHand"
-                } else if (device.role == TrackerRole.LeftHand) {
-                    device.model?.let {
-                        it.name = "leftHand"
-                        leftWristMenu = MultiWristMenu(it,
-                            columnBasePosition = Vector3f(0.03f, 0f, 0.1f),
-                            columnRotation = Quaternionf().rotationXYZ(-1.2f, 1.7f, 0f)
-                        )
-                        setupElephantMenu()
-                        setupGeneralMenu()
-                        onLeftHandReady()
-                        leftWristMenu.hideAll()
+                    TrackerRole.LeftHand -> {
+                        leftVRController = device
+                        device.model?.let {
+                            it.name = "leftHand"
+                            leftWristMenu = MultiWristMenu(it,
+                                columnBasePosition = Vector3f(0.03f, 0f, 0.1f),
+                                columnRotation = Quaternionf().rotationXYZ(-1.2f, 1.7f, 0f)
+                            )
+                            setupElephantMenu()
+                            setupGeneralMenu()
+                            onLeftHandReady()
+                            leftWristMenu.hideAll()
+                            buttonMapper.mapper.attachUIForRole(device.role, it)
+                        }
                     }
+                    TrackerRole.RightHand -> {
+                        rightVRController = device
+                        attachCursorAndTimepointWidget()
+                        device.model?.let {
+                            it.name = "rightHand"
+                            buttonMapper.mapper.attachUIForRole(device.role, it)
+                        }
 
-                    logger.info("Set up navigation and editing controls.")
+                    }
                 }
             }
         }
@@ -182,6 +186,7 @@ open class CellTrackingBase(
         launchLensingThread()
     }
 
+    /** Callback that can be used in [EyeTracking] to perform additional logic once the controllers were found. */
     protected open fun onLeftHandReady() {}
 
     var controllerTrackingActive = false
@@ -269,6 +274,8 @@ open class CellTrackingBase(
         leftWristMenu.addButton(colName, "NN linking",
             command = { updateElephantActions(ElephantMode.NNLinking) }, depressDelay = delay,
             color = unpressedColor, touchingColor = touchingColor, pressedColor = pressedColor)
+
+        logger.debug("Set up Elephant menu.")
     }
 
     var lastButtonTime = System.currentTimeMillis()
@@ -452,6 +459,8 @@ open class CellTrackingBase(
         leftWristMenu.addButton("Cleanup Menu", "Delete TP", command = {
             manvr3d.deleteTimepointAndUpdate(volume.currentTimepoint)
         }, byTouch = true, color = color, pressedColor = pressedColor, touchingColor = touchingColor)
+
+        logger.debug("Set up general menus.")
     }
 
     var isLensingActive = false
@@ -494,8 +503,9 @@ open class CellTrackingBase(
         }
 
         rightVRController?.model?.let {
-            cursor.attachCursor(it)
+            cursor.attachCursor(it, debug)
             sciview.addNode(volumeTimepointWidget, activePublish = false, parent = it)
+            logger.debug("Attached cursor and timepoint widget to right controller.")
         }
     }
 
