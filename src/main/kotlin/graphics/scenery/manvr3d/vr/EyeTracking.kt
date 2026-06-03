@@ -476,7 +476,7 @@ class EyeTracking(
         }
     }
 
-    /** Performs an analysis of collected gazes (hedgehogs) by first calculating the rotational distance between
+    /** Performs an analysis of collected gazes (hedgehogs) by first calculating the angular speed between
      * subsequent gazes, then discards all gazes larger than 0.3x median distance, clusters the remaining directions
      * and samples the volume using the cluster centers as directions. It then extracts the first local minima and sends
      * them as spots to Mastodon. */
