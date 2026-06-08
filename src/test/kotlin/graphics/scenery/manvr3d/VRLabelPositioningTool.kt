@@ -12,6 +12,7 @@ import graphics.scenery.manvr3d.util.CellTrackingButtonMapper
 import graphics.scenery.primitives.TextBoard
 import graphics.scenery.utils.extensions.minus
 import graphics.scenery.utils.extensions.plus
+import graphics.scenery.utils.extensions.times
 import graphics.scenery.utils.extensions.xyzw
 import org.joml.Quaternionf
 import org.joml.Vector3f
@@ -95,8 +96,6 @@ class VRLabelPositioningTool(
         hub.add(SceneryElement.HMDInput, hmd)
         renderer = hub.add(Renderer.createRenderer(hub, applicationName, scene, windowWidth, windowHeight))
         renderer?.toggleVR()
-
-        renderer?.reshape(windowWidth/2, windowHeight/2)
 
         // Camera
         val cam = DetachedHeadCamera(hmd)
@@ -233,7 +232,7 @@ class VRLabelPositioningTool(
                 // Start from existing stored offset, or a sane default right in front of the controller tip
                 position = mapping.offset ?: Vector3f(0f, 0.02f, 0.08f)
                 rotation = mapping.rotation ?: Quaternionf()
-                scale = Vector3f(0.025f)
+                scale = Vector3f(0.015f)
             }
         }
 
@@ -270,7 +269,7 @@ class VRLabelPositioningTool(
         val localRotDelta = labelRot.mul(rotDelta).mul(labelRotInv)
 
         board.spatial {
-            position += localDelta
+            position += localDelta * 0.3f
             rotation = localRotDelta.mul(Quaternionf(rotation))
         }
 
