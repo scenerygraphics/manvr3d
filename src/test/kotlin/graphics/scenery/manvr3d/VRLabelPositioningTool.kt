@@ -3,6 +3,7 @@ package graphics.scenery.manvr3d
 import graphics.scenery.*
 import graphics.scenery.attribute.material.Material
 import graphics.scenery.backends.Renderer
+import graphics.scenery.controls.ButtonMapping
 import graphics.scenery.controls.OpenVRHMD
 import graphics.scenery.controls.TrackedDevice
 import graphics.scenery.controls.TrackedDeviceType
@@ -62,12 +63,9 @@ class VRLabelPositioningTool(
     private val helperRole  = if (leftHandMode) TrackerRole.RightHand else TrackerRole.LeftHand
 
 
-    // Build the ordered list of mappings we want to position
-    // We only look at mappings that target the correct hand and have a label
-    private val targetMappings by lazy {
-        CellTrackingButtonMapper.mapper.getCurrentMappings()
-            ?.values?.filter { it.role == labelRole && it.label != null }?.toList() ?: emptyList()
-    }
+    val ctMapper = CellTrackingButtonMapper
+
+    lateinit var targetMappings: List<ButtonMapping>
 
     private var currentIndex = 0
 
@@ -98,11 +96,21 @@ class VRLabelPositioningTool(
         renderer = hub.add(Renderer.createRenderer(hub, applicationName, scene, windowWidth, windowHeight))
         renderer?.toggleVR()
 
+        renderer?.reshape(windowWidth/2, windowHeight/2)
+
         // Camera
         val cam = DetachedHeadCamera(hmd)
         cam.spatial { position = Vector3f(0f, 0f, 0f) }
         cam.perspectiveCamera(50f, windowWidth, windowHeight)
         scene.addChild(cam)
+
+        ctMapper.loadProfileForHMD(hmd)
+
+        // Build the ordered list of mappings we want to position
+        // We only look at mappings that target the correct hand and have a label
+        targetMappings = CellTrackingButtonMapper.mapper.getCurrentMappings()
+                ?.values?.filter { it.role == labelRole && it.label != null }?.toList() ?: emptyList()
+
 
         // Environment shell
         val shell = Box(Vector3f(20f, 20f, 20f), insideNormals = true)
@@ -118,29 +126,6 @@ class VRLabelPositioningTool(
             Vector3f(0f, 0f, 0f), spread = 5f, radius = 15f, intensity = 5f
         )
         lights.forEach { scene.addChild(it) }
-
-        // World-space instruction board (floats ~1 m in front of origin)
-        instructionBoard = TextBoard(inFront = true).apply {
-            name = "InstructionBoard"
-            text = buildInstructionText()
-            fontColor = Vector4f(0.85f, 0.85f, 1f, 1f)
-            spatial {
-                position = Vector3f(0f, 0.3f, -1.2f)
-                scale = Vector3f(0.25f)
-            }
-        }
-        scene.addChild(instructionBoard)
-
-        progressBoard = TextBoard(inFront = true).apply {
-            name = "ProgressBoard"
-            text = buildProgressText()
-            fontColor = Vector4f(0.6f, 1f, 0.7f, 1f)
-            spatial {
-                position = Vector3f(0f, 0f, -1.2f)
-                scale = Vector3f(0.20f)
-            }
-        }
-        scene.addChild(progressBoard)
 
         // Wait for controllers to connect
         thread {
@@ -173,17 +158,6 @@ class VRLabelPositioningTool(
                         }
                         else -> {}
                     }
-
-                    // Attach an update hook to the helper controller for continuous grab movement
-                    if (device.role == helperRole) {
-                        device.model?.let { helperModel ->
-                            helperModel.update.add {
-                                if (grabbing) {
-                                    updateGrabbedLabelPosition(helperModel)
-                                }
-                            }
-                        }
-                    }
                 }
             }
         }
@@ -197,15 +171,42 @@ class VRLabelPositioningTool(
         if (targetMappings.isEmpty()) {
             logger.warn("No labelled mappings found for $labelRole! Nothing to do.")
         }
+
+        addInfoBoards()
     }
 
-    // Called once the label controller model is available – attach the first board
+    // Called once the label controller model is available
     private fun onLabelControllerReady() {
         if (targetMappings.isEmpty()) return
         attachBoardAtIndex(currentIndex)
         updateProgressText()
     }
 
+    private fun addInfoBoards() {
+        logger.info("Adding info boards...")
+        // World-space instruction board (floats ~1 m in front of origin)
+        instructionBoard = TextBoard(inFront = true).apply {
+            name = "InstructionBoard"
+            text = buildInstructionText()
+            fontColor = Vector4f(0.85f, 0.85f, 1f, 1f)
+            spatial {
+                position = Vector3f(0.5f, 0.6f, -3f)
+                scale = Vector3f(0.15f)
+            }
+        }
+        scene.addChild(instructionBoard)
+
+        progressBoard = TextBoard(inFront = true).apply {
+            name = "ProgressBoard"
+            text = buildProgressText()
+            fontColor = Vector4f(0.6f, 1f, 0.7f, 1f)
+            spatial {
+                position = Vector3f(-0.6f, 0.3f, -3f)
+                scale = Vector3f(0.15f)
+            }
+        }
+        scene.addChild(progressBoard)
+    }
 
     // Create and attach a TextBoard for the mapping at [index]
     private fun attachBoardAtIndex(index: Int) {
@@ -232,7 +233,7 @@ class VRLabelPositioningTool(
                 // Start from existing stored offset, or a sane default right in front of the controller tip
                 position = mapping.offset ?: Vector3f(0f, 0.02f, 0.08f)
                 rotation = mapping.rotation ?: Quaternionf()
-                scale = Vector3f(0.04f)
+                scale = Vector3f(0.025f)
             }
         }
 
@@ -242,39 +243,44 @@ class VRLabelPositioningTool(
         logger.info(">>> Positioning label [${index + 1}/${targetMappings.size}]: \"${mapping.label}\" (${mapping.button})")
     }
 
+    var lastHelperPos = Vector3f()
+    var lastHelperRot = Quaternionf()
+
     // called when helper's Side button is pressed
     private fun startGrab() {
-        val board = activeBoard ?: return
-        val helperModel = helperController?.model ?: return
-
-        // Record the vector from the helper tip's world position to the board's world position
-        // so the board doesn't "snap" when we start dragging
-        val helperWorldPos = helperModel.spatialOrNull()?.position ?: Vector3f()
-        val boardWorldPos  = board.spatialOrNull()?.worldPosition() ?: Vector3f()
-        grabOffset = boardWorldPos - helperWorldPos
+        lastHelperPos = helperController?.position ?: return
+        lastHelperRot = helperController?.orientation ?: return
         grabbing = true
-        logger.debug("Grab started. helperPos=$helperWorldPos boardWorldPos=$boardWorldPos offset=$grabOffset")
+    }
+
+    // Called every frame while grabbing
+    private fun updateGrabbedLabelPosition() {
+        val board = activeBoard ?: return
+        val helperPos = helperController?.position ?: return
+        val helperRot = helperController?.orientation ?: return
+        val labelRot = labelController?.orientation ?: return
+
+        // world-space translation delta, rotated into label controller's local space
+        val worldDelta = helperPos - lastHelperPos
+        val localDelta = Quaternionf(labelRot).transform(Vector3f(worldDelta))
+
+        // calculate rotation delta that is independent of the label controller's rotation
+        val rotDelta = Quaternionf(helperRot).difference(lastHelperRot)
+        val labelRotInv = Quaternionf(labelRot).conjugate()
+        val localRotDelta = labelRot.mul(rotDelta).mul(labelRotInv)
+
+        board.spatial {
+            position += localDelta
+            rotation = localRotDelta.mul(Quaternionf(rotation))
+        }
+
+        lastHelperPos = helperPos
+        lastHelperRot = helperRot
     }
 
     private fun endGrab() {
         grabbing = false
         logger.debug("Grab released. Label is now at local position: ${activeBoard?.spatialOrNull()?.position}")
-    }
-
-    // Called every frame while grabbing, from the helper controller's update hook
-    private fun updateGrabbedLabelPosition(helperModel: Node) {
-        val board = activeBoard ?: return
-        val labelModel = labelController?.model ?: return
-
-        // Desired world position of the board = helper tip + original grab offset
-        val helperWorldPos = helperModel.spatialOrNull()?.worldPosition() ?: return
-        val desiredWorldPos = helperWorldPos + grabOffset
-
-        // Convert to local space of the label controller model
-        val labelWorldInverse = labelModel.spatialOrNull()?.world?.invert(org.joml.Matrix4f()) ?: return
-        val desiredLocalPos = labelWorldInverse.transformPosition(desiredWorldPos, Vector3f())
-
-        board.spatialOrNull()?.position = desiredLocalPos
     }
 
     // log the current local offset and advance to next label
@@ -320,9 +326,9 @@ class VRLabelPositioningTool(
         return """
             VR Label Positioning Tool
             [$helperHandName controller]
-              Hold SIDE  → grab & move label
-              TRIGGER    → confirm & log position
-              A button   → skip label
+              Hold SIDE  -> grab & move label
+              TRIGGER    -> confirm & log position
+              A button   -> skip label
         """.trimIndent()
     }
 
@@ -341,7 +347,7 @@ class VRLabelPositioningTool(
         // Grab – Side button on the helper controller
         hmd.addBehaviour("grab_label", object : DragBehaviour {
             override fun init(x: Int, y: Int)  { startGrab() }
-            override fun drag(x: Int, y: Int)  { /* position update handled in controller update hook */ }
+            override fun drag(x: Int, y: Int)  { updateGrabbedLabelPosition() }
             override fun end(x: Int, y: Int)   { endGrab() }
         })
         hmd.addKeyBinding("grab_label", helperRole, OpenVRHMD.OpenVRButton.Side)
