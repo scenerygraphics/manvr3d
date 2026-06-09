@@ -19,6 +19,7 @@ import org.joml.Vector3f
 import org.joml.Vector4f
 import org.scijava.ui.behaviour.ClickBehaviour
 import org.scijava.ui.behaviour.DragBehaviour
+import java.text.DecimalFormat
 import kotlin.concurrent.thread
 import kotlin.system.exitProcess
 
@@ -293,6 +294,8 @@ class VRLabelPositioningTool(
         val localPos = board.spatialOrNull()?.position ?: Vector3f()
         val localRot = board.spatialOrNull()?.rotation ?: Quaternionf()
 
+        val df = DecimalFormat("#.###")
+
         // Pretty-print for direct copy-paste into CellTrackingButtonMapper
         logger.info("=== [LABEL RESULT] \"${mapping.label}\" (${mapping.role} / ${mapping.button}) ===")
         logger.info("  offset   = Vector3f(${localPos.x}f, ${localPos.y}f, ${localPos.z}f)")
@@ -303,8 +306,10 @@ class VRLabelPositioningTool(
         logger.info("         TrackerRole.${mapping.role},")
         logger.info("         OpenVRButton.${mapping.button},")
         logger.info("         label = \"${mapping.label}\",")
-        logger.info("         offset = Vector3f(${localPos.x}f, ${localPos.y}f, ${localPos.z}f),")
-        logger.info("         rotation = Quaternionf(${localRot.x}f, ${localRot.y}f, ${localRot.z}f, ${localRot.w}f)")
+        logger.info("         offset = Vector3f(${df.format(localPos.x)}f, ${df.format(localPos.y)}f," +
+                "${df.format(localPos.z)}f),")
+        logger.info("         rotation = Quaternionf(${df.format(localRot.x)}f, ${df.format(localRot.y)}f," +
+                "${df.format(localRot.z)}f, ${df.format(localRot.w)}f)")
         logger.info("     )")
 
         currentIndex++
@@ -363,8 +368,7 @@ class VRLabelPositioningTool(
     companion object {
         @JvmStatic
         fun main(args: Array<String>) {
-            val leftHandMode = args.contains("--left") || args.contains("-l")
-            VRLabelPositioningTool(leftHandMode = leftHandMode).main()
+            VRLabelPositioningTool(leftHandMode = false).main()
         }
     }
 }
