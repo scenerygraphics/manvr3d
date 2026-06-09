@@ -163,7 +163,8 @@ open class CellTrackingBase(
                             setupGeneralMenu()
                             onLeftHandReady()
                             leftWristMenu.hideAll()
-                            buttonMapper.mapper.attachUIForRole(device.role, it)
+                            buttonMapper.mapper.attachUIForRole(device.role, it, textScale = 0.015f)
+                            logger.info("Finished setting up left controller button layout")
                         }
                     }
                     TrackerRole.RightHand -> {
@@ -171,11 +172,12 @@ open class CellTrackingBase(
                         attachCursorAndTimepointWidget()
                         device.model?.let {
                             it.name = "rightHand"
-                            buttonMapper.mapper.attachUIForRole(device.role, it)
+                            buttonMapper.mapper.attachUIForRole(device.role, it, textScale = 0.015f)
+                            logger.info("Finished setting up right controller button layout")
                         }
-
                     }
                 }
+                Unit
             }
         }
         inputSetup()
@@ -206,6 +208,11 @@ open class CellTrackingBase(
         if (!controllerTrackingActive) {
             controllerTrackingActive = true
             cursor.setColor(cursorTrackingColor)
+
+            buttonMapper.let {
+                it.mapper.updateLabel(it.ADD_DELETE_RESET, "Stop", it.trackingColor)
+            }
+
             // we dont want animation, because we track step by step
             playing = false
         }
@@ -248,6 +255,10 @@ open class CellTrackingBase(
             controllerTrackingActive = false
             geometryHandler.addTrackToMastodon(trackPointList)
             cursor.resetColor()
+
+            buttonMapper.let {
+                it.mapper.updateLabel(it.ADD_DELETE_RESET, "Add", it.defaultColor)
+            }
         }
     }
 
@@ -475,6 +486,7 @@ open class CellTrackingBase(
 
     fun launchLensingThread() {
         thread {
+            logger.debug("Launched lensing thread")
             while (sciview.running && cellTrackingActive) {
                 if (isLensingActive) {
                     manvr3d.volumeNode.lensingPosition = cursor.getPosition()
@@ -511,6 +523,7 @@ open class CellTrackingBase(
 
     open fun inputSetup()
     {
+        logger.debug("Starting to set up VR controller bindings")
         val cam = sciview.camera ?: throw IllegalStateException("Could not find camera")
 
         val mapper = buttonMapper.mapper
@@ -566,6 +579,9 @@ open class CellTrackingBase(
                 cam.showMessage("Playing", distance = 2f, size = 0.2f, centered = true)
             } else {
                 cam.showMessage("Paused", distance = 2f, size = 0.2f, centered = true)
+            }
+            buttonMapper.let {
+                it.mapper.updateLabel(it.PLAYBACK, if (playing) "Pause" else "Play")
             }
         }
 
@@ -679,6 +695,16 @@ open class CellTrackingBase(
                     geometryHandler.selectClosestEdgesVR(p, cursor.radius, false)
                 }
                 cursor.resetColor()
+
+                if (manvr3d.selectedLinkNodes.isNotEmpty() || manvr3d.selectedSpotInstances.isNotEmpty()) {
+                    mapper.updateLabel(
+                        buttonMapper.ADD_DELETE_RESET,
+                        "Del", buttonMapper.selectColor)
+                } else {
+                    mapper.updateLabel(
+                        buttonMapper.ADD_DELETE_RESET,
+                        "Add", buttonMapper.defaultColor)
+                }
             }
         }
 
@@ -734,7 +760,6 @@ open class CellTrackingBase(
 
         hmd.allowRepeats += OpenVRHMD.OpenVRButton.Trigger to TrackerRole.LeftHand
         logger.info("Registered VR controller bindings.")
-
     }
 
     /**
@@ -745,7 +770,7 @@ open class CellTrackingBase(
             while (!sciview.isInitialized) {
                 Thread.sleep(200)
             }
-
+            logger.debug("Launched updater thread")
             while (sciview.running && cellTrackingActive) {
                 if (playing || skipToNext || skipToPrevious) {
                     val oldTimepoint = volume.viewerState.currentTimepoint
