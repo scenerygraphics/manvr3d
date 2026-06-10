@@ -801,8 +801,8 @@ class GeometryHandler(
                 logger.debug("Deleted spot {}", it)
             }
             mastodonData.model.graph.lock.writeLock().unlock()
-            this@GeometryHandler.manvr3d.selectedSpotInstances.clear()
             manvr3d.bdvNotifier?.lockUpdates = false
+            clearSpotSelection()
         }
     }
 
@@ -811,6 +811,19 @@ class GeometryHandler(
         mastodonData.focusModel.focusVertex(null)
         mastodonData.selectionModel.clearSelection()
         mastodonData.highlightModel.clearHighlight()
+        // If a selection was present, this label text was "Del" -> change it back to default
+        manvr3d.vrTracking.buttonMapper.let {
+            it.mapper.updateLabel(it.ADD_DELETE_RESET, "Add", it.defaultColor)
+        }
+    }
+
+    fun clearLinkSelection() {
+        manvr3d.selectedLinkNodes.clear()
+        mastodonData.selectionModel.clearSelection()
+        mastodonData.highlightModel.clearHighlight()
+        manvr3d.vrTracking.buttonMapper.let {
+            it.mapper.updateLabel(it.ADD_DELETE_RESET, "Add", it.defaultColor)
+        }
     }
 
     /** Takes the given spot instance that was already moved in Sciview and moves it in the BDV window.  */
@@ -1349,7 +1362,7 @@ class GeometryHandler(
                 }
                 mastodonData.model.graph.lock.writeLock().unlock()
                 manvr3d.bdvNotifier?.lockUpdates = false
-                manvr3d.selectedLinkNodes.clear()
+                clearLinkSelection()
                 mastodonData.model.graph.notifyGraphChanged()
             }
 
