@@ -30,7 +30,7 @@ dependencies {
 
     implementation("org.slf4j:slf4j-simple:2.0.16")
 
-    implementation("org.elephant:elephant:0.7.0")
+    implementation("org.elephant:elephant:0.8.0")
 
     implementation("com.fasterxml.jackson.core:jackson-databind:2.16.1")
     implementation("com.fasterxml.jackson.module:jackson-module-kotlin:2.16.1")
