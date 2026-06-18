@@ -34,7 +34,7 @@ import org.mastodon.adapter.TimepointModelAdapter
 import org.mastodon.collection.RefCollections
 import org.mastodon.mamut.model.Link
 import org.mastodon.mamut.model.Spot
-import org.mastodon.mamut.ui.Manvr3dWindowLayout
+import graphics.scenery.manvr3d.ui.Manvr3dWindowLayout
 import org.mastodon.mamut.views.bdv.MamutViewBdv
 import org.mastodon.ui.coloring.DefaultGraphColorGenerator
 import org.mastodon.ui.coloring.GraphColorGenerator
@@ -160,6 +160,9 @@ class Manvr3dMain: TimepointObserver {
     var isVolumeVisible = true
     var isTrackVisible = true
     var isSpotVisible = true
+
+    var showUncertainty = false
+    var invertLut = false
 
     lateinit var vrTracking: CellTrackingBase
 

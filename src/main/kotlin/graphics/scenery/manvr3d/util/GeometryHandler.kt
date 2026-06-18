@@ -3,7 +3,6 @@ package graphics.scenery.manvr3d.util
 import graphics.scenery.*
 import graphics.scenery.attribute.material.DefaultMaterial
 import graphics.scenery.attribute.material.Material
-import graphics.scenery.numerics.Random
 import graphics.scenery.primitives.Arrow
 import graphics.scenery.primitives.Cylinder
 import graphics.scenery.utils.extensions.*
@@ -37,7 +36,7 @@ import kotlinx.coroutines.joinAll
 import net.imglib2.KDTree
 import net.imglib2.RealPoint
 import net.imglib2.neighborsearch.RadiusNeighborSearchOnKDTree
-import org.mastodon.collection.RefCollection
+import org.mastodon.tracking.mamut.detection.DetectionQualityFeature
 import spim.fiji.spimdata.interestpoints.InterestPoint
 import java.awt.Color
 import java.lang.Math
@@ -132,7 +131,7 @@ class GeometryHandler(
     /** The following types are allowed for track coloring:
      * - [LUT] uses a colormap, defaults to Fire.lut
      * - [SPOT] uses the spot color from the connected spot */
-    enum class ColorMode { LUT, SPOT }
+    enum class ColorMode { LUT, SPOT, UNCERTAINTY }
 
     /** Allocates a [number] of instances to a [pool] that are part of [mainInstance]. */
     private fun addMoreInstances(
@@ -246,6 +245,18 @@ class GeometryHandler(
             visibleSpots = mastodonData.model.spatioTemporalIndex.getSpatialIndex(timepoint)
             sv.blockOnNewNodes = false
 
+            val qualitySpec = mastodonData.model.featureModel.featureSpecs.find { it.key == "Detection quality" }
+
+            val qualityFeature = if (qualitySpec != null) {
+                 mastodonData.model.featureModel.getFeature(qualitySpec) as? DetectionQualityFeature
+            } else {
+                null
+            }
+
+                links.forEach { linkNode ->
+
+                }
+
             // Pre-allocate memory to prevent recreation of variables inside the loop
             val spotPosition = FloatArray(3)
             var spotRadius: Float
@@ -280,7 +291,19 @@ class GeometryHandler(
                     // TODO add ellipsoid scale & rotation to instances
                 }
 
-                inst.setColorFromSpot(vertexRef, currentColorizer)
+                if (manvr3d.showUncertainty) {
+                    if (manvr3d.invertLut) {
+                        val factor = 1 - (qualityFeature?.value(spot) ?: 1.0)
+                        val color = lut.lookupARGB(0.0, 1.0, factor).unpackRGB()
+                        inst.instancedProperties["Color"] = { color }
+                    } else {
+                        val factor = qualityFeature?.value(spot) ?: 1.0
+                        val color = lut.lookupARGB(0.0, 1.0, factor).unpackRGB()
+                        inst.instancedProperties["Color"] = { color }
+                    }
+                } else {
+                    inst.setColorFromSpot(vertexRef, currentColorizer)
+                }
                 // highlight the spots currently selected or focused in BDV or trackscheme
                 if (selectedSpotRef.any { it.internalPoolIndex == vertexRef.internalPoolIndex }) {
                     inst.instancedProperties["Color"] = { selectedColor }
@@ -436,25 +459,15 @@ class GeometryHandler(
     /** Extension function that takes a spot and colors the corresponding instance according to the [colorizer]. */
     private fun InstancedNode.Instance.setColorFromSpot(
         s: Spot,
-        colorizer: GraphColorGenerator<Spot, Link>,
-        randomColors: Boolean = false,
-        isPartyMode: Boolean = false
+        colorizer: GraphColorGenerator<Spot, Link>
     ) {
         var intColor = colorizer.color(s)
         if (intColor == 0x00000000) {
             intColor = DEFAULT_COLOR
         }
-        if (!isPartyMode) {
-            if (!randomColors) {
-                val col = intColor.unpackRGB()
-                this.instancedProperties["Color"] = { col }
-            } else {
-                val col = Random.random3DVectorFromRange(0f, 1f).stretchColor()
-                this.instancedProperties["Color"] = { col.xyzw() }
-            }
-        } else {
-            this.instancedProperties["Color"] = { Random.random3DVectorFromRange(0f, 1f).xyzw() }
-        }
+        val col = intColor.unpackRGB()
+        this.instancedProperties["Color"] = { col }
+
     }
 
     /** Takes a tag set name and a tag name and tries to apply it to all spots.
@@ -1144,12 +1157,22 @@ class GeometryHandler(
     ) {
         val start = TimeSource.Monotonic.markNow()
         val links = linkList ?: links.entries.map { it.value }
+
         when (cm) {
             ColorMode.LUT -> {
-                links.forEach { linkNode ->
-                    val factor = linkNode.tp / numTimePoints.toDouble()
-                    val color = lut.lookupARGB(0.0, 1.0, factor).unpackRGB()
-                    linkNode.instance.instancedProperties["Color"] = { color }
+                // Two separate loops to not perform the conditional logic for each iteration
+                if (manvr3d.invertLut) {
+                    links.forEach { linkNode ->
+                        val factor = 1 - linkNode.tp / numTimePoints.toDouble()
+                        val color = lut.lookupARGB(0.0, 1.0, factor).unpackRGB()
+                        linkNode.instance.instancedProperties["Color"] = { color }
+                    }
+                } else {
+                    links.forEach { linkNode ->
+                        val factor = linkNode.tp / numTimePoints.toDouble()
+                        val color = lut.lookupARGB(0.0, 1.0, factor).unpackRGB()
+                        linkNode.instance.instancedProperties["Color"] = { color }
+                    }
                 }
             }
             ColorMode.SPOT -> {
@@ -1166,6 +1189,33 @@ class GeometryHandler(
                         linkNode.instance.instancedProperties["Color"] = { col }
                     }
                 }
+            }
+            ColorMode.UNCERTAINTY -> {
+                val qualitySpec = mastodonData.model.featureModel.featureSpecs.find { it.key == "Detection quality" }
+
+                if (qualitySpec != null) {
+                    val qualityFeature = mastodonData.model.featureModel.getFeature(qualitySpec) as? DetectionQualityFeature
+
+                    if (manvr3d.invertLut) {
+                        links.forEach { linkNode ->
+                            val factor = 1.0 - (qualityFeature?.value(linkNode.link.source) ?: 1.0)
+                            val color = lut.lookupARGB(0.0, 1.0, factor).unpackRGB()
+                            linkNode.instance.instancedProperties["Color"] = { color }
+                        }
+                    } else {
+                        links.forEach { linkNode ->
+                            val factor = qualityFeature?.value(linkNode.link.source) ?: 1.0
+                            val color = lut.lookupARGB(0.0, 1.0, factor).unpackRGB()
+                            linkNode.instance.instancedProperties["Color"] = { color }
+                        }
+                    }
+
+
+                } else {
+                    logger.info("Could not find uncertainty information in the dataset." +
+                            "Make sure your annotation data come from ELEPHANT and that you use ELEPHANT server v0.7.0+")
+                }
+
             }
         }
         // Repaint either all selected edges or only the ones that are also part of the passed linkList
