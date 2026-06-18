@@ -1,9 +1,8 @@
-package org.mastodon.mamut.ui
+package graphics.scenery.manvr3d.ui
 
 import graphics.scenery.utils.lazyLogger
 import net.miginfocom.swing.MigLayout
 import graphics.scenery.manvr3d.Manvr3dMain
-import graphics.scenery.manvr3d.ui.AdjustableBoundsRangeSlider
 import graphics.scenery.manvr3d.util.GroupLocksHandling
 import graphics.scenery.manvr3d.util.GeometryHandler
 import java.awt.event.ActionListener
@@ -38,6 +37,8 @@ class Manvr3dWindowLayout(manvr3dContext: Manvr3dMain, populateThisContainer: JP
     lateinit var toggleVR: JButton
     lateinit var eyeTrackingToggle: JCheckBox
     lateinit var vrResolutionScale: SpinnerModel
+    lateinit var uncertaintyToggle: JCheckBox
+    lateinit var invertLutToggle: JCheckBox
 
     private fun populatePane() {
         val manvr3d = this.manvr3dContext ?: throw IllegalStateException("The passed manvr3d instance cannot be null.")
@@ -130,6 +131,19 @@ class Manvr3dWindowLayout(manvr3dContext: Manvr3dMain, populateThisContainer: JP
 
         // Add the color selector panel to the main panel
         windowPanel.add(colorSelectorPanel, "span, growx, wrap")
+
+        uncertaintyToggle = JCheckBox("Show ELEPHANT Uncertainty")
+        uncertaintyToggle.isSelected = false
+        uncertaintyToggle.addActionListener(toggleUncertainty)
+
+        invertLutToggle = JCheckBox("Invert LUT")
+        invertLutToggle.isSelected = false
+        invertLutToggle.addActionListener(toggleLutInversion)
+
+        windowPanel.add(JPanel(MigLayout("fillx, insets 0")).apply {
+            add(uncertaintyToggle, "growx")
+            add(invertLutToggle, "dock east, gapleft 8px")
+        }, "span, growx")
 
         // Visualization Toggles
         visToggleSpots = JButton("Toggle spots").apply { addActionListener(toggleSpotsVisibility) }
@@ -236,6 +250,26 @@ class Manvr3dWindowLayout(manvr3dContext: Manvr3dMain, populateThisContainer: JP
         val newState = !links.visible
         links.visible = newState
         manvr3dContext.isTrackVisible = newState
+    }
+
+    val toggleUncertainty = ActionListener {
+        manvr3dContext.showUncertainty = uncertaintyToggle.isSelected
+        if (uncertaintyToggle.isSelected) {
+            manvr3dContext.geometryHandler.currentColorMode = GeometryHandler.ColorMode.UNCERTAINTY
+        } else {
+            manvr3dContext.geometryHandler.currentColorMode = GeometryHandler.ColorMode.LUT
+        }
+        manvr3dContext.rebuildGeometry()
+    }
+
+    val toggleLutInversion = ActionListener {
+        logger.debug("Setting LUT inversion to ${invertLutToggle.isSelected}")
+        manvr3dContext.invertLut = invertLutToggle.isSelected
+        if (uncertaintyToggle.isSelected) {
+            manvr3dContext.rebuildGeometry()
+        } else {
+            manvr3dContext.geometryHandler.updateLinkColors()
+        }
     }
 
     val autoAdjustIntensity = ActionListener {
