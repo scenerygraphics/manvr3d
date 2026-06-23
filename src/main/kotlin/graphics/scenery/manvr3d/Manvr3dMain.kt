@@ -35,6 +35,7 @@ import org.mastodon.collection.RefCollections
 import org.mastodon.mamut.model.Link
 import org.mastodon.mamut.model.Spot
 import graphics.scenery.manvr3d.ui.Manvr3dWindowLayout
+import graphics.scenery.manvr3d.util.DataAxes
 import org.mastodon.mamut.views.bdv.MamutViewBdv
 import org.mastodon.ui.coloring.DefaultGraphColorGenerator
 import org.mastodon.ui.coloring.GraphColorGenerator
@@ -109,7 +110,7 @@ class Manvr3dMain: TimepointObserver {
     val sciviewWin: SciView
     val geometryHandler: GeometryHandler
     //sink scene graph structuring nodes
-    val axesParent: org.mastodon.mamut.util.DataAxes
+    val axesParent: DataAxes
 
     /** Worker queue for async updates of graph changes for Mastodon. */
     private val updateQueue = LinkedBlockingQueue<() -> Unit>(100)
@@ -203,7 +204,7 @@ class Manvr3dMain: TimepointObserver {
         sciviewWin.addNode(AmbientLight(0.05f, Vector3f(1f, 1f, 1f)))
 
         //add "root" with data axes
-        axesParent = _root_ide_package_.org.mastodon.mamut.util.DataAxes()
+        axesParent = DataAxes()
         sciviewWin.addNode(axesParent, activePublish = false)
 
         //get necessary metadata - from image data
