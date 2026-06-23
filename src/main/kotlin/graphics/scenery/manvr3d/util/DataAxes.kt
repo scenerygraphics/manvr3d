@@ -1,11 +1,6 @@
-package org.mastodon.mamut.util
+package graphics.scenery.manvr3d.util
 
-import graphics.scenery.DefaultNode
-import graphics.scenery.Group
 import graphics.scenery.Mesh
-import graphics.scenery.Node
-import graphics.scenery.attribute.renderable.HasRenderable
-import graphics.scenery.attribute.spatial.HasSpatial
 import graphics.scenery.primitives.Cylinder
 import org.joml.Quaternionf
 import org.joml.Vector3f
