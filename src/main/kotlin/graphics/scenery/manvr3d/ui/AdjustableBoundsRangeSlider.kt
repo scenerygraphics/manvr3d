@@ -101,7 +101,7 @@ class AdjustableBoundsRangeSlider(
             )
 
             sliderPanel.add(lowSpinner)
-            sliderPanel.add(slider, "w 300, growx")
+            sliderPanel.add(slider, "w 200, growx")
             sliderPanel.add(highSpinner,"wrap")
 
             sliderPanel.add(lowBoundInformer, "left")

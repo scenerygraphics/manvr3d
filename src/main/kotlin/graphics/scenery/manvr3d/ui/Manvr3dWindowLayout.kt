@@ -5,6 +5,9 @@ import net.miginfocom.swing.MigLayout
 import graphics.scenery.manvr3d.Manvr3dMain
 import graphics.scenery.manvr3d.util.GroupLocksHandling
 import graphics.scenery.manvr3d.util.GeometryHandler
+import graphics.scenery.utils.extensions.toAwt
+import graphics.scenery.volumes.Colormap
+import java.awt.Color
 import java.awt.event.ActionListener
 import javax.swing.JButton
 import javax.swing.JCheckBox
@@ -38,7 +41,20 @@ class Manvr3dWindowLayout(manvr3dContext: Manvr3dMain, populateThisContainer: JP
     lateinit var eyeTrackingToggle: JCheckBox
     lateinit var vrResolutionScale: SpinnerModel
     lateinit var uncertaintyToggle: JCheckBox
-    lateinit var invertLutToggle: JCheckBox
+    var invertLutToggle: JCheckBox? = null
+
+    private val uncertaintyLowSwatch = JPanel().apply {
+        preferredSize = java.awt.Dimension(12, 12)
+        border = javax.swing.BorderFactory.createLineBorder(Color.GRAY, 1)
+    }
+    private val uncertaintyMidSwatch = JPanel().apply {
+        preferredSize = java.awt.Dimension(12, 12)
+        border = javax.swing.BorderFactory.createLineBorder(Color.GRAY, 1)
+    }
+    private val uncertaintyHighSwatch = JPanel().apply {
+        preferredSize = java.awt.Dimension(12, 12)
+        border = javax.swing.BorderFactory.createLineBorder(Color.GRAY, 1)
+    }
 
     private fun populatePane() {
         val manvr3d = this.manvr3dContext ?: throw IllegalStateException("The passed manvr3d instance cannot be null.")
@@ -63,7 +79,7 @@ class Manvr3dWindowLayout(manvr3dContext: Manvr3dMain, populateThisContainer: JP
         }
 
         // Range Slider
-        intensityRangeSlider = AdjustableBoundsRangeSlider.Companion.createAndPlaceHere(
+        intensityRangeSlider = AdjustableBoundsRangeSlider.createAndPlaceHere(
             windowPanel,
             manvr3d.intensity.rangeMin.toInt(),
             manvr3d.intensity.rangeMax.toInt(),
@@ -106,43 +122,45 @@ class Manvr3dWindowLayout(manvr3dContext: Manvr3dMain, populateThisContainer: JP
         }
 
         // Adding dropdowns for link LUTs and volume colors
-        val colorSelectorPanel = JPanel(MigLayout("fillx, insets 0", "[right][grow, fill]"))
-
-        // Link colors dropdown
-        colorSelectorPanel.add(JLabel("Link colors:"), "gapright 10")
         val linkColorChoices = mutableListOf("By Spot")
-        val availableLUTs = manvr3d.sciviewWin.getAvailableLUTs() as MutableList<String>
-        for (i in availableLUTs.indices) {
-            availableLUTs[i] = availableLUTs[i].removeSuffix(".lut")
-        }
+        val availableLUTs = Colormap.list().toMutableList()
         linkColorChoices.addAll(availableLUTs)
 
+        // Link colors dropdown
         linkColorSelector = JComboBox(linkColorChoices.toTypedArray())
-        linkColorSelector.setSelectedItem("Fire")
         linkColorSelector.addActionListener(chooseLinkColormap)
-        colorSelectorPanel.add(linkColorSelector, "wrap")
-
-        // Volume colors dropdown
-        colorSelectorPanel.add(JLabel("Volume colors:"), "gapright 10")
-        volumeColorSelector = JComboBox(availableLUTs.toTypedArray())
-        volumeColorSelector.setSelectedItem("Grays")
-        volumeColorSelector.addActionListener(chooseVolumeColormap)
-        colorSelectorPanel.add(volumeColorSelector)
-
-        // Add the color selector panel to the main panel
-        windowPanel.add(colorSelectorPanel, "span, growx, wrap")
+        linkColorSelector.setSelectedItem("plasma")
+        windowPanel.add(JPanel(MigLayout("fillx, insets 0", "[right][grow, fill]")).apply {
+            add(JLabel("Link & Uncertainty colors:"), "gapright 10")
+            add(linkColorSelector, "wrap")
+        }, "span, growx")
 
         uncertaintyToggle = JCheckBox("Show ELEPHANT Uncertainty")
         uncertaintyToggle.isSelected = false
         uncertaintyToggle.addActionListener(toggleUncertainty)
 
         invertLutToggle = JCheckBox("Invert LUT")
-        invertLutToggle.isSelected = false
-        invertLutToggle.addActionListener(toggleLutInversion)
+        invertLutToggle?.isSelected = false
+        invertLutToggle?.addActionListener(toggleLutInversion)
 
         windowPanel.add(JPanel(MigLayout("fillx, insets 0")).apply {
-            add(uncertaintyToggle, "growx")
-            add(invertLutToggle, "dock east, gapleft 8px")
+            add(uncertaintyToggle, "gapright 10")
+            add(JLabel("Low:"), )
+            add(uncertaintyLowSwatch, "w 12, h 12, gapright 5")
+            add(JLabel("Mid:"), )
+            add(uncertaintyMidSwatch, "w 12, h 12, gapright 5")
+            add(JLabel("High:"))
+            add(uncertaintyHighSwatch, "w 12, h 12, gapright 5")
+            add(invertLutToggle!!, "dock east, gapleft 10")
+        }, "span, growx")
+
+        // Volume colors dropdown
+        volumeColorSelector = JComboBox(availableLUTs.toTypedArray())
+        volumeColorSelector.addActionListener(chooseVolumeColormap)
+        volumeColorSelector.setSelectedItem("viridis")
+        windowPanel.add(JPanel(MigLayout("fillx, insets 0", "[right][grow, fill]")).apply {
+            add(JLabel("Volume colors:"), "gapright 10")
+            add(volumeColorSelector, "wrap")
         }, "span, growx")
 
         // Visualization Toggles
@@ -185,6 +203,8 @@ class Manvr3dWindowLayout(manvr3dContext: Manvr3dMain, populateThisContainer: JP
         // Close Button
         val closeBtn = JButton("Close").apply { addActionListener { manvr3d.stopAndDetachUI() } }
         windowPanel.add(closeBtn, "span, right")
+
+        windowPanel.size = windowPanel.preferredSize
     }
 
 
@@ -220,9 +240,12 @@ class Manvr3dWindowLayout(manvr3dContext: Manvr3dMain, populateThisContainer: JP
             }
 
             else -> {
-                manvr3dContext.geometryHandler.currentColorMode = GeometryHandler.ColorMode.LUT
-                manvr3dContext.geometryHandler.setLUT("${linkColorSelector.selectedItem}.lut")
-                logger.info("Coloring links with LUT ${linkColorSelector.selectedItem}")
+                linkColorSelector.selectedItem?.let {
+                    manvr3dContext.geometryHandler.currentColorMode = GeometryHandler.ColorMode.LUT
+                    manvr3dContext.geometryHandler.setLUT(it.toString())
+                    updateUncertaintySwatches()
+                    logger.info("Coloring links with LUT $it")
+                }
             }
         }
         manvr3dContext.geometryHandler.updateLinkColors(
@@ -231,8 +254,11 @@ class Manvr3dWindowLayout(manvr3dContext: Manvr3dMain, populateThisContainer: JP
     }
 
     val chooseVolumeColormap = ActionListener {
-        manvr3dContext.sciviewWin.setColormap(manvr3dContext.volumeNode, "${volumeColorSelector.selectedItem}.lut")
-        logger.info("Coloring volume with LUT ${volumeColorSelector.selectedItem}")
+        volumeColorSelector.selectedItem?.let {
+            val cm = Colormap.get(it.toString())
+            manvr3dContext.volumeNode.colormap = cm
+            logger.info("Coloring volume with LUT ${volumeColorSelector.selectedItem}")
+        }
     }
 
     val toggleSpotsVisibility = ActionListener {
@@ -263,17 +289,37 @@ class Manvr3dWindowLayout(manvr3dContext: Manvr3dMain, populateThisContainer: JP
     }
 
     val toggleLutInversion = ActionListener {
-        logger.debug("Setting LUT inversion to ${invertLutToggle.isSelected}")
-        manvr3dContext.invertLut = invertLutToggle.isSelected
+        logger.debug("Setting LUT inversion to ${invertLutToggle?.isSelected}")
+        manvr3dContext.invertLut = invertLutToggle?.isSelected ?: false
         if (uncertaintyToggle.isSelected) {
             manvr3dContext.rebuildGeometry()
         } else {
             manvr3dContext.geometryHandler.updateLinkColors()
         }
+        updateUncertaintySwatches()
     }
 
     val autoAdjustIntensity = ActionListener {
         manvr3dContext.autoAdjustIntensity()
+    }
+
+    private fun updateUncertaintySwatches() {
+        if (invertLutToggle == null) return
+        val selectedLUT = linkColorSelector.selectedItem?.toString()
+        if (selectedLUT == "By Spot") return
+
+        selectedLUT?.let {
+            val cm = Colormap.get(it)
+            val lowColor = if (invertLutToggle!!.isSelected) cm.sample(1.0f) else cm.sample(0.0f)
+            val midColor = cm.sample(0.5f)
+            val highColor = if (invertLutToggle!!.isSelected) cm.sample(0.0f) else cm.sample(1.0f)
+
+            uncertaintyLowSwatch.background = lowColor.toAwt()
+            uncertaintyMidSwatch.background = midColor.toAwt()
+            uncertaintyHighSwatch.background = highColor.toAwt()
+            uncertaintyLowSwatch.repaint()
+            uncertaintyHighSwatch.repaint()
+        }
     }
 
     fun updatePaneValues() {
