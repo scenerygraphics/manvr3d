@@ -17,6 +17,7 @@
 ### Removed
 
 - Disable Ctrl-Scroll behavior from sciview in manvr3d, as this would cause the volume to shift forward/backward without the 3D instances to inherit the transformation ([#30](https://github.com/scenerygraphics/manvr3d/pull/30))
+- Remove unneeded toggle at project launch that asked whether to open the manvr3d UI window; we always need that window ([#30](https://github.com/scenerygraphics/manvr3d/pull/30))
 
 
 ### Changed
@@ -33,6 +34,7 @@
 - Fix crash when eye tracking was selected in the UI, not ET hardware was found and the user stops the VR session ([#30](https://github.com/scenerygraphics/manvr3d/pull/30))
 - Fix debug hedgehog visualization when eye tracking is active ([#30](https://github.com/scenerygraphics/manvr3d/pull/30))
 - Fix occasional Vulkan crashes that happened when activating a VR session ([#823](https://github.com/scenerygraphics/scenery/pull/823))
+- Fix: volume mipmap level chosen at launch is now honored by the UI and the volume ([#30](https://github.com/scenerygraphics/manvr3d/pull/30))
 
 
 ## [0.3.1] - 2026-03-19

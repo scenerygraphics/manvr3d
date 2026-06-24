@@ -19,9 +19,6 @@ class MastodonSidePlugin : DynamicCommand() {
     @Parameter(label = "Try to reuse existing sciview window:")
     var tryToReuseExistingSciviewWindow = true
 
-    @Parameter(label = "Also open the controlling window right away:")
-    var openManvr3dUI = true
-
     @Parameter(label = "Choose image data channel:", choices = [], initializer = "volumeParams")
     var useThisChannel = "default first channel"
     lateinit var channelNames: MutableList<String>
@@ -48,8 +45,7 @@ class MastodonSidePlugin : DynamicCommand() {
             MastodonSidePluginResLevels::class.java, true,
             "mastodon", mastodon,
             "channelIdx", chosenChannel,
-            "tryToReuseExistingSciviewWindow", tryToReuseExistingSciviewWindow,
-            "openManvr3dUI", this@MastodonSidePlugin.openManvr3dUI
+            "tryToReuseExistingSciviewWindow", tryToReuseExistingSciviewWindow
         )
     }
 
@@ -69,9 +65,6 @@ class MastodonSidePlugin : DynamicCommand() {
 
         @Parameter(persist = false)
         var tryToReuseExistingSciviewWindow = true
-
-        @Parameter(persist = false)
-        var openManvr3dUI = true
 
         @Parameter(label = "Choose resolution level:", choices = [], initializer = "levelParams")
         var useThisResolutionDownscale = "[1,1,1]"
@@ -107,7 +100,7 @@ class MastodonSidePlugin : DynamicCommand() {
                 if (!tryToReuseExistingSciviewWindow) sciViewService.createSciView()
                 val sv = sciViewService.getOrCreateActiveSciView()
                 val manvr3d = Manvr3dMain(mastodon, channelIdx, chosenLevel, sv)
-                if (openManvr3dUI) manvr3d.createAndShowControllingUI()
+                manvr3d.createAndShowControllingUI()
                 mastodon.projectClosedListeners().add(CloseListener {
                     logger.debug("Mastodon project was closed, cleaning up in sciview:")
                     manvr3d.close() //calls also manvr3dMain.detachControllingUI();
