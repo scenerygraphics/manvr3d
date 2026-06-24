@@ -50,6 +50,7 @@ import graphics.scenery.utils.TimepointObserver
 import graphics.scenery.manvr3d.util.GeometryHandler
 import graphics.scenery.manvr3d.vr.CellTrackingBase
 import graphics.scenery.manvr3d.vr.EyeTracking
+import graphics.scenery.volumes.Colormap
 import org.mastodon.graph.GraphChangeListener
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.Executors
@@ -77,7 +78,7 @@ class Manvr3dMain: TimepointObserver {
     //data source stuff
     val mastodon: ProjectModel
     var sourceID = 0
-    var volumeMipmapLevel = 0
+    var initMipmapLevel = 0
     /** default intensity parameters */
     var intensity = Intensity()
 
@@ -96,7 +97,7 @@ class Manvr3dMain: TimepointObserver {
     override fun toString(): String {
         val sb = StringBuilder("Manvr3d internal settings:\n")
         sb.append("   SOURCE_ID = $sourceID\n")
-        sb.append("   SOURCE_USED_RES_LEVEL = $volumeMipmapLevel\n")
+        sb.append("   SOURCE_USED_RES_LEVEL = $initMipmapLevel\n")
         sb.append("   INTENSITY_CONTRAST = ${intensity.contrast}\n")
         sb.append("   INTENSITY_SHIFT = ${intensity.shift}\n")
         sb.append("   INTENSITY_CLAMP_AT_TOP = ${intensity.clampTop}\n")
@@ -181,7 +182,7 @@ class Manvr3dMain: TimepointObserver {
     constructor(
         mastodonMainWindow: ProjectModel,
         sourceID: Int,
-        volumeMipmapLevel: Int,
+        initMipmapLevel: Int,
         targetSciviewWindow: SciView
     ) {
         mastodon = mastodonMainWindow
@@ -209,13 +210,13 @@ class Manvr3dMain: TimepointObserver {
 
         //get necessary metadata - from image data
         this.sourceID = sourceID
-        this.volumeMipmapLevel = volumeMipmapLevel
+        this.initMipmapLevel = initMipmapLevel
         sac = mastodon.sharedBdvData.sources[this.sourceID]
         spimSource = sac.spimSource
         // number of pixels for each dimension at the highest res level
         val volumeDims = spimSource.getSource(0, 0).dimensionsAsLongArray()    // TODO rename to something more meaningful
         // number of pixels for each dimension of the volume at current res level
-        val volumeNumPixels = spimSource.getSource(0, this.volumeMipmapLevel).dimensionsAsLongArray()
+        val volumeNumPixels = spimSource.getSource(0, this.initMipmapLevel).dimensionsAsLongArray()
         val volumeDownscale = Vector3f(
             volumeDims[0].toFloat() / volumeNumPixels[0].toFloat(),
             volumeDims[1].toFloat() / volumeNumPixels[1].toFloat(),
@@ -230,16 +231,14 @@ class Manvr3dMain: TimepointObserver {
             "volume",
             floatArrayOf(1f, 1f, 1f)
         )
-        logger.info("current mipmap range: ${volumeNode.multiResolutionLevelLimits}")
 
         while (!volumeNode.volumeManager.readyToRender()) {
             Thread.sleep(20)
         }
 
-        setMipmapLevel(this.volumeMipmapLevel)
         prepareVolume(
             volumeNode,
-            "Grays.lut",
+            "viridis",
             Vector3f(sceneScale),
             intensity.rangeMin,
             intensity.rangeMax
@@ -279,6 +278,8 @@ class Manvr3dMain: TimepointObserver {
 
         submitToTaskExecutor()
         registerKeyboardHandlers()
+
+        setMipmapLevel(this.initMipmapLevel)
     }
 
     val eventService: EventService?
@@ -506,7 +507,7 @@ class Manvr3dMain: TimepointObserver {
         displayRangeMin: Float,
         displayRangeMax: Float
     ) {
-        sciviewWin.setColormap(v, colorMapName)
+        volumeNode.colormap = Colormap.get(colorMapName)
         v.spatial().scale = scale
         v.minDisplayRange = displayRangeMin
         v.maxDisplayRange = displayRangeMax
@@ -517,7 +518,6 @@ class Manvr3dMain: TimepointObserver {
         //make Bounding Box Grid invisible
         v.children.forEach { n: Node -> n.visible = false }
         v.lensingRadius = 0.2f
-
     }
 
     /** Shifts the transparency of the last control point in the transfer function of a volume [v] by [delta]. */
@@ -597,7 +597,7 @@ class Manvr3dMain: TimepointObserver {
 
     /** Overload that implicitly uses the existing [spimSource] for [volumeIntensityProcessing] */
     fun volumeIntensityProcessing() {
-        val srcImg = spimSource.getSource(currentTimepoint, volumeMipmapLevel) as RandomAccessibleInterval<UnsignedShortType>
+        val srcImg = spimSource.getSource(currentTimepoint, initMipmapLevel) as RandomAccessibleInterval<UnsignedShortType>
         volumeIntensityProcessing(srcImg)
     }
 
@@ -740,6 +740,7 @@ class Manvr3dMain: TimepointObserver {
 
     /** Sets the detail level of the volume node. */
     fun setMipmapLevel(level: Int) {
+        logger.debug("Set mipmap level to $level")
         volumeNode.multiResolutionLevelLimits = level to level + 1
     }
 

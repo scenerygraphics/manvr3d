@@ -71,12 +71,12 @@ class Manvr3dWindowLayout(manvr3dContext: Manvr3dMain, populateThisContainer: JP
         windowPanel.add(openBdvBtn, "growx, wrap")
 
         // MIPMAP Level
-        mipmapSpinner = addLabeledSpinner("Choose Mipmap Level", SpinnerNumberModel(0, 0, 6, 1)) { level ->
-            this@Manvr3dWindowLayout.manvr3dContext?.setMipmapLevel(level.toInt())
+        mipmapSpinner = addLabeledSpinner("Choose Mipmap Level",
+            SpinnerNumberModel(manvr3d.initMipmapLevel, 0, 6, 1)) { level ->
+            manvr3d.setMipmapLevel(level.toInt())
         }
-        this@Manvr3dWindowLayout.manvr3dContext?.let {
-            setMaxMipmapLevel(it.spimSource.numMipmapLevels - 1)
-        }
+
+        setMaxMipmapLevel(manvr3d.spimSource.numMipmapLevels - 1)
 
         // Range Slider
         intensityRangeSlider = AdjustableBoundsRangeSlider.createAndPlaceHere(
@@ -222,6 +222,7 @@ class Manvr3dWindowLayout(manvr3dContext: Manvr3dMain, populateThisContainer: JP
 
     /** Sets the maximum mipmap level found in the volume node as the spinner's max value. */
     fun setMaxMipmapLevel(level: Int) {
+        logger.debug("Setting max mipmap level to $level")
         mipmapSpinner.maximum = level
     }
 
