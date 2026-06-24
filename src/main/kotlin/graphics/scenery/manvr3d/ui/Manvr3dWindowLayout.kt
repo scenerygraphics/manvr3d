@@ -115,7 +115,7 @@ class Manvr3dWindowLayout(manvr3dContext: Manvr3dMain, populateThisContainer: JP
         }
 
         vrResolutionScale = addLabeledSpinner(
-            "VR Resolution scale",
+            "VR Window Resolution scale",
             SpinnerNumberModel(0.75f, 0.1f, 2f, 0.1f)
         ) { value ->
             manvr3d.setVrResolutionScale(value.toFloat())
