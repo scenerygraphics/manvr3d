@@ -110,7 +110,9 @@ class Manvr3dWindowLayout(manvr3dContext: Manvr3dMain, populateThisContainer: JP
             SpinnerNumberModel(1f, 0.1f, 10f, 0.1f)
         ) { value ->
             manvr3d.geometryHandler.sphereScaleFactor = value.toFloat()
-            manvr3d.vrTracking.cursor.visualScale = value.toFloat()
+            if (manvr3d.isVRactive) {
+                manvr3d.vrTracking.cursor.visualScale = value.toFloat()
+            }
             manvr3d.redrawSciviewSpots()
         }
 
