@@ -829,8 +829,10 @@ class GeometryHandler(
         mastodonData.selectionModel.clearSelection()
         mastodonData.highlightModel.clearHighlight()
         // If a selection was present, this label text was "Del" -> change it back to default
-        manvr3d.vrTracking.buttonMapper.let {
-            it.mapper.updateLabel(it.ADD_DELETE_RESET, "Add", it.defaultColor)
+        if (manvr3d.isVRactive) {
+            manvr3d.vrTracking.buttonMapper.let {
+                it.mapper.updateLabel(it.ADD_DELETE_RESET, "Add", it.defaultColor)
+            }
         }
     }
 
@@ -838,8 +840,10 @@ class GeometryHandler(
         manvr3d.selectedLinkNodes.clear()
         mastodonData.selectionModel.clearSelection()
         mastodonData.highlightModel.clearHighlight()
-        manvr3d.vrTracking.buttonMapper.let {
-            it.mapper.updateLabel(it.ADD_DELETE_RESET, "Add", it.defaultColor)
+        if (manvr3d.isVRactive) {
+            manvr3d.vrTracking.buttonMapper.let {
+                it.mapper.updateLabel(it.ADD_DELETE_RESET, "Add", it.defaultColor)
+            }
         }
     }
 
