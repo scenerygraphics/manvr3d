@@ -107,7 +107,7 @@ set APP_HOME=%DIRNAME%..
 for %%i in ("%APP_HOME%") do set APP_HOME=%%~fi
 
 @rem Add default JVM options here
-set DEFAULT_JVM_OPTS="--add-opens=java.base/java.lang=ALL-UNNAMED"
+set DEFAULT_JVM_OPTS="--add-opens=java.base/java.lang=ALL-UNNAMED -Dorg.lwjgl.system.stackSize=300"
 
 @rem Use bundled JDK
 set JAVA_EXE=%DIRNAME%jdk\bin\java.exe
