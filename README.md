@@ -1,7 +1,8 @@
 # manvr3d - Multimodal ANnotation in Virtual Reality/3D
 
 This project aims to bridge the cell tracking software [Mastodon](https://github.com/mastodon-sc) with interactive 3D visualization in [sciview (and scenery)](https://github.com/scenerygraphics/sciview)
-and extends it with [eye tracking](https://link.springer.com/chapter/10.1007/978-3-030-66415-2_18)-based cell tracking and other VR tracking/editing/exploration modalities. It is a reincarnation of [an earlier project `mastodon-sciview`](https://github.com/mastodon-sc/mastodon-sciview/) by [`xulman`](https://github.com/xulman) and [`RuoshanLan`](https://github.com/ruoshanlan).
+and extends it with [eye tracking](https://link.springer.com/chapter/10.1007/978-3-030-66415-2_18)-based cell tracking, Deep Learning-based cell tracking and VR tracking/editing/exploration modalities.
+It is a reincarnation of [the earlier project `mastodon-sciview`](https://github.com/mastodon-sc/mastodon-sciview/) by [`xulman`](https://github.com/xulman) and [`RuoshanLan`](https://github.com/ruoshanlan).
 
 Manvr3d is published in https://doi.org/10.1109/VIS60296.2025.00077. (Arxiv: https://doi.org/10.48550/arXiv.2505.03440)
 
@@ -45,22 +46,17 @@ Setting up ELEPHANT is optional. To configure ELEPHANT, please follow the offici
 VR is currently only tested to work on Windows systems. To launch a VR session, you need a SteamVR-compatible headset connected to your computer, and Steam needs to be opened. Eye tracking support is highly experimental and currently relies on hardware from Pupil Labs and running the Pupil service on your system. We recommend trying out VR on a mainstream headset like the Meta Quest 2 for now and keeping the option `Launch with Eye Tracking` in the GUI disabled.
 
 ## Opening
-Two dialog windows shall pop up.
+Two dialog windows will pop up:
 
 ![Screenshots of two dialog windows when opening sciview from Mastodon](doc/two_dialogs.png)
 
-The left one opens the first and asks:
+The left one opens first and asks:
 - Whether the content shall be displayed in an already opened sciview window (if there's one),
 or whether it definitively should be displayed in a separate sciview window.
-- Whether the controls panel should be opened right away (if not, one can always open it later, usually with Ctrl+I).
 - Which pixel data channel should be used for the volumetric pixel display in sciview.
 
 Afterward, the right-hand side dialog opens and asks:
-- Which resolution level, from the chosen pixel data channel, should be used.
-
-Since pixel data can be additionally, on-the-fly copied and modified,
-it is advisable to start first with the lowest resolution available, and potentially reopen again with higher resolution
-later if the data size and performance of your system are handling everything smoothly.
+- Which resolution (mip-map) level, from the chosen pixel data channel, should be used.
 
 ## Displayed content
 When sciview is started, it displays the pixel data via volumetric rendering, the spheres (referred to as *spots*),
@@ -68,7 +64,7 @@ tracks  (consisting of cylinders, also called _links_) and orientation axes
 (with the meaning that red, green, and blue point in the positive directions of the *Mastodon* x-, y-, and z-axis, respectively).
 
 One can (temporarily) hide some of the displayed content or alter its appearance by using
-the toggles in the bridge UI or via the VR buttons.
+the toggles in the bridge UI or via the VR wrist buttons.
 
 ## Viewing options
 Controls relevant to the tracking context (plus convenience shortcut controls) are put together in the controls panel.
@@ -86,6 +82,18 @@ This works also in the opposite direction: selecting a sphere in sciview forces 
 Which time point is currently displayed  is also linked between the two windows.
 
 Additionally, the controls panel contains the same three lock group buttons as found elsewhere in Mastodon.
+
+### Uncertainty Visualization
+
+Starting with [ELEPHANT Server](https://github.com/elephant-track/elephant-server) v0.7, predicted spot annotations contain a `Detection Quality` feature.
+This feature can be parsed by manvr3d and used to color spots and tracks.
+
+To enable this feature, select the `Show ELEPHANT Uncertainty` toggle. This will re-use the selected link color LUT
+for spot uncertainty visualization as well. Preview swatches of the selected LUT at 0, 0.5 and 1 are shown for reference.
+Per default, high detection quality is interpreted as a low model uncertainty and colored with high LUT values.
+You can invert the coloring via the `Invert LUT` button.
+
+![UI_v0.4_uncertainty.jpg](doc/UI_v0.4_uncertainty.jpg)
 
 ## Keyboard shortcuts
 The summary of the currently available keyboard keys can be opened into a separate, non-model window by selecting the menu `Help -> Mastodon Bridge` in sciview.
@@ -123,15 +131,23 @@ This feature is subject to change. The algorithm is explained in [the manvr3d pa
 Starting from manvr3d v0.3, you can switch to an experimental "annotation by gaze clustering" method with a VR menu button. This is a breadth-first annotation algorithm, in contrast to the depth-first Bionic Tracking appriach. This allows you to record your gaze while you simply "count" the cells in the current timepoint. After you finish the recording by clicking the left trigger button again, the gazes will be clustered and the cluster centers are used to find the likeliest cell candidates by sampling the volume analogous to the Bionic Tracking method.
 
 ### VR Editing
-- You can click into existing cells with the right trigger button to start tracking **from** them. This will automatically extend the existing track.
-- Clicking into an existing cell **while tracking is active** will merge the active track into the existing track and create a cell division.
-- Clicking into existing cells this way thus allows you to simply merge partial branches and fill gaps.
-- If you clicked into a cell that does not have any connecting links yet, the tracking procedure will continue to the next timepoint automatically. This is useful for manually linking existing cell annotations over time. You can abort the tracking at any point by clicking the right **B** button.
-- Select or deselect cells by moving the 3D cursor into them and press the **A** button. If you press it in thin air, it will clear the current selection. You can also hold and drag the **A** button to draw selections of several cells at once (you can select large areas at once by increasing the cursor size with the right joystick).
-- Selected cells can be moved around by holding the **right grab button**.
-- Selected cells can be deleted by pressing the **B** button. You can hold **B** for half a second to delete the whole track with all connected branches.
-- Selected cells can be scaled up or down by moving the **right joystick** up or down.
-- You can add new cells in the current timepoint with the **B** button. This works as long as no selection is active (otherwise **B** will delete the selected cells).
+- You can click into existing spots with the right trigger button to start tracking **from** them. This will automatically extend the existing track.
+- Clicking into an existing spots **while tracking is active** will do two things, depending on whether this spot is already connected or not. 
+  1) If it is not connected, the **spot is linked**, and the tracking process automatically continues with the next timepoint.
+  This is useful if you need to manually link a larger number of unconnected spots through time.
+  2) If it already has a connection, the active track is merged into the existing track, creating a cell division.
+  3) You can abort the tracking at any point by clicking the right **B** button.
+  4) Clicking into existing spots this way thus allows you to simply merge partial branches and fill gaps.
+- Select or deselect spots or links by moving the 3D cursor into them and press the **A** button. If you press it in thin air,
+  it will **clear the current selection**. You can also hold and drag the **A** button to draw selections of several spots or links at once.
+  You can select large areas at once by increasing the cursor size with the right joystick.
+- Selected spots can be moved around by holding the **right grab button**.
+- Selected spots or links can be deleted by pressing the **B** button. You can hold **B** for half a second to delete the whole track with all connected branches.
+- Selected spots can be scaled up or down by moving the **right joystick** up or down.
+- You can add new spots in the current timepoint with the **B** button. This works as long as no selection is active:
+  Otherwise **B** will delete the selected cells.
+
+
 - Starting with version 0.4, selecting links is possible in the same way you select cells:
   - Single clicks select/deselect links. Clicking away also removes the selection
   - Dragging paints selections
@@ -153,5 +169,3 @@ Starting from manvr3d v0.3, you can switch to an experimental "annotation by gaz
 - manvr3d currently only works with 16bit images [↗](https://github.com/scenerygraphics/manvr3d/issues/19).
 
 - Spot editing events can trigger a full graph redraw. This is not a problem for small to medium-sized datasets. ([↗](https://github.com/scenerygraphics/manvr3d/issues/23))
-
-- Selecting a mipmap level in the popup during the manvr3d initialization phase doesn't apply that mipmap level correctly to the volume (likely because the volume wasn't fully loaded yet). For now, use the mipmap spinner in the GUI to change the mipmap level after the volume was loaded. ([↗](https://github.com/scenerygraphics/manvr3d/issues/28))
