@@ -374,8 +374,9 @@ class Manvr3dMain: TimepointObserver {
         }
     }
 
-    /** Use the nearest-neighbor linking algorithm in ELEPHANT to connect all spots in the scene. */
-    fun linkNearestNeighbors() {
+    /** Use the nearest-neighbor linking algorithm in ELEPHANT (optionally augmented by the flow model)
+     * to connect spots in the scene. Optionally links only between [start] and [end] timepoints. */
+    fun linkSpots() {
         if (neighborLinkingAction == null) {
             neighborLinkingAction = pluginActions.actionMap.get("[elephant] nearest neighbor linking")
         }
