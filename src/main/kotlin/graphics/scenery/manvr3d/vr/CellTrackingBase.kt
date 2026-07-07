@@ -5,9 +5,7 @@ import graphics.scenery.*
 import graphics.scenery.attribute.material.Material
 import graphics.scenery.controls.*
 import graphics.scenery.controls.behaviours.AnalogInputWrapper
-import graphics.scenery.controls.behaviours.ConfirmableClickBehaviour
 import graphics.scenery.controls.behaviours.VRTouch
-import graphics.scenery.primitives.Cylinder
 import graphics.scenery.primitives.TextBoard
 import graphics.scenery.ui.*
 import graphics.scenery.utils.MaybeIntersects
@@ -282,7 +280,7 @@ open class CellTrackingBase(
         leftWristMenu.addButton(colName, "Predict TP",
             command = { updateElephantActions(ElephantMode.PredictTP) }, depressDelay = delay,
             color = unpressedColor, touchingColor = touchingColor, pressedColor = pressedColor)
-        leftWristMenu.addButton(colName, "NN linking",
+        leftWristMenu.addButton(colName, "Link All",
             command = { updateElephantActions(ElephantMode.NNLinking) }, depressDelay = delay,
             color = unpressedColor, touchingColor = touchingColor, pressedColor = pressedColor)
 
@@ -301,7 +299,7 @@ open class CellTrackingBase(
                     ElephantMode.TrainAll -> manvr3d.trainSpots()
                     ElephantMode.PredictTP -> manvr3d.predictSpots(false)
                     ElephantMode.PredictAll -> manvr3d.predictSpots(true)
-                    ElephantMode.NNLinking -> manvr3d.linkNearestNeighbors()
+                    ElephantMode.NNLinking -> manvr3d.linkSpots()
                 }
                 lastButtonTime = buttonTime
             }
