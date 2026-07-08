@@ -244,16 +244,18 @@ class Manvr3dWindowLayout(manvr3dContext: Manvr3dMain, populateThisContainer: JP
 
             else -> {
                 linkColorSelector.selectedItem?.let {
-                    manvr3dContext.geometryHandler.currentColorMode = GeometryHandler.ColorMode.LUT
+                    manvr3dContext.geometryHandler.currentColorMode = if (manvr3dContext.showUncertainty) {
+                        GeometryHandler.ColorMode.UNCERTAINTY
+                    } else {
+                        GeometryHandler.ColorMode.LUT
+                    }
                     manvr3dContext.geometryHandler.setLUT(it.toString())
-                    updateUncertaintySwatches()
                     logger.info("Coloring links with LUT $it")
                 }
             }
         }
-        manvr3dContext.geometryHandler.updateLinkColors(
-            manvr3dContext.currentColorizer
-        )
+        updateLutSwatches()
+        manvr3dContext.rebuildGeometry()
     }
 
     val chooseVolumeColormap = ActionListener {
@@ -299,23 +301,23 @@ class Manvr3dWindowLayout(manvr3dContext: Manvr3dMain, populateThisContainer: JP
         } else {
             manvr3dContext.geometryHandler.updateLinkColors()
         }
-        updateUncertaintySwatches()
+        updateLutSwatches()
     }
 
     val autoAdjustIntensity = ActionListener {
         manvr3dContext.autoAdjustIntensity()
     }
 
-    private fun updateUncertaintySwatches() {
-        if (invertLutToggle == null) return
+    private fun updateLutSwatches() {
+        val isInverted = invertLutToggle?.isSelected ?: false
         val selectedLUT = linkColorSelector.selectedItem?.toString()
         if (selectedLUT == "By Spot") return
 
         selectedLUT?.let {
             val cm = Colormap.get(it)
-            val lowColor = if (invertLutToggle!!.isSelected) cm.sample(1.0f) else cm.sample(0.0f)
+            val lowColor = if (isInverted) cm.sample(1.0f) else cm.sample(0.0f)
             val midColor = cm.sample(0.5f)
-            val highColor = if (invertLutToggle!!.isSelected) cm.sample(0.0f) else cm.sample(1.0f)
+            val highColor = if (isInverted) cm.sample(0.0f) else cm.sample(1.0f)
 
             uncertaintyLowSwatch.background = lowColor.toAwt()
             uncertaintyMidSwatch.background = midColor.toAwt()
