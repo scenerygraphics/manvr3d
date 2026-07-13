@@ -5,6 +5,7 @@ import graphics.scenery.*
 import graphics.scenery.attribute.material.Material
 import graphics.scenery.controls.*
 import graphics.scenery.controls.behaviours.AnalogInputWrapper
+import graphics.scenery.controls.behaviours.MovementCommand
 import graphics.scenery.controls.behaviours.VRTouch
 import graphics.scenery.primitives.TextBoard
 import graphics.scenery.ui.*
@@ -534,6 +535,7 @@ open class CellTrackingBase(
                 buttonMapper.MOVE_LEFT to "move_left_fast",
                 buttonMapper.MOVE_RIGHT to "move_right_fast").forEach { (binding, name) ->
                 handler.getBehaviour(name)?.let { behaviour ->
+                    (behaviour as MovementCommand).speed = 0.3f
                     mapper.bind(hmd, binding, behaviour)
                 }
             }

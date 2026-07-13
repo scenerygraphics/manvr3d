@@ -26,6 +26,7 @@
 - Change default LUTs: links use "plasma" now, volume uses "viridis" ([#30](https://github.com/scenerygraphics/manvr3d/pull/30))
 - Rename "NN Linking" button to "Link All", since this action automatically utilizes flow-based linking when
   enabled in the ELEPHANT settings ([#30](https://github.com/scenerygraphics/manvr3d/pull/30))
+- Slow down the observer movement behavior with the left joystick ([#30](https://github.com/scenerygraphics/manvr3d/pull/30))
 
 ### Fixed
 - Moving the dataset is now possible when the volume is invisible (it will be turned visible for the duration of the transformation) ([#30](https://github.com/scenerygraphics/manvr3d/pull/30))
