@@ -10,10 +10,11 @@
 - Edges can be selected and deleted with the same behaviors as spots (single click selects/deselects; dragging paints selections; clicking "delete" only deletes the connection, not the connected spots; holding "delete" will delete the connected branch including spots) ([#30](https://github.com/scenerygraphics/manvr3d/pull/30))
 - When the graph is empty and Elephant is set to predict all timepoints, the view automatically updates to the most recently predicted timepoint ([#30](https://github.com/scenerygraphics/manvr3d/pull/30))
 - Add VR button labels for quest controllers ([#30](https://github.com/scenerygraphics/manvr3d/pull/30))
+- Add dedicated pointer for interacting with the UI when getting close to the buttons. Having to scale the annotation cursor for UI interaction is no longer required. ([#30](https://github.com/scenerygraphics/manvr3d/pull/30), [#823](https://github.com/scenerygraphics/scenery/pull/823))
 - Add support for uncertainty data from ELEPHANT ([#30](https://github.com/scenerygraphics/manvr3d/pull/30), [#13](https://github.com/elephant-track/elephant-client/pull/13), [#39](https://github.com/elephant-track/elephant-server/pull/39)). This requires ELEPHANT server v0.7 or higher.
   Pull from the latest ELEPHANT-server `main` branch to get the changes.
 - Add LUT preview swatches and LUT inversion toggle in the manvr3d UI ([#30](https://github.com/scenerygraphics/manvr3d/pull/30))
-- Add a few new LUTS ([#30](https://github.com/scenerygraphics/manvr3d/pull/30))
+- Add a few new LUTS (notabily Viridis) ([#30](https://github.com/scenerygraphics/manvr3d/pull/30))
 
 ### Removed
 
@@ -24,9 +25,10 @@
 ### Changed
 - Faster link coloring through dual hash maps ([#30](https://github.com/scenerygraphics/manvr3d/pull/30))
 - Change default LUTs: links use "plasma" now, volume uses "viridis" ([#30](https://github.com/scenerygraphics/manvr3d/pull/30))
-- Rename "NN Linking" button to "Link All", since this action automatically utilizes flow-based linking when
-  enabled in the ELEPHANT settings ([#30](https://github.com/scenerygraphics/manvr3d/pull/30))
+- Rename "NN Linking" button to "Link All", since this action automatically utilizes flow-based linking when enabled in the ELEPHANT settings ([#30](https://github.com/scenerygraphics/manvr3d/pull/30))
 - Slow down the observer movement behavior with the left joystick ([#30](https://github.com/scenerygraphics/manvr3d/pull/30))
+- Block timepoint scrolling behavior when cell tracking is currently active ([#30](https://github.com/scenerygraphics/manvr3d/pull/30))
+- Block controller tracking and editing/selection behaviors when interacting with a menu ([#30](https://github.com/scenerygraphics/manvr3d/pull/30)) 
 
 ### Fixed
 - Moving the dataset is now possible when the volume is invisible (it will be turned visible for the duration of the transformation) ([#30](https://github.com/scenerygraphics/manvr3d/pull/30))
