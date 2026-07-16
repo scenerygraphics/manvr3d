@@ -98,7 +98,6 @@ class BdvNotifier(
             logger.debug("Called graphChanged")
             timeStampOfLastEvent = System.currentTimeMillis()
             isLastGraphEventValid = true
-            mastodon.model.setUndoPoint()
         }
         override fun vertexPositionChanged(vertex: Spot) {
             logger.debug("called vertexChanged")
@@ -226,6 +225,7 @@ class BdvNotifier(
                         if (eventsSource.isLastGraphEventValid) {
                             logger.debug("$SERVICE_NAME: graph event and silence detected -> processing it now")
                             eventsSource.isLastGraphEventValid = false
+                            mastodon.model.setUndoPoint()
                             graphEventProcessor.run()
                         }
                         if (eventsSource.isLastFocusEventValid) {
@@ -248,7 +248,7 @@ class BdvNotifier(
                             eventsSource.isLastColoringEventValid = false
                             coloringProcessor.run()
                         }
-                    } else sleep(updateInterval / 10)
+                    } else sleep(updateInterval)
                 }
             } catch (e: InterruptedException) {
                 throw e
