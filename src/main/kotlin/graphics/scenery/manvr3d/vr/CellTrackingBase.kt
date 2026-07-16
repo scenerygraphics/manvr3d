@@ -75,9 +75,6 @@ open class CellTrackingBase(
 
     val volumeTimepointWidget = TextBoard(inFront = true)
 
-    /** determines whether the volume and hedgehogs should keep listening for updates or not */
-    var cellTrackingActive: Boolean = false
-
     enum class HedgehogVisibility { Hidden, PerTimePoint, Visible }
 
     enum class PlaybackDirection { Forward, Backward }
@@ -90,7 +87,7 @@ open class CellTrackingBase(
     var leftVRController: TrackedDevice? = null
     var rightVRController: TrackedDevice? = null
 
-    val cursor = CursorTool(showPointer = true)
+    val cursor = CursorTool()
     val cursorSelectColor = Vector3f(1f, 0.25f, 0.25f)
     val cursorTrackingColor = Vector3f(0.65f, 1f, 0.22f)
 
@@ -162,7 +159,7 @@ open class CellTrackingBase(
                             setupGeneralMenu()
                             onLeftHandReady()
                             leftWristMenu.hideAll()
-                            buttonMapper.mapper.attachUIForRole(device.role, it, textScale = 0.015f)
+                            buttonMapper.mapper.attachUIForRole(device.role, it, textScale = 0.02f)
                             logger.info("Finished setting up left controller button layout")
                         }
                     }
@@ -171,7 +168,7 @@ open class CellTrackingBase(
                         attachCursorAndTimepointWidget()
                         device.model?.let {
                             it.name = "rightHand"
-                            buttonMapper.mapper.attachUIForRole(device.role, it, textScale = 0.015f)
+                            buttonMapper.mapper.attachUIForRole(device.role, it, textScale = 0.02f)
                             logger.info("Finished setting up right controller button layout")
                         }
                     }
@@ -181,7 +178,6 @@ open class CellTrackingBase(
         }
         inputSetup()
 
-        cellTrackingActive = true
         manvr3d.rebuildGeometry()
         launchUpdaterThread()
         launchLensingThread()
@@ -222,21 +218,21 @@ open class CellTrackingBase(
 
         val p = cursor.getPosition()
         // did the user click on an existing cell?
-        val (selected, isValidSelection) =
+        val (selectedSpot, isValidSelection) =
             geometryHandler.selectClosestSpotsVR(p, volume.currentTimepoint, cursor.radius, false)
 
         logger.debug("Tracked a new spot at position $p")
-        logger.debug("Selected spot is $selected")
+        logger.debug("Selected spot is $selectedSpot")
         // Create a placeholder link during tracking for immediate feedback
         geometryHandler.addTrackedPoint(
-            p, volume.currentTimepoint, cursor.radius, selected, enableTrackingPreview, trackPointList
+            p, volume.currentTimepoint, cursor.radius, selectedSpot, enableTrackingPreview, trackPointList
         )
 
         if (volume.currentTimepoint > 0) {
             volume.goToTimepoint(volume.currentTimepoint - 1)
             // If the user clicked a cell, and it is *not* the first in the track, we assume it is a merge event and end the tracking,
             // but only if the selected spot already has an edge. We continue tracking/linking when the selected spot has no connections
-            if (isValidSelection && trackPointList.size > 1 && selected!!.edges().size() > 0) {
+            if (isValidSelection && trackPointList.size > 1 && selectedSpot!!.edges().size() > 0) {
                 endControllerTracking()
             }
             // This will also redraw all geometry using Mastodon as source
@@ -489,7 +485,7 @@ open class CellTrackingBase(
     fun launchLensingThread() {
         thread {
             logger.debug("Launched lensing thread")
-            while (sciview.running && cellTrackingActive) {
+            while (sciview.running && manvr3d.isVRactive) {
                 if (isLensingActive) {
                     manvr3d.volumeNode.lensingPosition = cursor.getPosition()
                     Thread.sleep(20)
@@ -545,11 +541,11 @@ open class CellTrackingBase(
         }
 
         val nextTimepoint = ClickBehaviour { _, _ ->
-            if (!cellTrackingActive) skipToNext = true
+            if (!controllerTrackingActive) skipToNext = true
         }
 
         val prevTimepoint = ClickBehaviour { _, _ ->
-            if (!cellTrackingActive) skipToPrevious = true
+            if (!controllerTrackingActive) skipToPrevious = true
         }
 
         class ScaleCursorOrSpotsBehavior(val factor: Float): DragBehaviour {
@@ -740,8 +736,7 @@ open class CellTrackingBase(
             hmd,
             listOf(OpenVRHMD.OpenVRButton.Side),
             listOf(TrackerRole.LeftHand),
-            grabButtonManager,
-            1.5f
+            grabButtonManager
         )
 
         VRTwoHandNodeTransform.createAndSet(
@@ -756,6 +751,9 @@ open class CellTrackingBase(
                 // always set volume to true during movement
                 manvr3d.isVolumeVisible = volume.visible
                 manvr3d.setVolumeOnlyVisibility(true)
+
+                mapper.updateLabel(buttonMapper.CYCLE_MENU, "Reset",
+                    Vector3f(1f, 0.5f, 0.5f))
             },
             onEndCallback = {
                 thread {
@@ -765,7 +763,7 @@ open class CellTrackingBase(
                     geometryHandler.setTrackVisibility(manvr3d.isTrackVisible)
                     // change volume visibility to what it was before
                     manvr3d.setVolumeOnlyVisibility(manvr3d.isVolumeVisible)
-                    manvr3d.geometryHandler.mainLinkInstance?.updateInstanceBuffers()
+                    mapper.updateLabel(buttonMapper.CYCLE_MENU, "Menu", buttonMapper.defaultColor)
                 }
 
             },
@@ -793,7 +791,7 @@ open class CellTrackingBase(
                 Thread.sleep(200)
             }
             logger.debug("Launched updater thread")
-            while (sciview.running && cellTrackingActive) {
+            while (sciview.running && manvr3d.isVRactive) {
                 if (playing || skipToNext || skipToPrevious) {
                     val oldTimepoint = volume.viewerState.currentTimepoint
                     if (skipToNext || playing) {
@@ -996,7 +994,6 @@ open class CellTrackingBase(
      */
     open fun stop() {
         logger.info("Objects in the scene: ${sciview.allSceneNodes.map { it.name }}")
-        cellTrackingActive = false
         if (::lightTetrahedron.isInitialized) {
             lightTetrahedron.forEach { sciview.deleteNode(it) }
         }
