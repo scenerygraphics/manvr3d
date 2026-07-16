@@ -90,7 +90,7 @@ open class CellTrackingBase(
     var leftVRController: TrackedDevice? = null
     var rightVRController: TrackedDevice? = null
 
-    val cursor = CursorTool()
+    val cursor = CursorTool(showPointer = true)
     val cursorSelectColor = Vector3f(1f, 0.25f, 0.25f)
     val cursorTrackingColor = Vector3f(0.65f, 1f, 0.22f)
 
@@ -185,6 +185,7 @@ open class CellTrackingBase(
         manvr3d.rebuildGeometry()
         launchUpdaterThread()
         launchLensingThread()
+        launchMenuPointerIntersectionThread()
     }
 
     /** Callback that can be used in [EyeTracking] to perform additional logic once the controllers were found. */
@@ -203,6 +204,8 @@ open class CellTrackingBase(
 
     /** This lambda is called every time the user performs a click with controller-based tracking. */
     val trackCellsWithController = ClickBehaviour { _, _ ->
+        // We don't track things while interacting with a menu
+        if (cursor.showPointer) return@ClickBehaviour
         // First, ensure the tracking flag is active
         if (!controllerTrackingActive) {
             controllerTrackingActive = true
@@ -514,7 +517,7 @@ open class CellTrackingBase(
         }
 
         rightVRController?.model?.let {
-            cursor.attachCursor(it, debug)
+            cursor.attachCursorAndPointer(it, debug)
             sciview.addNode(volumeTimepointWidget, activePublish = false, parent = it)
             logger.debug("Attached cursor and timepoint widget to right controller.")
         }
@@ -626,12 +629,17 @@ open class CellTrackingBase(
         class AddDeleteResetBehavior : DragBehaviour {
             var start = System.currentTimeMillis()
             var wasExecuted = false
+            // Check whether we are interacting with a menu -> if true, we don't interact
+            private var wantInteract = false
 
             override fun init(x: Int, y: Int) {
+                wantInteract = !cursor.showPointer
+                if (!wantInteract) return
                 start = System.currentTimeMillis()
                 wasExecuted = false
             }
             override fun drag(x: Int, y: Int) {
+                if (!wantInteract) return
                 // If the button was pressed for more than 0.5s, delete the branch
                 if (System.currentTimeMillis() - start > 500 && !wasExecuted) {
                     val p = cursor.getPosition()
@@ -645,6 +653,7 @@ open class CellTrackingBase(
                 }
             }
             override fun end(x: Int, y: Int) {
+                if (!wantInteract) return
                 if (controllerTrackingActive) {
                     endControllerTracking()
                 } else {
@@ -670,14 +679,20 @@ open class CellTrackingBase(
             var lastUpdate = System.currentTimeMillis()
             var startTime = System.currentTimeMillis()
             var wasDragged = false
+            // Checks whether we are interacting with a menu -> if true, we don't perform the behavior
+            private var wantDrag = false
 
             override fun init(x: Int, y: Int) {
+                // Only perform drag actions when not interacting with the menu
+                wantDrag = !cursor.showPointer
+                if (!wantDrag) return
                 lastUpdate = System.currentTimeMillis()
                 cursor.setColor(cursorSelectColor)
                 startTime = System.currentTimeMillis()
                 wasDragged = false
             }
             override fun drag(x: Int, y: Int) {
+                if (!wantDrag) return
                 // Only perform the selection method twenty times a second and when the button was pressed for more than 200ms
                 if (System.currentTimeMillis() - lastUpdate > 50 && System.currentTimeMillis() - startTime > 200) {
                     val p = cursor.getPosition()
@@ -688,6 +703,7 @@ open class CellTrackingBase(
                 }
             }
             override fun end(x: Int, y: Int) {
+                if (!wantDrag) return
                 // If this wasn't a drag event but a click event, perform the selection now
                 if (!wasDragged) {
                     val p = cursor.getPosition()
@@ -711,7 +727,13 @@ open class CellTrackingBase(
         mapper.bind(hmd, "select", DragSelectBehavior())
 
         // this behavior is needed for touching the menu buttons
-        VRTouch.createAndSet(sciview.currentScene, hmd, listOf(TrackerRole.RightHand), false, customTip = cursor.cursorSphere)
+        VRTouch.createAndSet(
+            sciview.currentScene,
+            hmd,
+            listOf(TrackerRole.RightHand),
+            false,
+            customTip = cursor.cursorPointer
+        )
 
         VRGrabTheWorld.createAndSet(
             sciview.currentScene,
@@ -823,6 +845,25 @@ open class CellTrackingBase(
     /** Allows hooking lambdas into the main update loop. This is needed for eye tracking related actions. */
     protected fun attachToLoop(action: () -> Unit) {
         updateLoopActions.add(action)
+    }
+
+    private var lastMenuProximity = false
+
+    fun launchMenuPointerIntersectionThread() {
+        logger.info("Launched pointer menu intersection thread")
+        while (sciview.running) {
+            if (::leftWristMenu.isInitialized) {
+                if (cursor.cursorPointer.boundingBox != null && leftWristMenu.boundingBox != null) {
+                    val intersects = leftWristMenu.boundingBox!!.intersects(cursor.cursorSphere.boundingBox!!)
+                    // No need to call the switch logic every iteration, only when the state changes
+                    if (intersects != lastMenuProximity) {
+                        cursor.switchSphereAndPointer(wantPointer = intersects)
+                        lastMenuProximity = intersects
+                    }
+                }
+            }
+            Thread.sleep(50)
+        }
     }
 
     /** Samples a given [volume] from an [origin] point along a [direction].
