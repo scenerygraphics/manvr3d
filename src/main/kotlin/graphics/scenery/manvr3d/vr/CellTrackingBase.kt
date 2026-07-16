@@ -545,11 +545,11 @@ open class CellTrackingBase(
         }
 
         val nextTimepoint = ClickBehaviour { _, _ ->
-            skipToNext = true
+            if (!cellTrackingActive) skipToNext = true
         }
 
         val prevTimepoint = ClickBehaviour { _, _ ->
-            skipToPrevious = true
+            if (!cellTrackingActive) skipToPrevious = true
         }
 
         class ScaleCursorOrSpotsBehavior(val factor: Float): DragBehaviour {
