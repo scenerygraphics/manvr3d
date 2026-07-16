@@ -623,7 +623,7 @@ class Manvr3dMain: TimepointObserver {
                 setColorizer(bdvWindow, true)
             },
             {
-              redrawSciviewSpots()
+                redrawSciviewSpots()
                 geometryHandler.highlightFocusedSpot()
 
             },
@@ -1015,7 +1015,7 @@ class Manvr3dMain: TimepointObserver {
      *  a timepoint change or plays the animation */
     override fun onTimePointChanged(timepoint: Int) {
         logger.debug("Called onTimepointChanged with $timepoint")
-        setTimepoint(when {
+        setTimepoint( when {
             timepoint < 0 -> maxTimepoint
             timepoint > maxTimepoint -> 0
             else -> timepoint
