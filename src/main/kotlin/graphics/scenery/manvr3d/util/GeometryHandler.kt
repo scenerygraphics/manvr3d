@@ -720,16 +720,19 @@ class GeometryHandler(
                     }
                 }
                 logger.debug("Selecting spots in range took ${TimeSource.Monotonic.markNow() - start}")
-                mainSpotInstance?.updateInstanceBuffers()
+                showInstancedSpots(manvr3d.currentTimepoint, manvr3d.currentColorizer)
                 // Return the first spot if we found one
                 return Pair(spots.firstOrNull(), true)
             } else {
                 // Only clear the selection if no drag select behavior is currently active
                 if (!addOnly) {
-                    clearSpotSelection()
-                    mastodonData.model.graph.notifyGraphChanged()
+                    // Only clear and notify if there's actually something selected
+                    if (manvr3d.selectedSpotInstances.isNotEmpty() || mastodonData.selectionModel.selectedVertices.isNotEmpty()) {
+                        clearSpotSelection()
+                        showInstancedSpots(manvr3d.currentTimepoint, manvr3d.currentColorizer)
+                    }
                 }
-                mainSpotInstance?.updateInstanceBuffers()
+
                 return Pair(spots.firstOrNull(), false)
             }
         }
@@ -1117,9 +1120,9 @@ class GeometryHandler(
 
             logger.debug("Edge traversel took ${end - start}.")
 
-            updateLinkColors(currentColorizer, linkList = null)
+            // Don't update buffers now, they'll be updated in updateSegmentVisibility again
+            updateLinkColors(currentColorizer, linkList = null, updateBuffers = false)
             updateSegmentVisibility(manvr3d.currentTimepoint)
-//            mainLink.updateInstanceBuffers()
 
             val tElapsed = TimeSource.Monotonic.markNow() - tStart
             logger.debug("Total link updates (with coloring) took $tElapsed")
@@ -1485,8 +1488,6 @@ class GeometryHandler(
             setLinkTransform(trackPointList.last().pos, localPos, inst)
             val link = LinkPreview(inst, trackPointList.last().pos, localPos, tp)
             linkPreviewList.add(link)
-            mainLinkInstance?.updateInstanceBuffers()
-            mainSpotInstance?.updateInstanceBuffers()
             logger.debug("Added a new preview link from {} to {}. Visibility is {}", link.from, link.to, preview)
         }
         logger.debug("Adding tracked point to trackPointList now")
