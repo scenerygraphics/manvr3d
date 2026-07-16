@@ -42,6 +42,8 @@
 - Fix occasional Vulkan crashes that happened when activating a VR session ([#823](https://github.com/scenerygraphics/scenery/pull/823))
 - Fix volume mipmap level chosen at launch is now honored by the UI and the volume ([#30](https://github.com/scenerygraphics/manvr3d/pull/30))
 - Fix out of stack space errors with Blackwell Nvidia GPUs on recent drivers by increasing stack space size in the launch script ([#30](https://github.com/scenerygraphics/manvr3d/pull/30))
+- Fix potential link/spot color flickering during tracking, caused by additional instance buffer updates ([#30](https://github.com/scenerygraphics/manvr3d/pull/30))
+- Fix hidden full geometry redraws when moving the dataset with left grab, and during tracking ([#30](https://github.com/scenerygraphics/manvr3d/pull/30))
 
 ## [0.3.1] - 2026-03-19
 
