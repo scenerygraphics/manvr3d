@@ -152,8 +152,8 @@ open class CellTrackingBase(
                         device.model?.let {
                             it.name = "leftHand"
                             leftWristMenu = MultiWristMenu(it,
-                                columnBasePosition = Vector3f(0.03f, 0f, 0.1f),
-                                columnRotation = Quaternionf().rotationXYZ(-1.2f, 1.7f, 0f)
+                                columnBasePosition = Vector3f(0.03f, 0.02f, 0.11f),
+                                columnRotation = Quaternionf().rotationXYZ(-1.5f, 1.7f, 0f)
                             )
                             setupElephantMenu()
                             setupGeneralMenu()
@@ -993,7 +993,7 @@ open class CellTrackingBase(
      * This method should be overridden if functionality is extended, to make sure any extra objects are also deleted.
      */
     open fun stop() {
-        logger.info("Objects in the scene: ${sciview.allSceneNodes.map { it.name }}")
+        logger.debug("Objects in the scene: ${sciview.allSceneNodes.map { it.name }}")
         if (::lightTetrahedron.isInitialized) {
             lightTetrahedron.forEach { sciview.deleteNode(it) }
         }
