@@ -7,7 +7,7 @@ plugins {
 }
 
 group = "org.mastodon"
-version = "0.4-snapshot"
+version = "0.4-snapshot-2"
 
 repositories {
     mavenCentral()

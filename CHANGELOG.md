@@ -15,6 +15,7 @@
   Pull from the latest ELEPHANT-server `main` branch to get the changes.
 - Add LUT preview swatches and LUT inversion toggle in the manvr3d UI ([#30](https://github.com/scenerygraphics/manvr3d/pull/30))
 - Add a few new LUTS (notabily Viridis) ([#30](https://github.com/scenerygraphics/manvr3d/pull/30))
+- Add spinner for link scale adjustments to the desktop UI ([#30](https://github.com/scenerygraphics/manvr3d/pull/30))
 
 ### Removed
 
@@ -40,10 +41,11 @@
 - Fix crash when eye tracking was selected in the UI, not ET hardware was found and the user stops the VR session ([#30](https://github.com/scenerygraphics/manvr3d/pull/30))
 - Fix debug hedgehog visualization when eye tracking is active ([#30](https://github.com/scenerygraphics/manvr3d/pull/30))
 - Fix occasional Vulkan crashes that happened when activating a VR session ([#823](https://github.com/scenerygraphics/scenery/pull/823))
-- Fix volume mipmap level chosen at launch is now honored by the UI and the volume ([#30](https://github.com/scenerygraphics/manvr3d/pull/30))
+- Volume mipmap level chosen at launch is now honored by the UI and the volume ([#30](https://github.com/scenerygraphics/manvr3d/pull/30))
 - Fix out of stack space errors with Blackwell Nvidia GPUs on recent drivers by increasing stack space size in the launch script ([#30](https://github.com/scenerygraphics/manvr3d/pull/30))
-- Fix potential link/spot color flickering during tracking, caused by additional instance buffer updates ([#30](https://github.com/scenerygraphics/manvr3d/pull/30))
+- Fix potential link/spot color flickering during tracking, caused by duplicate instance buffer updates ([#30](https://github.com/scenerygraphics/manvr3d/pull/30))
 - Fix hidden full geometry redraws when moving the dataset with left grab, and during tracking ([#30](https://github.com/scenerygraphics/manvr3d/pull/30))
+- Fix hidden double link/spot redraws when changing their respective scaling through keyboard commands (L/shift+L and O/shift+O) ([#30](https://github.com/scenerygraphics/manvr3d/pull/30))
 
 ## [0.3.1] - 2026-03-19
 
