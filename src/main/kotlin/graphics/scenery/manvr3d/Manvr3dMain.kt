@@ -92,8 +92,6 @@ class Manvr3dMain: TimepointObserver {
         var rangeMax: Float = 5000f,
     )
 
-    var updateVolAutomatically = true
-
     override fun toString(): String {
         val sb = StringBuilder("Manvr3d internal settings:\n")
         sb.append("   SOURCE_ID = $sourceID\n")
@@ -256,7 +254,7 @@ class Manvr3dMain: TimepointObserver {
         geometryHandler = GeometryHandler(sciviewWin, this, updateQueue, mastodon, volumeNode, volumeNode)
 
         geometryHandler.showInstancedSpots(0, noTSColorizer)
-        geometryHandler.showInstancedLinks(GeometryHandler.ColorMode.LUT, colorizer = noTSColorizer)
+        geometryHandler.showInstancedLinks(GeometryHandler.ColorMode.LUT)
 
         // lambda function that is passed to the event handler and called
         // when a vertex position change occurs on the BDV side
@@ -548,11 +546,9 @@ class Manvr3dMain: TimepointObserver {
             //TODO: change MIN and MAX to proper values
             logger.debug("Clamp at ${intensity.clampTop}," +
                     " range min to ${intensity.rangeMin} and range max to ${intensity.rangeMax}")
-            updateSciviewTimepointFromBDV(force = true)
             updateUI()
         } else {
             intensity = intensityBackup.copy()
-            updateSciviewTimepointFromBDV(force = true)
             updateUI()
         }
     }
@@ -615,7 +611,7 @@ class Manvr3dMain: TimepointObserver {
             { updateSciviewContent() },
             moveSpotInSciview as (Spot?) -> Unit,
             {
-                geometryHandler.showInstancedLinks(geometryHandler.currentColorMode, currentColorizer)
+                geometryHandler.showInstancedLinks()
                 geometryHandler.showInstancedSpots(currentTimepoint, currentColorizer)
             },
             {
@@ -664,7 +660,7 @@ class Manvr3dMain: TimepointObserver {
         logger.debug("updateSciviewContent called")
         volumeNode.goToTimepoint(currentTimepoint)
         geometryHandler.showInstancedSpots(currentTimepoint, currentColorizer)
-        geometryHandler.updateSegmentVisibility(currentTimepoint)
+        geometryHandler.updateSegmentVisibility()
         geometryHandler.updateLinkColors(currentColorizer)
     }
 
@@ -678,28 +674,13 @@ class Manvr3dMain: TimepointObserver {
     fun rebuildGeometry() {
         logger.debug("Called rebuildGeometryCallback")
         geometryHandler.showInstancedSpots(currentTimepoint, currentColorizer)
-        geometryHandler.showInstancedLinks(geometryHandler.currentColorMode, currentColorizer)
+        geometryHandler.showInstancedLinks()
     }
 
     /** Takes a timepoint and updates the current BDV window's time accordingly. */
-    fun updateBDV_TimepointFromSciview(tp: Int) {
+    fun updateBdvTimepointFromSciview(tp: Int) {
         logger.debug("Updated BDV timepoint from sciview to $tp")
         bdvWindow.viewerPanelMamut.state().currentTimepoint = tp
-    }
-
-    /** Update the sciview timepoint based on the timepoint from the BDV window.
-     * Returns true if the timepoint was updated. */
-    @JvmOverloads
-    fun updateSciviewTimepointFromBDV(force: Boolean = false): Boolean {
-        if (updateVolAutomatically || force) {
-            val bdvTP = bdvWindow.viewerPanelMamut?.state()?.currentTimepoint ?: currentTimepoint
-            if (bdvTP != currentTimepoint) {
-                currentTimepoint = bdvTP
-                volumeNode.goToTimepoint(currentTimepoint)
-                return true
-            }
-        }
-        return false
     }
 
     /** Synchronizes the viewing direction from BDV to the sciview camera. */
@@ -1020,7 +1001,7 @@ class Manvr3dMain: TimepointObserver {
             timepoint > maxTimepoint -> 0
             else -> timepoint
         })
-        updateBDV_TimepointFromSciview(currentTimepoint)
+        updateBdvTimepointFromSciview(currentTimepoint)
         goToTimepoint(currentTimepoint)
     }
 
@@ -1086,7 +1067,6 @@ class Manvr3dMain: TimepointObserver {
     }
 
     fun updateUI() {
-        if (associatedUI == null) return
         associatedUI?.updatePaneValues()
     }
 

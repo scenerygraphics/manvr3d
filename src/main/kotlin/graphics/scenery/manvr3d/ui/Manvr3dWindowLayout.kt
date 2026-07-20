@@ -95,7 +95,7 @@ class Manvr3dWindowLayout(manvr3dContext: Manvr3dMain, populateThisContainer: JP
             SpinnerNumberModel(manvr3d.mastodon.maxTimepoint, 0, manvr3d.mastodon.maxTimepoint, 1)
         ) { value ->
             manvr3d.geometryHandler.linkBackwardRange = value.toInt()
-            manvr3d.geometryHandler.updateSegmentVisibility(manvr3d.currentTimepoint)
+            manvr3d.geometryHandler.updateSegmentVisibility()
         }
 
         linkRangeForwards = addLabeledSpinner(
@@ -103,7 +103,7 @@ class Manvr3dWindowLayout(manvr3dContext: Manvr3dMain, populateThisContainer: JP
             SpinnerNumberModel(manvr3d.mastodon.maxTimepoint, 0, manvr3d.mastodon.maxTimepoint, 1)
         ) { value ->
             manvr3d.geometryHandler.linkForwardRange = value.toInt()
-            manvr3d.geometryHandler.updateSegmentVisibility(manvr3d.currentTimepoint)
+            manvr3d.geometryHandler.updateSegmentVisibility()
         }
 
         spotScaleFactor = addLabeledSpinner(
@@ -338,12 +338,9 @@ class Manvr3dWindowLayout(manvr3dContext: Manvr3dMain, populateThisContainer: JP
 
     fun updatePaneValues() {
         val manvr3d = this.manvr3dContext ?: throw IllegalStateException("Manvr3d context is null.")
-        val updVolAutoBackup = manvr3d.updateVolAutomatically
-        //temporarily disable because setting the controls trigger their listeners
-        //that trigger (not all of them) the expensive volume updating
-        manvr3d.updateVolAutomatically = false
 
         spotScaleFactor.value = manvr3d.geometryHandler.sphereScaleFactor
+        linkScaleFactor.value = manvr3d.geometryHandler.linkScaleFactor
         val upperValBackup = manvr3d.intensity.rangeMax
 
         intensityRangeSlider.rangeSlider.value = manvr3d.intensity.rangeMin.toInt()
@@ -353,7 +350,6 @@ class Manvr3dWindowLayout(manvr3dContext: Manvr3dMain, populateThisContainer: JP
         manvr3d.intensity.rangeMax = upperValBackup
         intensityRangeSlider.rangeSlider.upperValue = manvr3d.intensity.rangeMax.toInt()
         autoIntensityBtn.isSelected = manvr3d.isVolumeAutoAdjust
-        manvr3d.updateVolAutomatically = updVolAutoBackup
     }
 
     fun deactivateAndForget() {
