@@ -33,6 +33,7 @@ class Manvr3dWindowLayout(manvr3dContext: Manvr3dMain, populateThisContainer: JP
     lateinit var linkRangeBackwards: SpinnerModel
     lateinit var linkRangeForwards: SpinnerModel
     lateinit var spotScaleFactor: SpinnerModel
+    lateinit var linkScaleFactor: SpinnerModel
     lateinit var autoIntensityBtn: JToggleButton
     lateinit var lockGroupHandler: GroupLocksHandling
     lateinit var linkColorSelector: JComboBox<String>
@@ -106,7 +107,7 @@ class Manvr3dWindowLayout(manvr3dContext: Manvr3dMain, populateThisContainer: JP
         }
 
         spotScaleFactor = addLabeledSpinner(
-            "Spot scale factor",
+            "Spot Scale Factor",
             SpinnerNumberModel(1f, 0.1f, 10f, 0.1f)
         ) { value ->
             manvr3d.geometryHandler.sphereScaleFactor = value.toFloat()
@@ -114,6 +115,14 @@ class Manvr3dWindowLayout(manvr3dContext: Manvr3dMain, populateThisContainer: JP
                 manvr3d.vrTracking.cursor.visualScale = value.toFloat()
             }
             manvr3d.redrawSciviewSpots()
+        }
+
+        linkScaleFactor = addLabeledSpinner(
+            "Link Scale Factor",
+            SpinnerNumberModel(1f, 0.1f, 10f, 0.2f)
+        ) { value ->
+            manvr3d.geometryHandler.linkScaleFactor = value.toFloat()
+            manvr3d.geometryHandler.showInstancedLinks()
         }
 
         vrResolutionScale = addLabeledSpinner(
