@@ -621,7 +621,6 @@ class Manvr3dMain: TimepointObserver {
             {
                 redrawSciviewSpots()
                 geometryHandler.highlightFocusedSpot()
-
             },
             mastodon,
             this,
@@ -747,18 +746,24 @@ class Manvr3dMain: TimepointObserver {
         handler.removeBehaviour("node: move selected one closer or further away")
 
         val behaviourCollection = arrayOf(
-            BehaviourTriple(desc_DEC_SPH, key_DEC_SPH, { _, _ -> geometryHandler.decreaseSphereInstanceScale(); updateUI() }),
-            BehaviourTriple(desc_INC_SPH, key_INC_SPH, { _, _ -> geometryHandler.increaseSphereInstanceScale(); updateUI() }),
-            BehaviourTriple(desc_DEC_LINK, key_DEC_LINK, { _, _ -> geometryHandler.decreaseLinkScale(); updateUI() }),
-            BehaviourTriple(desc_INC_LINK, key_INC_LINK, { _, _ -> geometryHandler.increaseLinkScale(); updateUI() }),
+            BehaviourTriple(desc_DEC_SPH, key_DEC_SPH,
+                { _, _ -> geometryHandler.decreaseSphereInstanceScale(); updateUI() }),
+            BehaviourTriple(desc_INC_SPH, key_INC_SPH,
+                { _, _ -> geometryHandler.increaseSphereInstanceScale(); updateUI() }),
+            BehaviourTriple(desc_DEC_LINK, key_DEC_LINK,
+                { _, _ -> geometryHandler.decreaseLinkScale(); updateUI() }),
+            BehaviourTriple(desc_INC_LINK, key_INC_LINK,
+                { _, _ -> geometryHandler.increaseLinkScale(); updateUI() }),
             BehaviourTriple(desc_CTRL_WIN, key_CTRL_WIN, { _, _ -> createAndShowControllingUI() }),
             BehaviourTriple(desc_CTRL_INFO, key_CTRL_INFO, { _, _ -> logger.info(this.toString()) }),
-            BehaviourTriple(desc_PREV_TP, key_PREV_TP, { _, _ -> prevTimepoint(); updateSciviewContent() }),
-            BehaviourTriple(desc_NEXT_TP, key_NEXT_TP, { _, _ -> nextTimepoint(); updateSciviewContent() }),
+            BehaviourTriple(desc_PREV_TP, key_PREV_TP, {
+                _, _ -> prevTimepoint(); updateSciviewContent() }),
+            BehaviourTriple(desc_NEXT_TP, key_NEXT_TP,
+                { _, _ -> nextTimepoint(); updateSciviewContent() }),
             BehaviourTriple("Scale Instance Up", "ctrl E",
-                {_, _ -> geometryHandler.changeSpotRadius(selectedSpotInstances, 1.1f)}),
+                { _, _ -> geometryHandler.changeSpotRadius(selectedSpotInstances, 1.1f) }),
             BehaviourTriple("Scale Instance Down", "ctrl Q",
-                {_, _ -> geometryHandler.changeSpotRadius(selectedSpotInstances, 0.9f)}),
+                { _, _ -> geometryHandler.changeSpotRadius(selectedSpotInstances, 0.9f) }),
         )
 
         behaviourCollection.forEach {

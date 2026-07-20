@@ -966,13 +966,11 @@ class GeometryHandler(
     fun decreaseSphereInstanceScale() {
         sphereScaleFactor -= 0.1f
         if (sphereScaleFactor < 0.1f) sphereScaleFactor = 0.1f
-        updateSphereInstanceScales()
         manvr3d.associatedUI?.updatePaneValues()
     }
 
     fun increaseSphereInstanceScale() {
         sphereScaleFactor += 0.1f
-        updateSphereInstanceScales()
         manvr3d.associatedUI?.updatePaneValues()
     }
 

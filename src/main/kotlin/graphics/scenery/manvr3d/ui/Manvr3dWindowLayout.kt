@@ -114,7 +114,7 @@ class Manvr3dWindowLayout(manvr3dContext: Manvr3dMain, populateThisContainer: JP
             if (manvr3d.isVRactive) {
                 manvr3d.vrTracking.cursor.visualScale = value.toFloat()
             }
-            manvr3d.redrawSciviewSpots()
+            manvr3d.geometryHandler.updateSphereInstanceScales()
         }
 
         linkScaleFactor = addLabeledSpinner(
