@@ -980,7 +980,6 @@ class GeometryHandler(
         val oldScale = linkScaleFactor
         linkScaleFactor += 0.2f
         val factor = linkScaleFactor / oldScale
-        mainLinkInstance?.instances?.forEach { l -> l.spatial().scale *= Vector3f(factor, 1f, factor) }
         logger.debug("Increasing scale to $linkScaleFactor, by factor $factor")
     }
 
@@ -988,14 +987,12 @@ class GeometryHandler(
         val oldScale = linkScaleFactor
         linkScaleFactor -= 0.2f
         val factor = linkScaleFactor / oldScale
-        mainLinkInstance?.instances?.forEach { l -> l.spatial().scale *= Vector3f(factor, 1f, factor) }
         logger.debug("Decreasing scale to $linkScaleFactor, by factor $factor")
     }
 
     /** Shows or initializes the main links instance, publishes it to the scene and populates it with instances from the current Mastodon graph. */
     fun showInstancedLinks(
-        colorMode: ColorMode = currentColorMode,
-        colorizer: GraphColorGenerator<Spot, Link> = currentColorizer
+        colorMode: ColorMode = currentColorMode
     ) {
         enqueueUpdate("showInstancedLinks()") {
             // Skip the rest if links aren't visible
@@ -1121,7 +1118,7 @@ class GeometryHandler(
             logger.debug("Edge traversel took ${end - start}.")
 
             // Don't update buffers now, they'll be updated in updateSegmentVisibility again
-            updateLinkColors(currentColorizer, linkList = null, updateBuffers = false)
+            updateLinkColors(linkList = null, updateBuffers = false)
             updateSegmentVisibility(manvr3d.currentTimepoint)
 
             val tElapsed = TimeSource.Monotonic.markNow() - tStart
@@ -1254,7 +1251,7 @@ class GeometryHandler(
         logger.debug("Updating link colors took ${end - start}.")
     }
 
-    fun updateSegmentVisibility(currentTP: Int) {
+    fun updateSegmentVisibility(currentTP: Int = manvr3d.currentTimepoint) {
         links.forEach {link ->
             // turns the link on if it is within range, otherwise turns it off
             link.value.instance.visible = link.value.tp in currentTP - linkBackwardRange..currentTP + linkForwardRange
