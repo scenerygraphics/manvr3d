@@ -931,7 +931,7 @@ class GeometryHandler(
                     setLinkTransform(sourceRef, targetRef, it.instance)
                 }
             } else {
-                logger.warn("Couldn't find edge with index $edgeIdx")
+                logger.warn("Couldn't find edge with index $edgeIdx for transform update.")
             }
         }
         mainLinkInstance?.updateInstanceBuffers()
@@ -1140,7 +1140,7 @@ class GeometryHandler(
         val posTarget = Vector3f(pos)
         posTarget.sub(posOrigin)
         inst.spatial {
-            scale.set(linkSize, posTarget.length().toDouble(), linkSize)
+            scale.set(linkSize * linkScaleFactor, posTarget.length().toDouble(), linkSize * linkScaleFactor)
             rotation = Quaternionf().rotateTo(Vector3f(0f, 1f, 0f), posTarget).normalize()
             position = Vector3f(posOrigin)
         }
