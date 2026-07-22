@@ -30,7 +30,7 @@ class FileStatsLogger(val isEnabled: Boolean) {
     private var numUndos = 0
 
     private var numTracksRecorded = 0
-    private val lensOnTime = 0.seconds
+    private var lensOnTime = 0.seconds
     private var trackingStartTime = TimeSource.Monotonic.markNow()
     private var lensStartTime = TimeSource.Monotonic.markNow()
 
@@ -40,17 +40,18 @@ class FileStatsLogger(val isEnabled: Boolean) {
             logFile.createNewFile()
             logger.info("Created session log at $logPath.")
         }
+        sessionStartTime = TimeSource.Monotonic.markNow()
+        initNumEdges = mastodon.model.graph.edges().size
+        initNumVertices = mastodon.model.graph.vertices().size
         append(
             """
             MANVR3D SESSION LOG
             Start: ${now()}
-            =================================
+            
+            ==== Opened Mastodon file ${mastodon.projectName} ====
             The opened Mastodon file has $initNumVertices vertices and $initNumEdges edges.
             """.trimIndent()
         )
-        sessionStartTime = TimeSource.Monotonic.markNow()
-        initNumEdges = mastodon.model.graph.edges().size
-        initNumVertices = mastodon.model.graph.vertices().size
     }
 
     /** Append text to the log file if [isEnabled] is true. */
@@ -63,14 +64,16 @@ class FileStatsLogger(val isEnabled: Boolean) {
     /** Capture start time of the VR session. */
     fun beginVrSession() {
         vrSessionStartTime = TimeSource.Monotonic.markNow()
+        append("==== Started VR session ====")
     }
 
     /** Stop the VR session recording and log session duration, the time the lens tool was enabled, and the number
      * of tracks created with controllers. */
     fun endVrSession() {
         val duration = TimeSource.Monotonic.markNow() - vrSessionStartTime
+        append("==== Stopped VR session ====")
         append("Stopped VR session. VR was active for ${duration.toString(DurationUnit.SECONDS)}.")
-        append("Volume lensing was enabled for: ${lensOnTime.toString(DurationUnit.SECONDS, 2)}" +
+        append("Volume lensing was enabled for: ${lensOnTime.toString(DurationUnit.SECONDS)}" +
                 "\nTracks recorded in VR: $numTracksRecorded")
     }
 
@@ -83,9 +86,9 @@ class FileStatsLogger(val isEnabled: Boolean) {
 
         append(
             """
-                =================================
+                ==== Stopped manvr3d session ====
                 Closing the session at: ${now()}.
-                Session length was: ${sessionLength.toString(DurationUnit.SECONDS)}.
+                Total session length was: ${sessionLength.toString(DurationUnit.SECONDS)}.
                 Undo actions performed: $numUndos
                 Mastodon file now has ${mastodon.model.graph.vertices().size} vertices and ${mastodon.model.graph.edges().size} edges.
                 New vertices added: $numNewVertices
@@ -117,11 +120,12 @@ class FileStatsLogger(val isEnabled: Boolean) {
         val duration = TimeSource.Monotonic.markNow() - trackingStartTime
         val minTp = trackPointList.minOf { it.tp }
         val maxTp = trackPointList.maxOf { it.tp }
+        val speed = trackPointList.size.toDouble() / duration.toDouble(DurationUnit.SECONDS)
         append(
-            "Controller track with ${trackPointList.size} spots finished in" +
+            "Controller track with ${trackPointList.size} spots finished in " +
                     duration.toString(DurationUnit.SECONDS, 2) +
-                    ", timepoint range: $minTp - $maxTp, average speed:" +
-                    "${duration.div(trackPointList.size).toString(DurationUnit.SECONDS, 2)}/track."
+                    ", timepoint range: $minTp - $maxTp, average speed: " +
+                    "${String.format("%.2f", speed)} tp/s."
         )
     }
 
@@ -132,7 +136,7 @@ class FileStatsLogger(val isEnabled: Boolean) {
 
     /** Capture the end of the lensing tool interaction and add it to the cumulative duration. */
     fun endLensing() {
-        lensOnTime.plus(TimeSource.Monotonic.markNow() - lensStartTime)
+        lensOnTime += TimeSource.Monotonic.markNow() - lensStartTime
         append("Lensing was enabled for ${lensOnTime.toString(DurationUnit.SECONDS)}.")
     }
 
