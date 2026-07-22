@@ -99,7 +99,8 @@ class MastodonSidePlugin : DynamicCommand() {
             try {
                 if (!tryToReuseExistingSciviewWindow) sciViewService.createSciView()
                 val sv = sciViewService.getOrCreateActiveSciView()
-                val manvr3d = Manvr3dMain(mastodon, channelIdx, chosenLevel, sv)
+                val wantLog = System.getProperty("manvr3d.enableLogFile") != null
+                val manvr3d = Manvr3dMain(mastodon, channelIdx, chosenLevel, sv, wantLog)
                 manvr3d.createAndShowControllingUI()
                 mastodon.projectClosedListeners().add(CloseListener {
                     logger.debug("Mastodon project was closed, cleaning up in sciview:")
