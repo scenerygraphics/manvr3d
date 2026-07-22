@@ -212,7 +212,7 @@ class Manvr3dWindowLayout(manvr3dContext: Manvr3dMain, populateThisContainer: JP
         }, "span, growx")
 
         // Close Button
-        val closeBtn = JButton("Close").apply { addActionListener { manvr3d.stopAndDetachUI() } }
+        val closeBtn = JButton("Close").apply { addActionListener { manvr3d.close() } }
         windowPanel.add(closeBtn, "span, right")
 
         windowPanel.size = windowPanel.preferredSize
