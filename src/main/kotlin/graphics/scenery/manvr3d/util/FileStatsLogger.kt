@@ -64,14 +64,14 @@ class FileStatsLogger(val isEnabled: Boolean) {
     /** Capture start time of the VR session. */
     fun beginVrSession() {
         vrSessionStartTime = TimeSource.Monotonic.markNow()
-        append("==== Started VR session ====")
+        append("\n==== Started VR session ====")
     }
 
     /** Stop the VR session recording and log session duration, the time the lens tool was enabled, and the number
      * of tracks created with controllers. */
     fun endVrSession() {
         val duration = TimeSource.Monotonic.markNow() - vrSessionStartTime
-        append("==== Stopped VR session ====")
+        append("\n==== Stopped VR session ====")
         append("Stopped VR session. VR was active for ${duration.toString(DurationUnit.SECONDS)}.")
         append("Volume lensing was enabled for: ${lensOnTime.toString(DurationUnit.SECONDS)}" +
                 "\nTracks recorded in VR: $numTracksRecorded")
@@ -86,6 +86,7 @@ class FileStatsLogger(val isEnabled: Boolean) {
 
         append(
             """
+                
                 ==== Stopped manvr3d session ====
                 Closing the session at: ${now()}.
                 Total session length was: ${sessionLength.toString(DurationUnit.SECONDS)}.
@@ -125,7 +126,7 @@ class FileStatsLogger(val isEnabled: Boolean) {
             "Controller track with ${trackPointList.size} spots finished in " +
                     duration.toString(DurationUnit.SECONDS, 2) +
                     ", timepoint range: $minTp - $maxTp, average speed: " +
-                    "${String.format("%.2f", speed)} tp/s."
+                    "${if (trackPointList.size > 1) String.format("%.2f", speed) else "-"} tp/s."
         )
     }
 
