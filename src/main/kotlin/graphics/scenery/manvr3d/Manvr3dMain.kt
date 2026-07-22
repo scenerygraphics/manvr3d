@@ -1065,15 +1065,16 @@ class Manvr3dMain: TimepointObserver {
 
     fun stopAndDetachUI() {
         isRunning = false
+        workerExecutor.shutdown()
         try {
             // Wait for graceful termination
             if (!workerExecutor.awaitTermination(5, TimeUnit.SECONDS)) {
                 logger.error("Worker thread did not terminate gracefully")
+                workerExecutor.shutdownNow()
             }
         } catch (e: InterruptedException) {
             Thread.currentThread().interrupt()
         }
-        workerExecutor.shutdownNow()
         logger.info("Stopped manvr3d worker queue.")
         updateQueue.clear()
         sciviewWin.mainWindow.close()
