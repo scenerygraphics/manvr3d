@@ -46,7 +46,8 @@ object StartManvr3dDirectly {
             // --------------->>  <<---------------
             val sv = createSciview()
             val mastodon = giveMeMastodonOfThisProject(sv.scijavaContext, projectPath)
-            val manvr3dContext = Manvr3dMain(mastodon, targetSciviewWindow = sv)
+            val wantLog = System.getProperty("manvr3d.enableLogFile") != null
+            val manvr3dContext = Manvr3dMain(mastodon, targetSciviewWindow = sv, wantLog)
             manvr3dContext.createAndShowControllingUI()
             mastodon.projectClosedListeners().add(CloseListener {
                 logger.debug("Mastodon project was closed, cleaning up in sciview:")
