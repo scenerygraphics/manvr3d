@@ -28,6 +28,12 @@ class FileStatsLogger(val isEnabled: Boolean) {
     private var initNumEdges = 0
     private var numTimepointsPredicted = 0
     private var numUndos = 0
+    private var numSpotAddEvents = 0
+    private var numSpotDeleteEvents = 0
+    private var numEdgeDeleteEvents = 0
+    private var numBranchDeleteEvents = 0
+    private var numMoveEvents = 0
+    private var numMergeEvents = 0
 
     private var numTracksRecorded = 0
     private var lensOnTime = 0.seconds
@@ -73,8 +79,15 @@ class FileStatsLogger(val isEnabled: Boolean) {
         val duration = TimeSource.Monotonic.markNow() - vrSessionStartTime
         append("\n==== Stopped VR session ====")
         append("Stopped VR session. VR was active for ${duration.toString(DurationUnit.SECONDS)}.")
-        append("Volume lensing was enabled for: ${lensOnTime.toString(DurationUnit.SECONDS)}" +
-                "\nTracks recorded in VR: $numTracksRecorded")
+        append("Tracks recorded in VR: $numTracksRecorded")
+        append("""
+            Number of spots added manually: $numSpotAddEvents
+            Number of spot deletion events: $numSpotDeleteEvents
+            Number of edge deletion events: $numEdgeDeleteEvents
+            Number of branch deletion events: $numBranchDeleteEvents
+            Number of spot move events: $numMoveEvents
+            Number of spot merge events: $numMergeEvents
+        """.trimIndent())
     }
 
     /** End the manvr3d session and log session length plus stats on undo and prediction counts and
@@ -107,6 +120,37 @@ class FileStatsLogger(val isEnabled: Boolean) {
     /** Increments the ELEPHANT timepoint prediction counter. */
     fun incrementPrediction() {
         numTimepointsPredicted++
+    }
+
+    /** Increments the counter of how many spots were added manually. */
+    fun incrementSpotAdded() {
+        numSpotAddEvents++
+    }
+
+    /** Increments the counter of how many spot deletion events were triggered.
+     * Deleting multiple spots at once counts as one event. */
+    fun incrementSpotDeleted() {
+        numSpotDeleteEvents++
+    }
+
+    /** Increments the counter of how many edge deletion events were triggered. */
+    fun incrementEdgeDeleted() {
+        numEdgeDeleteEvents++
+    }
+
+    /** Increments the counter of how many branch deletion events were triggered. */
+    fun incrementBranchDeleted() {
+        numBranchDeleteEvents++
+    }
+
+    /** Increments the counter of how many times a spot move event was triggered. */
+    fun incrementSpotMoved() {
+        numMoveEvents++
+    }
+
+    /** Increments the counter of how many times a merge event was triggered. */
+    fun incrementMerge() {
+        numMergeEvents++
     }
 
     /** Capture the start time of the controller tracking interaction. */

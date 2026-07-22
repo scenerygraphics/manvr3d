@@ -446,11 +446,11 @@ class Manvr3dMain: TimepointObserver {
 
     fun close() {
 
-        fileLogger.endManvr3dSession(mastodon)
-
         if (isVRactive) {
             stopVR()
         }
+        fileLogger.endManvr3dSession(mastodon)
+
         stopAndDetachUI()
         deregisterKeyboardHandlers()
         logger.info("Manvr3d closing procedure: UI and keyboard handlers are removed now")
@@ -904,6 +904,7 @@ class Manvr3dMain: TimepointObserver {
         val spots = RefCollections.createRefList(mastodon.model.graph.vertices())
         spots.addAll(selectedSpotInstances.map { geometryHandler.findSpotFromInstance(it) }.distinct())
         geometryHandler.mergeSpots(spots)
+        fileLogger.incrementMerge()
         geometryHandler.clearSpotSelection()
         geometryHandler.showInstancedSpots(currentTimepoint, currentColorizer)
     }

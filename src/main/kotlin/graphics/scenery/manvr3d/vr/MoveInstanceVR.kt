@@ -94,6 +94,7 @@ class MoveInstanceVR(
                 manvr3d.currentColorizer
             )
             adjacentEdges.clear()
+            manvr3d.fileLogger.incrementSpotMoved()
         }
     }
 
