@@ -148,10 +148,12 @@ if "%OS%"=="Windows_NT" endlocal
 
 $launcherScript | Out-File -FilePath "$packageDir\bin\manvr3d.bat" -Encoding ASCII
 
-# Copy manvr3d.args if it exists in the repository
-if (Test-Path "manvr3d.args") {
-    Copy-Item -Path "manvr3d.args" -Destination "$packageDir\bin\manvr3d.args"
-}
+# Generate manvr3d.args file
+$argsContent = @'
+# Enables file-based logging. Can be turned off by commenting out this line.
+-Dmanvr3d.enableLogFile
+'@
+$argsContent | Out-File -FilePath "$packageDir\bin\manvr3d.args" -Encoding ASCII
 
 # Copy README
 Write-Host "Copying README..." -ForegroundColor Yellow
