@@ -614,6 +614,7 @@ class GeometryHandler(
             mastodonData.model.graph.releaseRef(currentSpot)
             clearSpotSelection()
             manvr3d.bdvNotifier?.lockUpdates = false
+            manvr3d.fileLogger.incrementMerge()
         }
     }
 
@@ -823,6 +824,7 @@ class GeometryHandler(
             mastodonData.model.graph.lock.writeLock().unlock()
             manvr3d.bdvNotifier?.lockUpdates = false
             clearSpotSelection()
+            manvr3d.fileLogger.incrementSpotDeleted()
         }
     }
 
@@ -1371,6 +1373,7 @@ class GeometryHandler(
                     }
                     mastodonData.model.graph.lock.writeLock().unlock()
                     clearSpotSelection()
+                    manvr3d.fileLogger.incrementBranchDeleted()
                 }
                 mastodonData.model.graph.notifyGraphChanged()
             } else {
@@ -1390,6 +1393,8 @@ class GeometryHandler(
                             v.init(tp, pos.toDoubleArray(), localRadius.toDouble())
                             logger.info("Added new spot at position $pos, radius is $localRadius")
                             logger.debug("we now have ${mastodonData.model.graph.vertices().size} spots in total")
+                            manvr3d.fileLogger.incrementSpotAdded()
+
                         } else {
                             logger.warn("Not adding new spot, $pos is outside the volume!")
                             manvr3d.flashVolumeGrid()
@@ -1417,11 +1422,13 @@ class GeometryHandler(
                     selectedSpots.forEach {
                         mastodonData.model.graph.remove(it)
                     }
+                    manvr3d.fileLogger.incrementBranchDeleted()
                 } else {
                     // Otherwise only delete edges and don't touch the spots themselves
                     selectedEdges.forEach { edge ->
                         mastodonData.model.graph.remove(edge)
                     }
+                    manvr3d.fileLogger.incrementEdgeDeleted()
                 }
                 mastodonData.model.graph.lock.writeLock().unlock()
                 manvr3d.bdvNotifier?.lockUpdates = false
