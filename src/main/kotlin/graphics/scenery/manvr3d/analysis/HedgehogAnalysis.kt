@@ -98,8 +98,8 @@ class HedgehogAnalysis(val spines: List<SpineMetadata>, val localToWorld: Matrix
 	fun run(): Track? {
 
 		// Adapt thresholds based on data from the first spine
-		val startingThreshold = timepoints.entries.first().value.first.samples.min() * 2f + 0.002f
-		val localMaxThreshold = timepoints.entries.first().value.first.samples.max() * 0.2f
+		val startingThreshold = timepoints.entries.first().value.first().samples.min() * 2f + 0.002f
+		val localMaxThreshold = timepoints.entries.first().value.first().samples.max() * 0.2f
 		val zscoreThreshold = 2.0f
 		val removeTooFarThreshold = 5.0f
 
