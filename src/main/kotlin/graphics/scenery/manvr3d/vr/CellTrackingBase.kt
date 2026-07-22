@@ -100,6 +100,8 @@ open class CellTrackingBase(
 
     val buttonMapper = CellTrackingButtonMapper
 
+    val fileLogger = manvr3d.fileLogger
+
     open fun run() {
         sciview.toggleVRRendering(resolutionScale = resolutionScale)
         hmd = sciview.hub.getWorkingHMD() as? OpenVRHMD ?: throw IllegalStateException("Could not find headset")
@@ -213,6 +215,8 @@ open class CellTrackingBase(
 
             // we dont want animation, because we track step by step
             playing = false
+            // Capture the start time, so we can write statistics on tracking duration
+            fileLogger.beginControllerTracking()
         }
         // play the volume backwards, step by step, so cell split events can simply be turned into a merge event
 
@@ -257,6 +261,8 @@ open class CellTrackingBase(
             buttonMapper.let {
                 it.mapper.updateLabel(it.ADD_DELETE_RESET, "Add", it.defaultColor)
             }
+
+            fileLogger.endControllerTracking(trackPointList)
         }
     }
 
@@ -420,6 +426,12 @@ open class CellTrackingBase(
         val lensToggleButton = ToggleButton(
             "Lens off", "Lens on", command = {
                 isLensingActive = !isLensingActive
+                // We accumulate lensing time per session for statistics
+                if (isLensingActive) {
+                    fileLogger.startedLensing()
+                } else {
+                    fileLogger.stoppedLensing()
+                }
             }, byTouch = true, defaultColor = color, pressedColor = pressedColor, touchingColor = touchingColor, default = false)
 
         val lensRadiusDownBtn = Button(
@@ -847,6 +859,8 @@ open class CellTrackingBase(
 
     private var lastMenuProximity = false
 
+    /** Thread for testing proximity of the cursor/pointer to the wrist menu.
+     * Switches from cursor to pointer if the bounding spheres overlap. */
     fun launchMenuPointerIntersectionThread() {
         logger.info("Launched pointer menu intersection thread")
         while (sciview.running) {
@@ -1012,6 +1026,11 @@ open class CellTrackingBase(
         logger.info("Cleaned up basic VR objects. Objects left: ${sciview.allSceneNodes.map { it.name }}")
 
         sciview.toggleVRRendering()
+
+        if (isLensingActive) {
+            isLensingActive = false
+            fileLogger.stoppedLensing()
+        }
         logger.info("Shut down and disabled VR environment.")
         manvr3d.rebuildGeometry()
     }

@@ -36,6 +36,7 @@ import org.mastodon.mamut.model.Link
 import org.mastodon.mamut.model.Spot
 import graphics.scenery.manvr3d.ui.Manvr3dWindowLayout
 import graphics.scenery.manvr3d.util.DataAxes
+import graphics.scenery.manvr3d.util.FileStatsLogger
 import org.mastodon.mamut.views.bdv.MamutViewBdv
 import org.mastodon.ui.coloring.DefaultGraphColorGenerator
 import org.mastodon.ui.coloring.GraphColorGenerator
@@ -172,16 +173,19 @@ class Manvr3dMain: TimepointObserver {
     private val trainFlowAction: Action? = null
     private var neighborLinkingAction: Action? = null
 
+    val fileLogger: FileStatsLogger
+
     constructor(
         mastodonMainWindow: ProjectModel,
-        targetSciviewWindow: SciView
-    ) : this(mastodonMainWindow, 0, 0, targetSciviewWindow)
+        targetSciviewWindow: SciView, wantLog: Boolean = true
+    ) : this(mastodonMainWindow, 0, 0, targetSciviewWindow, wantLog)
 
     constructor(
         mastodonMainWindow: ProjectModel,
         sourceID: Int,
         initMipmapLevel: Int,
-        targetSciviewWindow: SciView
+        targetSciviewWindow: SciView,
+        wantLog: Boolean = true
     ) {
         mastodon = mastodonMainWindow
         sciviewWin = targetSciviewWindow
@@ -189,6 +193,8 @@ class Manvr3dMain: TimepointObserver {
         minTimepoint = mastodon.minTimepoint
         maxTimepoint = mastodon.maxTimepoint
         currentTimepoint = minTimepoint
+
+        fileLogger = FileStatsLogger(wantLog)
 
         //adjust the default scene's settings
         sciviewWin.applicationName = ("sciview for Mastodon: " + mastodon.projectName)
@@ -212,7 +218,7 @@ class Manvr3dMain: TimepointObserver {
         sac = mastodon.sharedBdvData.sources[this.sourceID]
         spimSource = sac.spimSource
         // number of pixels for each dimension at the highest res level
-        val volumeDims = spimSource.getSource(0, 0).dimensionsAsLongArray()    // TODO rename to something more meaningful
+        val volumeDims = spimSource.getSource(0, 0).dimensionsAsLongArray()
         // number of pixels for each dimension of the volume at current res level
         val volumeNumPixels = spimSource.getSource(0, this.initMipmapLevel).dimensionsAsLongArray()
         val volumeDownscale = Vector3f(
@@ -278,6 +284,8 @@ class Manvr3dMain: TimepointObserver {
         registerKeyboardHandlers()
 
         setMipmapLevel(this.initMipmapLevel)
+
+        fileLogger.beginManvr3dSession(mastodon)
     }
 
     val eventService: EventService?
@@ -306,6 +314,7 @@ class Manvr3dMain: TimepointObserver {
                 timeSinceUpdate = TimeSource.Monotonic.markNow()
                 if (enableListener) {
                     val highestTimepoint = mastodon.model.graph.vertices()?.maxOf { it.timepoint } ?: 0
+                    fileLogger.incrementPrediction()
                     logger.debug("Elephant listener got triggered, changing timepoint to $highestTimepoint")
                     goToTimepoint(highestTimepoint)
                 }
@@ -436,6 +445,12 @@ class Manvr3dMain: TimepointObserver {
     }
 
     fun close() {
+
+        fileLogger.endManvr3dSession(mastodon)
+
+        if (isVRactive) {
+            stopVR()
+        }
         stopAndDetachUI()
         deregisterKeyboardHandlers()
         logger.info("Manvr3d closing procedure: UI and keyboard handlers are removed now")
@@ -877,6 +892,7 @@ class Manvr3dMain: TimepointObserver {
                 logger.info("Redid last change.")
             } else {
                 mastodon.model.undo()
+                fileLogger.incrementUndo()
                 logger.info("Undid last change.")
             }
             timeSinceUndo = now
@@ -942,7 +958,7 @@ class Manvr3dMain: TimepointObserver {
             return false
         }
         hmd.close()
-
+        fileLogger.beginVrSession()
         isVRactive = true
 
         thread {
@@ -978,6 +994,7 @@ class Manvr3dMain: TimepointObserver {
 
     /** Stop the VR session and clean up the scene. */
     fun stopVR() {
+        fileLogger.endVrSession()
         isVRactive = false
         vrTracking.unregisterObserver(this)
         logger.info("Removed timepoint observer from VR bindings.")
@@ -1048,8 +1065,6 @@ class Manvr3dMain: TimepointObserver {
 
     fun stopAndDetachUI() {
         isRunning = false
-        workerExecutor.shutdownNow()
-        logger.info("Stopped manvr3d worker queue.")
         try {
             // Wait for graceful termination
             if (!workerExecutor.awaitTermination(5, TimeUnit.SECONDS)) {
@@ -1058,6 +1073,8 @@ class Manvr3dMain: TimepointObserver {
         } catch (e: InterruptedException) {
             Thread.currentThread().interrupt()
         }
+        workerExecutor.shutdownNow()
+        logger.info("Stopped manvr3d worker queue.")
         updateQueue.clear()
         sciviewWin.mainWindow.close()
         logger.info("Closed sciview main window.")
