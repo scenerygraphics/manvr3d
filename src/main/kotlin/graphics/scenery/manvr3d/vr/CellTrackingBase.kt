@@ -428,9 +428,9 @@ open class CellTrackingBase(
                 isLensingActive = !isLensingActive
                 // We accumulate lensing time per session for statistics
                 if (isLensingActive) {
-                    fileLogger.startedLensing()
+                    fileLogger.beginLensing()
                 } else {
-                    fileLogger.stoppedLensing()
+                    fileLogger.endLensing()
                 }
             }, byTouch = true, defaultColor = color, pressedColor = pressedColor, touchingColor = touchingColor, default = false)
 
@@ -1029,7 +1029,7 @@ open class CellTrackingBase(
 
         if (isLensingActive) {
             isLensingActive = false
-            fileLogger.stoppedLensing()
+            fileLogger.endLensing()
         }
         logger.info("Shut down and disabled VR environment.")
         manvr3d.rebuildGeometry()

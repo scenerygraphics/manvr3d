@@ -34,6 +34,7 @@ class FileStatsLogger(val isEnabled: Boolean) {
     private var trackingStartTime = TimeSource.Monotonic.markNow()
     private var lensStartTime = TimeSource.Monotonic.markNow()
 
+    /** Initialize the manvr3d session recording and create a log file if [isEnabled] is true. */
     fun beginManvr3dSession(mastodon: ProjectModel) {
         if (isEnabled) {
             logFile.createNewFile()
@@ -52,16 +53,20 @@ class FileStatsLogger(val isEnabled: Boolean) {
         initNumVertices = mastodon.model.graph.vertices().size
     }
 
+    /** Append text to the log file if [isEnabled] is true. */
     fun append(text: String) {
         if (isEnabled) {
             logFile.appendText(text + "\n")
         }
     }
 
+    /** Capture start time of the VR session. */
     fun beginVrSession() {
         vrSessionStartTime = TimeSource.Monotonic.markNow()
     }
 
+    /** Stop the VR session recording and log session duration, the time the lens tool was enabled, and the number
+     * of tracks created with controllers. */
     fun endVrSession() {
         val duration = TimeSource.Monotonic.markNow() - vrSessionStartTime
         append("Stopped VR session. VR was active for ${duration.toString(DurationUnit.SECONDS)}.")
@@ -69,6 +74,8 @@ class FileStatsLogger(val isEnabled: Boolean) {
                 "\nTracks recorded in VR: $numTracksRecorded")
     }
 
+    /** End the manvr3d session and log session length plus stats on undo and prediction counts and
+     * how many new vertices and edges were added to the Mastodon file. */
     fun endManvr3dSession(mastodon: ProjectModel) {
         val sessionLength = TimeSource.Monotonic.markNow() - sessionStartTime
         val numNewVertices = mastodon.model.graph.vertices().size - initNumVertices
@@ -98,10 +105,12 @@ class FileStatsLogger(val isEnabled: Boolean) {
         numTimepointsPredicted++
     }
 
+    /** Capture the start time of the controller tracking interaction. */
     fun beginControllerTracking() {
         trackingStartTime = TimeSource.Monotonic.markNow()
     }
 
+    /** End the controller tracking interaction recording and log the duration and track statistics to file if [isEnabled] is true. */
     fun endControllerTracking(trackPointList: MutableList<CellTrackingBase.TrackedPoint>) {
         numTracksRecorded++
 
@@ -116,12 +125,15 @@ class FileStatsLogger(val isEnabled: Boolean) {
         )
     }
 
-    fun startedLensing() {
+    /** Capture the time the lensing tool was enabled. */
+    fun beginLensing() {
         lensStartTime = TimeSource.Monotonic.markNow()
     }
 
-    fun stoppedLensing() {
+    /** Capture the end of the lensing tool interaction and add it to the cumulative duration. */
+    fun endLensing() {
         lensOnTime.plus(TimeSource.Monotonic.markNow() - lensStartTime)
+        append("Lensing was enabled for ${lensOnTime.toString(DurationUnit.SECONDS)}.")
     }
 
     fun now(): String = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd_HH-mm-ss"))
