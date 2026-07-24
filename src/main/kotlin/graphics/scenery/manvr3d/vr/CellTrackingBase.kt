@@ -49,7 +49,7 @@ open class CellTrackingBase(
     open var geometryHandler: GeometryHandler,
     val resolutionScale: Float = 1f
 ): TimepointObservable() {
-    val logger by lazyLogger(System.getProperty("scenery.LogLevel", "info"))
+    val logger by lazyLogger()
 
     lateinit var sessionId: String
     lateinit var sessionDirectory: Path
@@ -450,17 +450,58 @@ open class CellTrackingBase(
 
         leftWristMenu.addRow("Toggle Menu", lensToggleButton, lensRadiusDownBtn, lensRadiusUpBtn)
 
+        val spotRadiusUpBtn = Button(
+            " + ", command = {
+                manvr3d.geometryHandler.increaseSphereInstanceScale()
+                manvr3d.updateUI()
+            }, byTouch = true, depressDelay = 250,
+            defaultColor = color, pressedColor = pressedColor, touchingColor = touchingColor
+        )
 
-        leftWristMenu.addToggleButton("Toggle Menu", "Tracks off", "Tracks on",
-            command = {
-                manvr3d.isTrackVisible = !manvr3d.isTrackVisible
-                geometryHandler.setTrackVisibility(manvr3d.isTrackVisible)
-            }, color = color, pressedColor = pressedColor, touchingColor = touchingColor, defaultState = true )
-        leftWristMenu.addToggleButton("Toggle Menu", "Spots off", "Spots on",
+        val spotRadiusDownBtn = Button(
+            " - ", command = {
+                manvr3d.geometryHandler.decreaseSphereInstanceScale()
+                manvr3d.updateUI()
+            }, byTouch = true, depressDelay = 250,
+            defaultColor = color, pressedColor = pressedColor, touchingColor = touchingColor
+        )
+
+        val toggleSpotVisBtn = ToggleButton(
+            "Spots off", "Spots on",
             command = {
                 manvr3d.isSpotVisible = !manvr3d.isSpotVisible
                 geometryHandler.setSpotVisibility(manvr3d.isSpotVisible)
-            }, color = color, pressedColor = pressedColor, touchingColor = touchingColor, defaultState = true )
+            }, byTouch = true, defaultColor = color, pressedColor = pressedColor, touchingColor = touchingColor, default = true
+        )
+
+        leftWristMenu.addRow("Toggle Menu", toggleSpotVisBtn, spotRadiusDownBtn, spotRadiusUpBtn)
+
+        val trackRadiusUpBtn = Button(
+            " + ", command = {
+                manvr3d.geometryHandler.increaseLinkScale()
+                manvr3d.updateUI()
+            }, byTouch = true, depressDelay = 250,
+            defaultColor = color, pressedColor = pressedColor, touchingColor = touchingColor
+        )
+
+        val trackRadiusDownBtn = Button(
+            " - ", command = {
+                manvr3d.geometryHandler.decreaseLinkScale()
+                manvr3d.updateUI()
+            }, byTouch = true, depressDelay = 250,
+            defaultColor = color, pressedColor = pressedColor, touchingColor = touchingColor
+        )
+
+        val toggleTrackVisBtn = ToggleButton(
+            "Tracks off", "Tracks on",
+            command = {
+                manvr3d.isTrackVisible = !manvr3d.isTrackVisible
+                geometryHandler.setTrackVisibility(manvr3d.isTrackVisible)
+            }, byTouch = true, defaultColor = color, pressedColor = pressedColor, touchingColor = touchingColor, default = true
+        )
+
+        leftWristMenu.addRow("Toggle Menu", toggleTrackVisBtn, trackRadiusDownBtn, trackRadiusUpBtn)
+
         leftWristMenu.addToggleButton("Toggle Menu", "Preview Off", "Preview On", command = {
             enableTrackingPreview = !enableTrackingPreview
             geometryHandler.toggleLinkPreviews(enableTrackingPreview)
