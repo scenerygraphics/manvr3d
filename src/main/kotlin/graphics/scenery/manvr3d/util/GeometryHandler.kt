@@ -965,27 +965,25 @@ class GeometryHandler(
         logger.debug("Updating spot scale to $sphereScaleFactor, took $tElapsed")
     }
 
-    fun decreaseSphereInstanceScale() {
-        sphereScaleFactor -= 0.1f
+    fun decreaseSphereInstanceScale(amount: Float = 0.1f) {
+        sphereScaleFactor -= amount
         if (sphereScaleFactor < 0.1f) sphereScaleFactor = 0.1f
-        manvr3d.associatedUI?.updatePaneValues()
     }
 
-    fun increaseSphereInstanceScale() {
-        sphereScaleFactor += 0.1f
-        manvr3d.associatedUI?.updatePaneValues()
+    fun increaseSphereInstanceScale(amount: Float = 0.1f) {
+        sphereScaleFactor += amount
     }
 
-    fun increaseLinkScale() {
+    fun increaseLinkScale(amount: Float = 0.2f) {
         val oldScale = linkScaleFactor
-        linkScaleFactor += 0.2f
+        linkScaleFactor += amount
         val factor = linkScaleFactor / oldScale
         logger.debug("Increasing scale to $linkScaleFactor, by factor $factor")
     }
 
-    fun decreaseLinkScale() {
+    fun decreaseLinkScale(amount: Float = 0.2f) {
         val oldScale = linkScaleFactor
-        linkScaleFactor -= 0.2f
+        linkScaleFactor -= amount
         val factor = linkScaleFactor / oldScale
         logger.debug("Decreasing scale to $linkScaleFactor, by factor $factor")
     }
