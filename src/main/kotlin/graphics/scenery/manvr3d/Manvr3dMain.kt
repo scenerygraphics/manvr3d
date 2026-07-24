@@ -53,6 +53,9 @@ import graphics.scenery.manvr3d.vr.CellTrackingBase
 import graphics.scenery.manvr3d.vr.EyeTracking
 import graphics.scenery.volumes.Colormap
 import org.mastodon.graph.GraphChangeListener
+import org.mastodon.graph.GraphListener
+import java.awt.event.WindowAdapter
+import java.awt.event.WindowEvent
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.Executors
 import java.util.concurrent.LinkedBlockingQueue
@@ -145,7 +148,7 @@ class Manvr3dMain: TimepointObserver {
 
     var moveSpotInSciview: (Spot?) -> Unit?
     var associatedUI: Manvr3dWindowLayout? = null
-    var uiFrame: JFrame? = null
+    lateinit var uiFrame: JFrame
     private var isRunning = true
     var isVRactive = false
     var useEyeTracking = false
@@ -198,6 +201,13 @@ class Manvr3dMain: TimepointObserver {
 
         //adjust the default scene's settings
         sciviewWin.applicationName = ("sciview for Mastodon: " + mastodon.projectName)
+
+        // Also close manvr3d when closing the sciview window
+        sciviewWin.addWindowListener(object : WindowAdapter() {
+            override fun windowClosing(e: WindowEvent?) {
+                close()
+            }
+        })
 
         sciviewWin.floor?.visible = false
         sciviewWin.lights?.forEach { l: PointLight ->
@@ -1054,7 +1064,7 @@ class Manvr3dMain: TimepointObserver {
 
     @JvmOverloads
     fun createAndShowControllingUI(windowTitle: String? = "Controls for " + sciviewWin.getName()): JFrame {
-        return JFrame(windowTitle).apply {
+        uiFrame = JFrame(windowTitle).apply {
             val panel = JPanel()
             add(panel)
             setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE)
@@ -1062,6 +1072,7 @@ class Manvr3dMain: TimepointObserver {
             pack()
             isVisible = true
         }
+        return uiFrame
     }
 
     fun stopAndDetachUI() {
@@ -1080,14 +1091,14 @@ class Manvr3dMain: TimepointObserver {
         updateQueue.clear()
         sciviewWin.mainWindow.close()
         logger.info("Closed sciview main window.")
+        bdvWindow.frame.dispose()
+        logger.info("Closed BDV window linked to manvr3d.")
         if (associatedUI != null) {
             associatedUI?.deactivateAndForget()
             associatedUI = null
         }
-        if (uiFrame != null) {
-            uiFrame?.isVisible = false
-            uiFrame?.dispose()
-        }
+        uiFrame.isVisible = false
+        uiFrame.dispose()
     }
 
     fun updateUI() {
