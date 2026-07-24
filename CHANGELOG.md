@@ -16,6 +16,8 @@
 - Add LUT preview swatches and LUT inversion toggle in the manvr3d UI ([#30](https://github.com/scenerygraphics/manvr3d/pull/30))
 - Add a few new LUTS (notabily Viridis) ([#30](https://github.com/scenerygraphics/manvr3d/pull/30))
 - Add spinner for link scale adjustments to the desktop UI ([#30](https://github.com/scenerygraphics/manvr3d/pull/30))
+- Add file-based logging of session statistics. Can be enabled via VM option `-Dmanvr3d.enableLogFile`. Enabled per default in standalone package via args file. Logs session lengths, interaction event counting and ELEPHANT prediction statistics. ([#30](https://github.com/scenerygraphics/manvr3d/pull/30))
+- Add VR buttons to adjust spot and track scaling analogous to manvr3d UI panel and keyboard shortcuts ([#30](https://github.com/scenerygraphics/manvr3d/pull/30))
 
 ### Removed
 
@@ -29,7 +31,8 @@
 - Rename "NN Linking" button to "Link All", since this action automatically utilizes flow-based linking when enabled in the ELEPHANT settings ([#30](https://github.com/scenerygraphics/manvr3d/pull/30))
 - Slow down the observer movement behavior with the left joystick ([#30](https://github.com/scenerygraphics/manvr3d/pull/30))
 - Block timepoint scrolling behavior when cell tracking is currently active ([#30](https://github.com/scenerygraphics/manvr3d/pull/30))
-- Block controller tracking and editing/selection behaviors when interacting with a menu ([#30](https://github.com/scenerygraphics/manvr3d/pull/30)) 
+- Block accidental controller tracking and editing/selection behaviors during menu interaction ([#30](https://github.com/scenerygraphics/manvr3d/pull/30)) 
+- Change default scenery log level to warn. Can be changed in args file ([#30](https://github.com/scenerygraphics/manvr3d/pull/30))
 
 ### Fixed
 - Moving the dataset is now possible when the volume is invisible (it will be turned visible for the duration of the transformation) ([#30](https://github.com/scenerygraphics/manvr3d/pull/30))
@@ -46,6 +49,7 @@
 - Fix potential link/spot color flickering during tracking, caused by duplicate instance buffer updates ([#30](https://github.com/scenerygraphics/manvr3d/pull/30))
 - Fix hidden full geometry redraws when moving the dataset with left grab, and during tracking ([#30](https://github.com/scenerygraphics/manvr3d/pull/30))
 - Fix hidden double link/spot redraws when changing their respective scaling through keyboard commands (L/shift+L and O/shift+O) ([#30](https://github.com/scenerygraphics/manvr3d/pull/30))
+- Fix closing behavior of the UI panel "Close" button (closes itself, sciview and linked BDV window now), and add identical behavior to the sciview window close button ([#30](https://github.com/scenerygraphics/manvr3d/pull/30))
 
 ## [0.3.1] - 2026-03-19
 
