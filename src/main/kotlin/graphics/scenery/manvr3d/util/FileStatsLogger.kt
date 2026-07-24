@@ -6,6 +6,9 @@ import org.mastodon.mamut.ProjectModel
 import java.io.File
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
+import kotlin.math.pow
+import kotlin.math.sqrt
+import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.DurationUnit
 import kotlin.time.TimeSource
@@ -92,10 +95,14 @@ class FileStatsLogger(val isEnabled: Boolean) {
 
     /** End the manvr3d session and log session length plus stats on undo and prediction counts and
      * how many new vertices and edges were added to the Mastodon file. */
-    fun endManvr3dSession(mastodon: ProjectModel) {
+    fun endManvr3dSession(mastodon: ProjectModel, predictionDurations: List<Duration>) {
         val sessionLength = TimeSource.Monotonic.markNow() - sessionStartTime
         val numNewVertices = mastodon.model.graph.vertices().size - initNumVertices
         val numNewEdges = mastodon.model.graph.edges().size - initNumEdges
+        // Statistics for ELEPHANT predictions
+        val durationsDouble = predictionDurations.map { it.toDouble(DurationUnit.SECONDS) }
+        val durationAvg = durationsDouble.average()
+        val durationStd = sqrt(durationsDouble.map { (it - durationAvg).pow(2) }.average())
 
         append(
             """
@@ -107,7 +114,11 @@ class FileStatsLogger(val isEnabled: Boolean) {
                 Mastodon file now has ${mastodon.model.graph.vertices().size} vertices and ${mastodon.model.graph.edges().size} edges.
                 New vertices added: $numNewVertices
                 New edges added:    $numNewEdges
-                Number of timepoints predicted with ELEPHANT: $numTimepointsPredicted
+                
+                ==== ELEPHANT ====
+                Number of timepoints predicted: $numTimepointsPredicted
+                Average time: ${String.format("%.2f", durationAvg)} s/tp
+                Std. Dev.: ${String.format("%.2f", durationStd)} s/tp
             """.trimIndent()
         )
     }
