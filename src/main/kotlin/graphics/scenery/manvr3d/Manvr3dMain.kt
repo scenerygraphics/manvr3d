@@ -317,17 +317,31 @@ class Manvr3dMain: TimepointObserver {
 
     /** Listen to graph changes during the prediction and move the timepoint along with the currently predicted timepoint.
      * Captures prediction timings and stores them in [predictionDurations]. */
-    inner class ElephantListener(var predictAll: Boolean) : GraphListener<Spot, Link>, GraphChangeListener {
-        var eventLaunchTime = TimeSource.Monotonic.markNow()
+    inner class ElephantListener : GraphListener<Spot, Link>, GraphChangeListener {
         var isActive = AtomicBoolean(false)
-        var predictedTimepoint = 0
+        var predictAll = false
+        private var eventLaunchTime = TimeSource.Monotonic.markNow()
+        private var predictedTimepoint = 0
+        var isAttached = false
+            private set
         var listenForSpots = false
+            private set
         val predictionDurations = mutableListOf<Duration>()
 
         /** Attaches the ElephantListener as a graph listener and graph change listener to the Mastodon graph. */
         fun attach() {
-            mastodon.model.graph.addGraphChangeListener(this@ElephantListener)
-            mastodon.model.graph.addGraphListener(this@ElephantListener)
+            if (!isAttached) {
+                mastodon.model.graph.addGraphChangeListener(this@ElephantListener)
+                mastodon.model.graph.addGraphListener(this@ElephantListener)
+                isAttached = true
+            }
+        }
+
+        /** Detaches the ElephantListener from the Mastodon graph. */
+        fun detach() {
+            mastodon.model.graph.removeGraphChangeListener(this@ElephantListener)
+            mastodon.model.graph.removeGraphListener(this@ElephantListener)
+            isAttached = false
         }
 
         override fun graphChanged() {
@@ -385,7 +399,7 @@ class Manvr3dMain: TimepointObserver {
         override fun edgeRemoved(edge: Link?) {}
     }
 
-    lateinit var elephantListener: ElephantListener
+    var elephantListener = ElephantListener()
 
     /** Predict spots with ELEPHANT. If [predictAll] is true, all timepoints will be predicted.
      * Otherwise, just the current timepoint will be predicted. */
@@ -397,7 +411,7 @@ class Manvr3dMain: TimepointObserver {
         // So we have to temporarily move to the last TP and set the time range to the size of all TPs
         val settings = ElephantMainSettingsManager.getInstance().forwardDefaultStyle
         settings.timeRange = if (predictAll) volumeNode.timepointCount else 1
-        logger.info("Predicting with Elephant. Prediction time range was set to ${settings.timeRange}.")
+        logger.debug("Predicting with Elephant. Prediction time range was set to ${settings.timeRange}.")
         val currentTP = currentTimepoint
         val groupHandle = mastodon.groupManager.createGroupHandle()
         groupHandle.groupId = 0
@@ -410,10 +424,11 @@ class Manvr3dMain: TimepointObserver {
         }
         // Add a listener that advances the currently displayed timepoint if we perform prediction for all timepoints
         // and captures the timings for all predictions
-        if (!::elephantListener.isInitialized) {
-            elephantListener = ElephantListener(predictAll)
+
+        if (!elephantListener.isAttached) {
             elephantListener.attach()
         }
+
         elephantListener.predictAll = predictAll
         elephantListener.eventLaunched()
 
@@ -502,9 +517,7 @@ class Manvr3dMain: TimepointObserver {
             stopVR()
         }
         fileLogger.endManvr3dSession(mastodon, elephantListener.predictionDurations)
-
-        mastodon.model.graph.removeGraphChangeListener(elephantListener)
-        mastodon.model.graph.removeGraphListener(elephantListener)
+        elephantListener.detach()
         logger.debug("Removed elephant listener from the Mastodon graph.")
 
         stopAndDetachUI()
