@@ -150,8 +150,8 @@ $launcherScript | Out-File -FilePath "$packageDir\bin\manvr3d.bat" -Encoding ASC
 
 # Generate manvr3d.args file
 $argsContent = @'
-# Enables file-based logging. Can be turned off by commenting out this line.
--Dmanvr3d.enableLogFile
+# Enables file-based logging. Can be turned on by uncommenting this line.
+# -Dmanvr3d.enableLogFile
 
 # Scenery log level. Defaults to warn, change to info or debug for verbose logs.
 -Dorg.slf4j.simpleLogger.log.graphics.scenery=warn
