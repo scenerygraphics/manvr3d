@@ -7,7 +7,6 @@ import org.mastodon.mamut.ProjectModel
 import org.mastodon.mamut.model.Link
 import org.mastodon.mamut.model.Spot
 import java.util.concurrent.atomic.AtomicBoolean
-import kotlin.text.set
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.DurationUnit
