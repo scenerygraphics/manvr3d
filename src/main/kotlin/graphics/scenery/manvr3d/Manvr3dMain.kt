@@ -443,7 +443,7 @@ class Manvr3dMain: TimepointObserver {
         if (isVRactive) {
             stopVR()
         }
-        fileLogger.endManvr3dSession(mastodon, elephantListener.predictionDurations)
+        fileLogger.endManvr3dSession(mastodon, elephantListener.predictionDurations, elephantListener.predictedSpotCounts)
         elephantListener.detach()
         logger.debug("Removed elephant listener from the Mastodon graph.")
 

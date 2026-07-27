@@ -95,14 +95,18 @@ class FileStatsLogger(val isEnabled: Boolean) {
 
     /** End the manvr3d session and log session length plus stats on undo and prediction counts and
      * how many new vertices and edges were added to the Mastodon file. */
-    fun endManvr3dSession(mastodon: ProjectModel, predictionDurations: List<Duration>) {
+    fun endManvr3dSession(mastodon: ProjectModel, predictionDurations: List<Duration>, predictionCounts: List<Int>) {
         val sessionLength = TimeSource.Monotonic.markNow() - sessionStartTime
         val numNewVertices = mastodon.model.graph.vertices().size - initNumVertices
         val numNewEdges = mastodon.model.graph.edges().size - initNumEdges
+
         // Statistics for ELEPHANT predictions
         val durationsDouble = predictionDurations.map { it.toDouble(DurationUnit.SECONDS) }
         val durationAvg = durationsDouble.average()
         val durationStd = sqrt(durationsDouble.map { (it - durationAvg).pow(2) }.average())
+
+        val countAvg = predictionCounts.average()
+        val countStd = sqrt(predictionCounts.map { (it - countAvg).pow(2) }.average())
 
         append(
             """
@@ -117,8 +121,8 @@ class FileStatsLogger(val isEnabled: Boolean) {
                 
                 ==== ELEPHANT ====
                 Number of timepoints predicted: $numTimepointsPredicted
-                Average time: ${String.format("%.2f", durationAvg)} s/tp
-                Std. Dev.: ${String.format("%.2f", durationStd)} s/tp
+                Average (+std.) time: ${String.format("%.2f", durationAvg)} ± ${String.format("%.2f", durationStd)} s/tp
+                Average (+std.) spot count: ${String.format("%.2f", countAvg)} ± ${String.format("%.2f", countStd)} spots/tp
             """.trimIndent()
         )
     }
