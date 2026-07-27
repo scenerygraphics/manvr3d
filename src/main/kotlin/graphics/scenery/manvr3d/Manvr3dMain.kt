@@ -36,6 +36,7 @@ import org.mastodon.mamut.model.Link
 import org.mastodon.mamut.model.Spot
 import graphics.scenery.manvr3d.ui.Manvr3dWindowLayout
 import graphics.scenery.manvr3d.util.DataAxes
+import graphics.scenery.manvr3d.util.ElephantListener
 import graphics.scenery.manvr3d.util.FileStatsLogger
 import org.mastodon.mamut.views.bdv.MamutViewBdv
 import org.mastodon.ui.coloring.DefaultGraphColorGenerator
@@ -144,6 +145,8 @@ class Manvr3dMain: TimepointObserver {
         private set
     var maxTimepoint: Int = 0
         private set
+
+    lateinit var elephantListener: ElephantListener
 
     val noTSColorizer = DefaultGraphColorGenerator<Spot, Link>()
     var currentColorizer: GraphColorGenerator<Spot, Link> = noTSColorizer
@@ -290,12 +293,16 @@ class Manvr3dMain: TimepointObserver {
         pluginActions = mastodon.plugins.pluginActions
 
         openSyncedBDV()
+
         setColorizer(bdvWindow)
 
         submitToTaskExecutor()
+
         registerKeyboardHandlers()
 
         setMipmapLevel(this.initMipmapLevel)
+
+        initializeElephantListener()
 
         fileLogger.beginManvr3dSession(mastodon)
     }
@@ -315,91 +322,11 @@ class Manvr3dMain: TimepointObserver {
         sciviewWin.camera?.showMessage("Training took ${start.elapsedNow()} ms", 2f, 0.2f, centered = true)
     }
 
-    /** Listen to graph changes during the prediction and move the timepoint along with the currently predicted timepoint.
-     * Captures prediction timings and stores them in [predictionDurations]. */
-    inner class ElephantListener : GraphListener<Spot, Link>, GraphChangeListener {
-        var isActive = AtomicBoolean(false)
-        var predictAll = false
-        private var eventLaunchTime = TimeSource.Monotonic.markNow()
-        private var predictedTimepoint = 0
-        var isAttached = false
-            private set
-        var listenForSpots = false
-            private set
-        val predictionDurations = mutableListOf<Duration>()
 
-        /** Attaches the ElephantListener as a graph listener and graph change listener to the Mastodon graph. */
-        fun attach() {
-            if (!isAttached) {
-                mastodon.model.graph.addGraphChangeListener(this@ElephantListener)
-                mastodon.model.graph.addGraphListener(this@ElephantListener)
-                isAttached = true
-            }
-        }
-
-        /** Detaches the ElephantListener from the Mastodon graph. */
-        fun detach() {
-            mastodon.model.graph.removeGraphChangeListener(this@ElephantListener)
-            mastodon.model.graph.removeGraphListener(this@ElephantListener)
-            isAttached = false
-        }
-
-        override fun graphChanged() {
-            // Simple debounce to prevent this from triggering several times
-            if (isActive.get() && (TimeSource.Monotonic.markNow() - eventLaunchTime) > 0.02.seconds) {
-                fileLogger.incrementPrediction()
-
-                val predictionDuration = TimeSource.Monotonic.markNow() - eventLaunchTime
-                predictionDurations.add(predictionDuration)
-                val logString = "ELEPHANT prediction took ${String.format("%.2f", predictionDuration.toDouble(DurationUnit.SECONDS))} s"
-                fileLogger.append(logString)
-                logger.debug(logString)
-
-                if (predictAll) {
-                    // Reset launch time for next prediction round
-                    eventLaunchTime = TimeSource.Monotonic.markNow()
-                    goToTimepoint(predictedTimepoint)
-                    // PredictAll sweeps through all timepoints, so we can disable the listener once we reach the end
-                    if (predictedTimepoint == volumeNode.timepointCount - 1) {
-                        isActive.set(false)
-                    } else {
-                        // graphChanged is triggered once per TP, but vertexAdded is triggered with every vertex.
-                        // If we keep predicting TPs, we want to keep listening to timepoint changes too.
-                        listenForSpots = true
-                    }
-                } else {
-                    // If only a single TP was predicted, we can deactivate the listener right away.
-                    isActive.set(false)
-                }
-            }
-        }
-
-        /** Indicate that a prediction event was just launched. Updates the [eventLaunchTime],
-         * sets the listener state ([isActive]) to true and starts listening for incoming vertices
-         * to capture the currently predicted timepoint. */
-        fun eventLaunched() {
-            eventLaunchTime = TimeSource.Monotonic.markNow()
-            isActive.set(true)
-            listenForSpots = true
-        }
-
-        override fun vertexAdded(vertex: Spot?) {
-            if (isActive.get() && listenForSpots) {
-                vertex?.let {
-                    predictedTimepoint = vertex.timepoint
-                }
-                // We can stop listening once we updated the predicted timepoint
-                listenForSpots = false
-            }
-        }
-
-        override fun graphRebuilt() {}
-        override fun vertexRemoved(vertex: Spot?) {}
-        override fun edgeAdded(edge: Link?) {}
-        override fun edgeRemoved(edge: Link?) {}
+    fun initializeElephantListener() {
+        elephantListener = ElephantListener(
+            mastodon, fileLogger, volumeNode.timepointCount, { tp -> goToTimepoint(tp) })
     }
-
-    var elephantListener = ElephantListener()
 
     /** Predict spots with ELEPHANT. If [predictAll] is true, all timepoints will be predicted.
      * Otherwise, just the current timepoint will be predicted. */
