@@ -423,6 +423,46 @@ open class CellTrackingBase(
 
         leftWristMenu.addRow("Toggle Menu", volumeToggleBtn, decTransparencyBtn, incTransparencyBtn)
 
+        val autoContrastBtn = Button(
+            "Auto Contrast", command = {
+                manvr3d.toggleAutoIntensity()
+            }, byTouch = true, defaultColor = color, pressedColor = pressedColor, touchingColor = touchingColor)
+
+        val lowerBoundUpBtn = Button(
+            " L+ ", command =  {
+                manvr3d.intensity.rangeMin /= 0.8f
+                manvr3d.updateUI()
+            }, byTouch = true, depressDelay = 250,
+            defaultColor = color, pressedColor = pressedColor, touchingColor = touchingColor
+        )
+
+        val lowerBoundDownBtn = Button(
+            " L- ", command =  {
+                manvr3d.intensity.rangeMin *= 0.8f
+                manvr3d.updateUI()
+            }, byTouch = true, depressDelay = 250,
+            defaultColor = color, pressedColor = pressedColor, touchingColor = touchingColor
+        )
+
+        val upperBoundUpBtn = Button(
+            " H+ ", command =  {
+                manvr3d.intensity.rangeMax /= 0.8f
+                manvr3d.updateUI()
+            }, byTouch = true, depressDelay = 250,
+            defaultColor = color, pressedColor = pressedColor, touchingColor = touchingColor
+        )
+
+        val upperBoundDownBtn = Button(
+            " H- ", command =  {
+                manvr3d.intensity.rangeMax *= 0.8f
+                manvr3d.updateUI()
+            }, byTouch = true, depressDelay = 250,
+            defaultColor = color, pressedColor = pressedColor, touchingColor = touchingColor
+        )
+
+        leftWristMenu.addRow("Toggle Menu", autoContrastBtn,
+            lowerBoundDownBtn, lowerBoundUpBtn, upperBoundDownBtn, upperBoundUpBtn)
+
         val lensToggleButton = ToggleButton(
             "Lens off", "Lens on", command = {
                 isLensingActive = !isLensingActive
