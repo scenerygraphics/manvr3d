@@ -324,18 +324,18 @@ open class CellTrackingBase(
         val undoButton = Button(
             "Undo",
             command = { manvr3d.undoRedo() }, byTouch = true, depressDelay = 250,
-            defaultColor = color, pressedColor = pressedColor, touchingColor = touchingColor
+            defaultColor = color, pressedColor = pressedColor, touchingColor = touchingColor, textInFront = true
         )
         val redoButton = Button(
             "Redo",
             command = { manvr3d.undoRedo(redo = true) }, byTouch = true, depressDelay = 250,
-            defaultColor = color, pressedColor = pressedColor, touchingColor = touchingColor
+            defaultColor = color, pressedColor = pressedColor, touchingColor = touchingColor, textInFront = true
         )
         val resetViewButton = Button(
             "Recenter", command = {
                 manvr3d.resetView()
             }, byTouch = true, depressDelay = 250,
-            defaultColor = color, pressedColor = pressedColor, touchingColor = touchingColor
+            defaultColor = color, pressedColor = pressedColor, touchingColor = touchingColor, textInFront = true
         )
 
         val togglePlaybackDirBtn = ToggleButton(
@@ -345,10 +345,8 @@ open class CellTrackingBase(
                 } else {
                     PlaybackDirection.Forward
                 }
-            }, byTouch = true,
-            defaultColor = Vector3f(0.52f, 0.87f, 0.86f),
-            touchingColor = color,
-            pressedColor = Vector3f(0.84f, 0.87f, 0.52f)
+            }, byTouch = true, defaultColor = Vector3f(0.52f, 0.87f, 0.86f),
+            touchingColor = color, pressedColor = Vector3f(0.84f, 0.87f, 0.52f), textInFront = true
         )
         val playSlowerBtn = Button(
             "<", command = {
@@ -357,8 +355,8 @@ open class CellTrackingBase(
                     "Speed: ${"%.0f".format(volumesPerSecond)} vol/s",
                     distance = 1.2f, size = 0.2f, centered = true
                 )
-            }, byTouch = true, depressDelay = 250,
-            defaultColor = color, pressedColor = pressedColor, touchingColor = touchingColor
+            }, byTouch = true, depressDelay = 250, defaultColor = color,
+            pressedColor = pressedColor, touchingColor = touchingColor, textInFront = true
         )
         val playFasterBtn = Button(
             ">", command = {
@@ -367,8 +365,8 @@ open class CellTrackingBase(
                     "Speed: ${"%.0f".format(volumesPerSecond)} vol/s",
                     distance = 1.2f, size = 0.2f, centered = true
                 )
-            }, byTouch = true, depressDelay = 250,
-            defaultColor = color, pressedColor = pressedColor, touchingColor = touchingColor
+            }, byTouch = true, depressDelay = 250, defaultColor = color,
+            pressedColor = pressedColor, touchingColor = touchingColor, textInFront = true
         )
         val goToLastBtn = Button(
             ">|", command = {
@@ -377,8 +375,8 @@ open class CellTrackingBase(
                 notifyObservers(volume.currentTimepoint)
                 cam.showMessage("Jumped to timepoint ${volume.currentTimepoint}.",
                     distance = 1.2f, size = 0.2f, centered = true)
-            }, byTouch = true, depressDelay = 250,
-            defaultColor = color, pressedColor = pressedColor, touchingColor = touchingColor
+            }, byTouch = true, depressDelay = 250, defaultColor = color,
+            pressedColor = pressedColor, touchingColor = touchingColor, textInFront = true
         )
         val goToFirstBtn = Button(
             "|<", command = {
@@ -387,8 +385,8 @@ open class CellTrackingBase(
                 notifyObservers(volume.currentTimepoint)
                 cam.showMessage("Jumped to timepoint ${volume.currentTimepoint}.",
                     distance = 1.2f, size = 0.2f, centered = true)
-            }, byTouch = true, depressDelay = 250,
-            defaultColor = color, pressedColor = pressedColor, touchingColor = touchingColor
+            }, byTouch = true, depressDelay = 250, defaultColor = color,
+            pressedColor = pressedColor, touchingColor = touchingColor, textInFront = true
         )
 
 
@@ -405,35 +403,36 @@ open class CellTrackingBase(
             " - ", command = {
                 manvr3d.shiftVolumeTransparency(delta = -0.1f)
             }, byTouch = true, depressDelay = 250,
-            defaultColor = color, pressedColor = pressedColor, touchingColor = touchingColor
+            defaultColor = color, pressedColor = pressedColor, touchingColor = touchingColor, textInFront = true
         )
 
         val incTransparencyBtn = Button(
             " + ", command = {
                 manvr3d.shiftVolumeTransparency(delta = 0.1f)
             }, byTouch = true, depressDelay = 250,
-            defaultColor = color, pressedColor = pressedColor, touchingColor = touchingColor
+            defaultColor = color, pressedColor = pressedColor, touchingColor = touchingColor, textInFront = true
         )
 
         val volumeToggleBtn = ToggleButton(
             "Volume off", "Volume on", command = {
                 val state = volume.visible
                 manvr3d.setVolumeOnlyVisibility(!state)
-            }, byTouch = true, defaultColor = color, pressedColor = pressedColor, touchingColor = touchingColor, default = true)
+            }, byTouch = true, defaultColor = color, pressedColor = pressedColor,
+            touchingColor = touchingColor, default = true, textInFront = true)
 
         leftWristMenu.addRow("Toggle Menu", volumeToggleBtn, decTransparencyBtn, incTransparencyBtn)
 
         val autoContrastBtn = Button(
             "Auto Contrast", command = {
                 manvr3d.toggleAutoIntensity()
-            }, byTouch = true, defaultColor = color, pressedColor = pressedColor, touchingColor = touchingColor)
+            }, byTouch = true, defaultColor = color, pressedColor = pressedColor, touchingColor = touchingColor, textInFront = true)
 
         val lowerBoundUpBtn = Button(
             " L+ ", command =  {
                 manvr3d.intensity.rangeMin /= 0.8f
                 manvr3d.updateUI()
             }, byTouch = true, depressDelay = 250,
-            defaultColor = color, pressedColor = pressedColor, touchingColor = touchingColor
+            defaultColor = color, pressedColor = pressedColor, touchingColor = touchingColor, textInFront = true
         )
 
         val lowerBoundDownBtn = Button(
@@ -441,7 +440,7 @@ open class CellTrackingBase(
                 manvr3d.intensity.rangeMin *= 0.8f
                 manvr3d.updateUI()
             }, byTouch = true, depressDelay = 250,
-            defaultColor = color, pressedColor = pressedColor, touchingColor = touchingColor
+            defaultColor = color, pressedColor = pressedColor, touchingColor = touchingColor, textInFront = true
         )
 
         val upperBoundUpBtn = Button(
@@ -449,7 +448,7 @@ open class CellTrackingBase(
                 manvr3d.intensity.rangeMax /= 0.8f
                 manvr3d.updateUI()
             }, byTouch = true, depressDelay = 250,
-            defaultColor = color, pressedColor = pressedColor, touchingColor = touchingColor
+            defaultColor = color, pressedColor = pressedColor, touchingColor = touchingColor, textInFront = true
         )
 
         val upperBoundDownBtn = Button(
@@ -457,7 +456,7 @@ open class CellTrackingBase(
                 manvr3d.intensity.rangeMax *= 0.8f
                 manvr3d.updateUI()
             }, byTouch = true, depressDelay = 250,
-            defaultColor = color, pressedColor = pressedColor, touchingColor = touchingColor
+            defaultColor = color, pressedColor = pressedColor, touchingColor = touchingColor, textInFront = true
         )
 
         leftWristMenu.addRow("Toggle Menu", autoContrastBtn,
@@ -472,20 +471,21 @@ open class CellTrackingBase(
                 } else {
                     fileLogger.endLensing()
                 }
-            }, byTouch = true, defaultColor = color, pressedColor = pressedColor, touchingColor = touchingColor, default = false)
+            }, byTouch = true, defaultColor = color, pressedColor = pressedColor,
+            touchingColor = touchingColor, default = false, textInFront = true)
 
         val lensRadiusDownBtn = Button(
             " R- ", command = {
                 changeLensingRadius(0.8f)
             }, byTouch = true, depressDelay = 250,
-            defaultColor = color, pressedColor = pressedColor, touchingColor = touchingColor
+            defaultColor = color, pressedColor = pressedColor, touchingColor = touchingColor, textInFront = true
         )
 
         val lensRadiusUpBtn = Button(
             " R+ ", command = {
                 changeLensingRadius(1.2f)
             }, byTouch = true, depressDelay = 250,
-            defaultColor = color, pressedColor = pressedColor, touchingColor = touchingColor
+            defaultColor = color, pressedColor = pressedColor, touchingColor = touchingColor, textInFront = true
         )
 
         leftWristMenu.addRow("Toggle Menu", lensToggleButton, lensRadiusDownBtn, lensRadiusUpBtn)
@@ -495,7 +495,7 @@ open class CellTrackingBase(
                 manvr3d.geometryHandler.increaseSphereInstanceScale()
                 manvr3d.updateUI()
             }, byTouch = true, depressDelay = 250,
-            defaultColor = color, pressedColor = pressedColor, touchingColor = touchingColor
+            defaultColor = color, pressedColor = pressedColor, touchingColor = touchingColor, textInFront = true
         )
 
         val spotRadiusDownBtn = Button(
@@ -503,7 +503,7 @@ open class CellTrackingBase(
                 manvr3d.geometryHandler.decreaseSphereInstanceScale()
                 manvr3d.updateUI()
             }, byTouch = true, depressDelay = 250,
-            defaultColor = color, pressedColor = pressedColor, touchingColor = touchingColor
+            defaultColor = color, pressedColor = pressedColor, touchingColor = touchingColor, textInFront = true
         )
 
         val toggleSpotVisBtn = ToggleButton(
@@ -511,7 +511,8 @@ open class CellTrackingBase(
             command = {
                 manvr3d.isSpotVisible = !manvr3d.isSpotVisible
                 geometryHandler.setSpotVisibility(manvr3d.isSpotVisible)
-            }, byTouch = true, defaultColor = color, pressedColor = pressedColor, touchingColor = touchingColor, default = true
+            }, byTouch = true, defaultColor = color, pressedColor = pressedColor,
+            touchingColor = touchingColor, default = true, textInFront = true
         )
 
         leftWristMenu.addRow("Toggle Menu", toggleSpotVisBtn, spotRadiusDownBtn, spotRadiusUpBtn)
@@ -521,7 +522,7 @@ open class CellTrackingBase(
                 manvr3d.geometryHandler.increaseLinkScale()
                 manvr3d.updateUI()
             }, byTouch = true, depressDelay = 250,
-            defaultColor = color, pressedColor = pressedColor, touchingColor = touchingColor
+            defaultColor = color, pressedColor = pressedColor, touchingColor = touchingColor, textInFront = true
         )
 
         val trackRadiusDownBtn = Button(
@@ -529,7 +530,7 @@ open class CellTrackingBase(
                 manvr3d.geometryHandler.decreaseLinkScale()
                 manvr3d.updateUI()
             }, byTouch = true, depressDelay = 250,
-            defaultColor = color, pressedColor = pressedColor, touchingColor = touchingColor
+            defaultColor = color, pressedColor = pressedColor, touchingColor = touchingColor, textInFront = true
         )
 
         val toggleTrackVisBtn = ToggleButton(
@@ -537,7 +538,8 @@ open class CellTrackingBase(
             command = {
                 manvr3d.isTrackVisible = !manvr3d.isTrackVisible
                 geometryHandler.setTrackVisibility(manvr3d.isTrackVisible)
-            }, byTouch = true, defaultColor = color, pressedColor = pressedColor, touchingColor = touchingColor, default = true
+            }, byTouch = true, defaultColor = color, pressedColor = pressedColor,
+            touchingColor = touchingColor, default = true, textInFront = true
         )
 
         leftWristMenu.addRow("Toggle Menu", toggleTrackVisBtn, trackRadiusDownBtn, trackRadiusUpBtn)
