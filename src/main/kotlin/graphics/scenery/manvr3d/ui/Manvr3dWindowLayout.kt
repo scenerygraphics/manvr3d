@@ -352,7 +352,6 @@ class Manvr3dWindowLayout(manvr3dContext: Manvr3dMain, populateThisContainer: JP
         spotScaleFactor.value = manvr3d.geometryHandler.sphereScaleFactor
         linkScaleFactor.value = manvr3d.geometryHandler.linkScaleFactor
         val upperValBackup = manvr3d.intensity.rangeMax
-
         intensityRangeSlider.rangeSlider.value = manvr3d.intensity.rangeMin.toInt()
         //NB: this triggers a "value changed listener" which updates _both_ the value and upperValue,
         //    which resets the value with the new one (so no change in the end) but clears upperValue
