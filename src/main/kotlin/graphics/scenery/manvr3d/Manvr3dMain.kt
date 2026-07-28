@@ -57,6 +57,7 @@ import org.mastodon.graph.GraphChangeListener
 import org.mastodon.graph.GraphListener
 import java.awt.event.WindowAdapter
 import java.awt.event.WindowEvent
+import java.sql.Time
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.Executors
 import java.util.concurrent.LinkedBlockingQueue
@@ -91,13 +92,19 @@ class Manvr3dMain: TimepointObserver {
 
     /** Collection of parameters for value and color intensity mapping */
     data class Intensity(
-        var contrast: Float = 1.0f,         // raw data multiplier
+        private var _contrast: Float = 1.0f,         // raw data multiplier
         var shift: Float = 0.0f,            // raw data shift
         var clampTop: Float = 65535.0f,    // upper clamp value
         var gamma: Float = 1.0f,            // gamma correction with exp()
         var rangeMin: Float = 0f,
         var rangeMax: Float = 5000f,
-    )
+    ) {
+        var contrast: Float
+            get() = _contrast
+            set(value) {
+                _contrast = value.coerceIn(0.1f, 10f)
+            }
+    }
 
     override fun toString(): String {
         val sb = StringBuilder("Manvr3d internal settings:\n")
@@ -450,11 +457,10 @@ class Manvr3dMain: TimepointObserver {
         stopAndDetachUI()
         deregisterKeyboardHandlers()
         logger.info("Manvr3d closing procedure: UI and keyboard handlers are removed now")
-        val updateGraceTime = 100L // in ms
         try {
             sciviewWin.deleteNode(volumeNode, true)
-            logger.debug("Manvr3d closing procedure: red volume removed")
-            Thread.sleep(updateGraceTime)
+            logger.debug("Manvr3d closing procedure: volume removed")
+            Thread.sleep(100)
             logger.debug("Manvr3d closing procedure: spots were removed")
         } catch (e: InterruptedException) {
             logger.error("Error during the manvr3d closing procedure: ${e.message}")
@@ -538,28 +544,37 @@ class Manvr3dMain: TimepointObserver {
         v.transferFunction = tf
     }
 
-    /** We backup the current contrast/min/max values so that we can revert back if we toggle off the auto intensity */
+    /** We back up the current contrast/min/max values so that we can revert back if we toggle off the auto intensity */
     private var intensityBackup = intensity.copy()
+
+    /** Switches or sets the [isVolumeAutoAdjust] state. */
+    fun toggleAutoIntensity(state: Boolean? = null) {
+        // toggle boolean state
+        isVolumeAutoAdjust = state ?: !isVolumeAutoAdjust
+        autoAdjustIntensity()
+    }
 
     /** Makes an educated guess about the value range of the volume and adjusts the min/max range values accordingly. */
     fun autoAdjustIntensity() {
-        // toggle boolean state
-        isVolumeAutoAdjust = !isVolumeAutoAdjust
-
         if (isVolumeAutoAdjust) {
             var maxVal = 0.0f
+            var minVal = 0.0f
             // Always use the smallest available mipmap level for calculation to prevent lag on large datasets
-            val srcImg = spimSource.getSource(0, spimSource.numMipmapLevels - 1) as RandomAccessibleInterval<UnsignedShortType>
-            Views.iterable(srcImg).forEach { px -> maxVal = maxVal.coerceAtLeast(px.realFloat) }
-            intensity.clampTop = 0.9f * maxVal //very fake 90% percentile...
-            intensity.rangeMin = maxVal * 0.15f
-            intensity.rangeMax = maxVal * 0.75f
-            //TODO: change MIN and MAX to proper values
+            val srcImg = spimSource.getSource(currentTimepoint, spimSource.numMipmapLevels - 1) as RandomAccessibleInterval<UnsignedShortType>
+            Views.iterable(srcImg).forEach { px ->
+                maxVal = maxVal.coerceAtLeast(px.realFloat)
+                minVal = minVal.coerceAtMost(px.realFloat)
+            }
+            intensity.clampTop = maxVal
+            intensity.rangeMin = minVal + 0.05f * maxVal * intensity.contrast
+            intensity.rangeMax = maxVal / intensity.contrast / 2f
+
             logger.debug("Clamp at ${intensity.clampTop}," +
                     " range min to ${intensity.rangeMin} and range max to ${intensity.rangeMax}")
             updateUI()
         } else {
             intensity = intensityBackup.copy()
+            intensity.contrast = associatedUI?.autoContrastStrength?.value as Float ?: 1f
             updateUI()
         }
     }
