@@ -4,20 +4,31 @@
 
 ### Added
 
-- Add +/- buttons to quickly adjust volume transparency inside VR ([#30](https://github.com/scenerygraphics/manvr3d/pull/30))
-- Unconnected spots can be linked continuously with the controller tracking tool: When clicking into an unconnected spot, the linking process simply continues until the user clicks into a spot that already has a connection. ([#30](https://github.com/scenerygraphics/manvr3d/pull/30))
-- Added volume lensing toggle to aid dataset exploration and annotation in dense areas and reduce mental load for complex datasets ([#30](https://github.com/scenerygraphics/manvr3d/pull/30), [#823](https://github.com/scenerygraphics/scenery/pull/823))
-- Edges can be selected and deleted with the same behaviors as spots (single click selects/deselects; dragging paints selections; clicking "delete" only deletes the connection, not the connected spots; holding "delete" will delete the connected branch including spots) ([#30](https://github.com/scenerygraphics/manvr3d/pull/30))
-- When the graph is empty and Elephant is set to predict all timepoints, the view automatically updates to the most recently predicted timepoint ([#30](https://github.com/scenerygraphics/manvr3d/pull/30))
-- Add VR button labels for quest controllers ([#30](https://github.com/scenerygraphics/manvr3d/pull/30))
-- Add dedicated pointer for interacting with the UI when getting close to the buttons. Having to scale the annotation cursor for UI interaction is no longer required. ([#30](https://github.com/scenerygraphics/manvr3d/pull/30), [#823](https://github.com/scenerygraphics/scenery/pull/823))
-- Add support for uncertainty data from ELEPHANT ([#30](https://github.com/scenerygraphics/manvr3d/pull/30), [#13](https://github.com/elephant-track/elephant-client/pull/13), [#39](https://github.com/elephant-track/elephant-server/pull/39)). This requires ELEPHANT server v0.7 or higher.
-  Pull from the latest ELEPHANT-server `main` branch to get the changes.
+#### Desktop UI
+
+- Add desktop UI spinner to adjust the strength of the auto-contrast calculation ([#30](https://github.com/scenerygraphics/manvr3d/pull/30))
 - Add LUT preview swatches and LUT inversion toggle in the manvr3d UI ([#30](https://github.com/scenerygraphics/manvr3d/pull/30))
 - Add a few new LUTS (notabily Viridis) ([#30](https://github.com/scenerygraphics/manvr3d/pull/30))
 - Add spinner for link scale adjustments to the desktop UI ([#30](https://github.com/scenerygraphics/manvr3d/pull/30))
-- Add file-based logging of session statistics. Can be enabled via VM option `-Dmanvr3d.enableLogFile`. Enabled per default in standalone package via args file. Logs session lengths, interaction event counting and ELEPHANT prediction statistics. ([#30](https://github.com/scenerygraphics/manvr3d/pull/30))
+
+#### VR UI
+- Add +/- buttons to quickly adjust volume transparency inside VR ([#30](https://github.com/scenerygraphics/manvr3d/pull/30))
+- Add VR button labels for quest controllers ([#30](https://github.com/scenerygraphics/manvr3d/pull/30))
 - Add VR buttons to adjust spot and track scaling analogous to manvr3d UI panel and keyboard shortcuts ([#30](https://github.com/scenerygraphics/manvr3d/pull/30))
+- Add VR buttons to toggle volume auto-contrast calculation, plus individual adjustment of lower & upper bounds ([#30](https://github.com/scenerygraphics/manvr3d/pull/30))
+- Add dedicated pointer for interacting with the UI when getting close to the buttons. Having to scale the annotation cursor for UI interaction is no longer required. ([#30](https://github.com/scenerygraphics/manvr3d/pull/30), [#823](https://github.com/scenerygraphics/scenery/pull/823))
+
+#### VR tools
+- Unconnected spots can be linked continuously with the controller tracking tool: When clicking into an unconnected spot, the linking process simply continues until the user clicks into a spot that already has a connection. ([#30](https://github.com/scenerygraphics/manvr3d/pull/30))
+- Added volume lensing tool to aid dataset exploration and annotation in dense areas and reduce mental load for complex datasets. Works on volumes and annotations. ([#30](https://github.com/scenerygraphics/manvr3d/pull/30), [#823](https://github.com/scenerygraphics/scenery/pull/823))
+- Edges can be selected and deleted with the same behaviors as spots (single click selects/deselects; dragging paints selections; clicking "delete" only deletes the connection, not the connected spots; holding "delete" will delete the connected branch including spots) ([#30](https://github.com/scenerygraphics/manvr3d/pull/30))
+
+#### ELEPHANT integration
+- When the graph is empty and Elephant is set to predict all timepoints, the view automatically updates to the most recently predicted timepoint ([#30](https://github.com/scenerygraphics/manvr3d/pull/30))
+- Add support for uncertainty data from ELEPHANT ([#30](https://github.com/scenerygraphics/manvr3d/pull/30), [#13](https://github.com/elephant-track/elephant-client/pull/13), [#39](https://github.com/elephant-track/elephant-server/pull/39)). This requires ELEPHANT server v0.7 or higher. Pull from the latest ELEPHANT-server `main` branch to get the changes.
+
+#### Other
+- Add file-based logging of session statistics. Can be enabled via VM option `-Dmanvr3d.enableLogFile`. Enabled per default in standalone package via args file. Logs session lengths, interaction event counting and ELEPHANT prediction statistics. ([#30](https://github.com/scenerygraphics/manvr3d/pull/30))
 
 ### Removed
 
@@ -33,6 +44,7 @@
 - Block timepoint scrolling behavior when cell tracking is currently active ([#30](https://github.com/scenerygraphics/manvr3d/pull/30))
 - Block accidental controller tracking and editing/selection behaviors during menu interaction ([#30](https://github.com/scenerygraphics/manvr3d/pull/30)) 
 - Change default scenery log level to warn. Can be changed in args file ([#30](https://github.com/scenerygraphics/manvr3d/pull/30))
+- Adjust auto-contrast calculation to also include the volume's min values ([#30](https://github.com/scenerygraphics/manvr3d/pull/30))
 
 ### Fixed
 - Moving the dataset is now possible when the volume is invisible (it will be turned visible for the duration of the transformation) ([#30](https://github.com/scenerygraphics/manvr3d/pull/30))
