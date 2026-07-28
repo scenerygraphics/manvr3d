@@ -10,7 +10,6 @@ import graphics.scenery.utils.lazyLogger
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
-import net.imglib2.display.ColorTable
 import org.apache.commons.math3.linear.Array2DRowRealMatrix
 import org.apache.commons.math3.linear.EigenDecomposition
 import org.apache.commons.math3.linear.RealMatrix
@@ -80,8 +79,8 @@ class GeometryHandler(
     val linkPool: MutableList<InstancedNode.Instance> = ArrayList(10000)
     var events: EventService? = null
 
-    val sphere = Icosphere(1f, 2)
-    val cylinder = Cylinder(0.2f, 1f, 6, true, true)
+    val sphere = IcosphereLensed(1f, 2)
+    val cylinder = CylinderLensed(0.2f, 1f, 6, true, true)
     var mainSpotInstance: InstancedNode? = null
     var mainLinkInstance: InstancedNode? = null
     lateinit var visibleSpots: SpatialIndex<Spot>
@@ -120,6 +119,19 @@ class GeometryHandler(
 
         linkForwardRange = mastodonData.maxTimepoint
         linkBackwardRange = mastodonData.maxTimepoint
+    }
+
+    class IcosphereLensed(radius: Float, subdivisions: Int) : Icosphere(radius, subdivisions) {
+        @ShaderProperty var lensingPosition: Vector3f = Vector3f(0f)
+        @ShaderProperty var lensingRadius: Float = 0.1f
+        @ShaderProperty var enableLens: Boolean = false
+    }
+
+    class CylinderLensed(radius: Float, height: Float, segments: Int, fillCaps: Boolean, smoothSides: Boolean
+    ): Cylinder(radius, height, segments, fillCaps, smoothSides) {
+        @ShaderProperty var lensingPosition: Vector3f = Vector3f(0f)
+        @ShaderProperty var lensingRadius: Float = 0.1f
+        @ShaderProperty var enableLens: Boolean = false
     }
 
     fun setLUT(lutName: String) {
@@ -204,7 +216,7 @@ class GeometryHandler(
                 sphere.setMaterial(
                     ShaderMaterial.fromFiles(
                         "DeferredInstancedColor.vert",
-                        "DeferredInstancedColor.frag"
+                        "DeferredInstancedColorLensing.frag"
                     )
                 ) {
                     diffuse = Vector3f(1.0f, 1.0f, 1.0f)
@@ -485,6 +497,17 @@ class GeometryHandler(
             tsModel.vertexTags.set(s, tag)
         }
         return true
+    }
+
+    fun updateLensPosition(position: Vector3f) {
+        manvr3d.volumeNode.lensingPosition = position
+        sphere.lensingPosition = position
+        cylinder.lensingPosition = position
+    }
+
+    fun updateLensRadius(radius: Float) {
+        sphere.lensingRadius = radius
+        cylinder.lensingRadius = radius
     }
 
     /** Tries to find a spot in the current time point for the given [instance].
@@ -1006,7 +1029,7 @@ class GeometryHandler(
             links.clear()
             if (mainLinkInstance == null) {
                 cylinder.setMaterial(
-                    ShaderMaterial.fromFiles("DeferredInstancedColor.vert", "DeferredInstancedColor.frag" )
+                    ShaderMaterial.fromFiles("DeferredInstancedColor.vert", "DeferredInstancedColorLensing.frag" )
                 ) {
                     diffuse = Vector3f(1.0f, 1.0f, 1.0f)
                     ambient = Vector3f(1.0f, 1.0f, 1.0f)

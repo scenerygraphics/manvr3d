@@ -528,11 +528,16 @@ open class CellTrackingBase(
     var isLensingActive = false
         set(value) {
             manvr3d.volumeNode.slicingMode = if (value) Volume.SlicingMode.LensingSmooth else Volume.SlicingMode.None
+            manvr3d.geometryHandler.sphere.enableLens = value
+            manvr3d.geometryHandler.cylinder.enableLens = value
             field = value
         }
 
     fun changeLensingRadius(factor: Float) {
-        manvr3d.volumeNode.lensingRadius *= factor
+        val oldRadius = manvr3d.volumeNode.lensingRadius
+        val newRadius = oldRadius * factor
+        manvr3d.geometryHandler.updateLensRadius(newRadius)
+        manvr3d.volumeNode.lensingRadius = newRadius
     }
 
     fun launchLensingThread() {
@@ -540,7 +545,7 @@ open class CellTrackingBase(
             logger.debug("Launched lensing thread")
             while (sciview.running && manvr3d.isVRactive) {
                 if (isLensingActive) {
-                    manvr3d.volumeNode.lensingPosition = cursor.getPosition()
+                    manvr3d.geometryHandler.updateLensPosition(cursor.getPosition())
                     Thread.sleep(20)
                 } else {
                     Thread.sleep(200)
