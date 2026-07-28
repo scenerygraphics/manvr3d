@@ -34,13 +34,14 @@ class Manvr3dWindowLayout(manvr3dContext: Manvr3dMain, populateThisContainer: JP
     lateinit var linkRangeForwards: SpinnerModel
     lateinit var spotScaleFactor: SpinnerModel
     lateinit var linkScaleFactor: SpinnerModel
-    lateinit var autoIntensityBtn: JToggleButton
+    lateinit var autoContrastBtn: JToggleButton
     lateinit var lockGroupHandler: GroupLocksHandling
     lateinit var linkColorSelector: JComboBox<String>
     lateinit var volumeColorSelector: JComboBox<String>
     lateinit var toggleVR: JButton
     lateinit var eyeTrackingToggle: JCheckBox
     lateinit var vrResolutionScale: SpinnerModel
+    lateinit var autoContrastStrength: SpinnerModel
     lateinit var uncertaintyToggle: JCheckBox
     var invertLutToggle: JCheckBox? = null
 
@@ -132,6 +133,15 @@ class Manvr3dWindowLayout(manvr3dContext: Manvr3dMain, populateThisContainer: JP
             manvr3d.setVrResolutionScale(value.toFloat())
         }
 
+        autoContrastStrength = addLabeledSpinner(
+            "Auto Contrast Strength",
+            SpinnerNumberModel(1f, 0.1f, 10f, 0.1f)
+        ) { value ->
+            manvr3d.intensity.contrast = value.toFloat()
+            logger.info("Changed auto contrast to ${manvr3d.intensity.contrast}")
+            manvr3d.autoAdjustIntensity()
+        }
+
         // Adding dropdowns for link LUTs and volume colors
         val linkColorChoices = mutableListOf("By Spot")
         val availableLUTs = Colormap.list().toMutableList()
@@ -178,12 +188,12 @@ class Manvr3dWindowLayout(manvr3dContext: Manvr3dMain, populateThisContainer: JP
         visToggleSpots = JButton("Toggle spots").apply { addActionListener(toggleSpotsVisibility) }
         visToggleVols = JButton("Toggle volume").apply { addActionListener(toggleVolumeVisibility) }
         visToggleTracks = JButton("Toggle tracks").apply { addActionListener(toggleTrackVisibility) }
-        autoIntensityBtn = JToggleButton("Auto Intensity", manvr3d.isVolumeAutoAdjust).apply {
-            addActionListener(autoAdjustIntensity)
+        autoContrastBtn = JToggleButton("Auto Contrast", manvr3d.isVolumeAutoAdjust).apply {
+            addActionListener(toggleAutoContrast)
         }
 
         val visButtons = JPanel(MigLayout("fillx, insets 0", "[grow]")).apply {
-            add(autoIntensityBtn, "growx")
+            add(autoContrastBtn, "growx")
             add(visToggleSpots, "growx")
             add(visToggleVols, "growx")
             add(visToggleTracks, "growx")
@@ -313,8 +323,8 @@ class Manvr3dWindowLayout(manvr3dContext: Manvr3dMain, populateThisContainer: JP
         updateLutSwatches()
     }
 
-    val autoAdjustIntensity = ActionListener {
-        manvr3dContext.autoAdjustIntensity()
+    val toggleAutoContrast = ActionListener {
+        manvr3dContext.toggleAutoIntensity()
     }
 
     private fun updateLutSwatches() {
@@ -349,7 +359,8 @@ class Manvr3dWindowLayout(manvr3dContext: Manvr3dMain, populateThisContainer: JP
         //    to the value the dialog was left with (forgets the new upperValue effectively)
         manvr3d.intensity.rangeMax = upperValBackup
         intensityRangeSlider.rangeSlider.upperValue = manvr3d.intensity.rangeMax.toInt()
-        autoIntensityBtn.isSelected = manvr3d.isVolumeAutoAdjust
+        autoContrastBtn.isSelected = manvr3d.isVolumeAutoAdjust
+        autoContrastStrength.value = manvr3d.intensity.contrast
     }
 
     fun deactivateAndForget() {
@@ -362,7 +373,7 @@ class Manvr3dWindowLayout(manvr3dContext: Manvr3dMain, populateThisContainer: JP
         intensityRangeSlider.removeChangeListener(rangeSliderListener)
         visToggleSpots.removeActionListener(toggleSpotsVisibility)
         visToggleVols.removeActionListener(toggleVolumeVisibility)
-        autoIntensityBtn.removeActionListener(autoAdjustIntensity)
+        autoContrastBtn.removeActionListener(toggleAutoContrast)
         this@Manvr3dWindowLayout.manvr3dContext = null
 
     }
