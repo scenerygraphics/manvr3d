@@ -232,21 +232,31 @@ open class CellTrackingBase(
             p, volume.currentTimepoint, cursor.radius, selectedSpot, enableTrackingPreview, trackPointList
         )
 
-        if (volume.currentTimepoint > 0) {
-            volume.goToTimepoint(volume.currentTimepoint - 1)
+        // check whether we approach the first or last timepoint, depending on playback direction
+        if ((volume.currentTimepoint > 0 && direction == PlaybackDirection.Backward) ||
+            (volume.currentTimepoint < volume.timepointCount - 1 && direction == PlaybackDirection.Forward)) {
+            val dir = if (direction == PlaybackDirection.Forward) 1 else -1
+            volume.goToTimepoint(volume.currentTimepoint + dir)
             // If the user clicked a cell, and it is *not* the first in the track, we assume it is a merge event and end the tracking,
             // but only if the selected spot already has an edge. We continue tracking/linking when the selected spot has no connections
             if (isValidSelection && trackPointList.size > 1 && selectedSpot!!.edges().size() > 0) {
                 endControllerTracking()
             }
-            // This will also redraw all geometry using Mastodon as source
-            notifyObservers(volume.currentTimepoint)
         } else {
-            sciview.camera?.showMessage("Reached the first time point!", centered = true, distance = 2f, size = 0.2f)
-            // Let's head back to the last timepoint for starting a new track fast-like
-            volume.goToLastTimepoint()
+            sciview.camera?.showMessage(
+                "Reached the ${if (direction == PlaybackDirection.Forward) "last" else "first"} time point!",
+                centered = true, distance = 2f, size = 0.2f
+            )
+            // Let's head back to the last/first timepoint for starting a new track fast-like
+            if (direction == PlaybackDirection.Forward) {
+                volume.goToFirstTimepoint()
+            } else {
+                volume.goToLastTimepoint()
+            }
             endControllerTracking()
         }
+        // This will also redraw all geometry using Mastodon as source
+        notifyObservers(volume.currentTimepoint)
     }
 
 
@@ -345,7 +355,11 @@ open class CellTrackingBase(
                 } else {
                     PlaybackDirection.Forward
                 }
-            }, byTouch = true, defaultColor = Vector3f(0.52f, 0.87f, 0.86f),
+                manvr3d.sciviewWin.camera?.showMessage(
+                    "Play & Track ${if (direction == PlaybackDirection.Forward) "forward" else "backward"}",
+                    distance = 1.2f, size = 0.2f, centered = true
+                )
+            }, byTouch = true, defaultColor = Vector3f(0.52f, 0.87f, 0.86f), default = false,
             touchingColor = color, pressedColor = Vector3f(0.84f, 0.87f, 0.52f), textInFront = true
         )
         val playSlowerBtn = Button(
@@ -641,11 +655,23 @@ open class CellTrackingBase(
         }
 
         val nextTimepoint = ClickBehaviour { _, _ ->
-            if (!controllerTrackingActive) skipToNext = true
+            if (!controllerTrackingActive) {
+                if (direction == PlaybackDirection.Backward) {
+                    skipToNext = true
+                } else {
+                    skipToPrevious = true
+                }
+            }
         }
 
         val prevTimepoint = ClickBehaviour { _, _ ->
-            if (!controllerTrackingActive) skipToPrevious = true
+            if (!controllerTrackingActive) {
+                if (direction == PlaybackDirection.Forward) {
+                    skipToNext = true
+                } else {
+                    skipToPrevious = true
+                }
+            }
         }
 
         class ScaleCursorOrSpotsBehavior(val factor: Float): DragBehaviour {

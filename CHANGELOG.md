@@ -22,6 +22,7 @@
 - Unconnected spots can be linked continuously with the controller tracking tool: When clicking into an unconnected spot, the linking process simply continues until the user clicks into a spot that already has a connection. ([#30](https://github.com/scenerygraphics/manvr3d/pull/30))
 - Added volume lensing tool to aid dataset exploration and annotation in dense areas and reduce mental load for complex datasets. Works on volumes and annotations. ([#30](https://github.com/scenerygraphics/manvr3d/pull/30), [#823](https://github.com/scenerygraphics/scenery/pull/823))
 - Edges can be selected and deleted with the same behaviors as spots (single click selects/deselects; dragging paints selections; clicking "delete" only deletes the connection, not the connected spots; holding "delete" will delete the connected branch including spots) ([#30](https://github.com/scenerygraphics/manvr3d/pull/30))
+- Support for forward tracking: changing the playback direction now also changes the tracking direction ([#30](https://github.com/scenerygraphics/manvr3d/pull/30))
 
 #### ELEPHANT integration
 - When the graph is empty and Elephant is set to predict all timepoints, the view automatically updates to the most recently predicted timepoint ([#30](https://github.com/scenerygraphics/manvr3d/pull/30))
