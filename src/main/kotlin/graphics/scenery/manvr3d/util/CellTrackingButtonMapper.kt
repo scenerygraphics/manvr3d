@@ -27,6 +27,7 @@ object CellTrackingButtonMapper {
     const val GRAB_SPOT = "grabSpot"
     const val PLAYBACK = "playback"
     const val CYCLE_MENU = "cycleMenu"
+    const val TOGGLE_MENU = "toggleMenu"
     const val STEP_FWD = "stepFwd"
     const val STEP_BWD = "stepBwd"
     const val ADD_DELETE_RESET = "addDeleteReset"
@@ -57,12 +58,16 @@ object CellTrackingButtonMapper {
             ),
             GRAB_WORLD to ButtonMapping(TrackerRole.LeftHand, OpenVRButton.Side),
             GRAB_SPOT to ButtonMapping(TrackerRole.RightHand, OpenVRButton.Side),
-            PLAYBACK to ButtonMapping(
-                TrackerRole.LeftHand, OpenVRButton.Menu, "Play",
+//            PLAYBACK to ButtonMapping(
+//                TrackerRole.LeftHand, OpenVRButton.Menu, "Play",
+//                offset = Vector3f(0.023f, 0.003f, 0.056f),
+//                rotation = Quaternionf(-0.866f, -0.034f, -0.063f, 0.494f)
+//            ),
+            TOGGLE_MENU to ButtonMapping(TrackerRole.LeftHand, OpenVRButton.Menu, "Menu",
                 offset = Vector3f(0.023f, 0.003f, 0.056f),
                 rotation = Quaternionf(-0.866f, -0.034f, -0.063f, 0.494f)
             ),
-            CYCLE_MENU to ButtonMapping(TrackerRole.LeftHand, OpenVRButton.A, "Menu",
+            CYCLE_MENU to ButtonMapping(TrackerRole.LeftHand, OpenVRButton.A, "M Cycle",
                 offset = Vector3f(0.016f, 0.011f, 0.066f),
                 rotation = Quaternionf(-0.866f, -0.034f, -0.063f, 0.494f)
                 ),
@@ -112,7 +117,8 @@ object CellTrackingButtonMapper {
             CONTROLLER_TRACKING to ButtonMapping(TrackerRole.RightHand, OpenVRButton.Trigger),
             GRAB_WORLD to ButtonMapping(TrackerRole.LeftHand, OpenVRButton.Side),
             GRAB_SPOT to ButtonMapping(TrackerRole.RightHand, OpenVRButton.Side),
-            PLAYBACK to ButtonMapping(TrackerRole.RightHand, OpenVRButton.Menu),
+//            PLAYBACK to ButtonMapping(TrackerRole.RightHand, OpenVRButton.Menu),
+            TOGGLE_MENU to ButtonMapping(TrackerRole.RightHand, OpenVRButton.Menu),
             CYCLE_MENU to ButtonMapping(TrackerRole.LeftHand, OpenVRButton.Menu),
             STEP_FWD to ButtonMapping(TrackerRole.RightHand, OpenVRButton.Left),
             STEP_BWD to ButtonMapping(TrackerRole.RightHand, OpenVRButton.Right),

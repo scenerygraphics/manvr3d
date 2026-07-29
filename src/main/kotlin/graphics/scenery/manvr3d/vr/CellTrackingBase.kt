@@ -711,10 +711,15 @@ open class CellTrackingBase(
             }
         }
 
+        val toggleMenu = ClickBehaviour { _, _ ->
+            leftWristMenu.toggleVisibility()
+        }
+
         mapper.bind(hmd, buttonMapper.STEP_FWD, nextTimepoint)
         mapper.bind(hmd, buttonMapper.STEP_BWD, prevTimepoint)
 
-        mapper.bind(hmd, buttonMapper.PLAYBACK, playPause)
+//        mapper.bind(hmd, buttonMapper.PLAYBACK, playPause)
+        mapper.bind(hmd, buttonMapper.TOGGLE_MENU, toggleMenu)
         mapper.bind(hmd, buttonMapper.RADIUS_INCREASE, scaleCursorOrSpotsUp)
         mapper.bind(hmd, buttonMapper.RADIUS_DECREASE, scaleCursorOrSpotsDown)
 
@@ -981,7 +986,9 @@ open class CellTrackingBase(
         while (sciview.running) {
             if (::leftWristMenu.isInitialized) {
                 if (cursor.cursorPointer.boundingBox != null && leftWristMenu.boundingBox != null) {
-                    val intersects = leftWristMenu.boundingBox!!.intersects(cursor.cursorSphere.boundingBox!!)
+                    var intersects = leftWristMenu.boundingBox!!.intersects(cursor.cursorSphere.boundingBox!!)
+                    // Only intersect if the menu is visible
+                    intersects = intersects && leftWristMenu.isMenuVisible
                     // No need to call the switch logic every iteration, only when the state changes
                     if (intersects != lastMenuProximity) {
                         cursor.switchSphereAndPointer(wantPointer = intersects)
