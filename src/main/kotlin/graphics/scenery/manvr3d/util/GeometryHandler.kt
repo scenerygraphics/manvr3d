@@ -584,7 +584,7 @@ class GeometryHandler(
     }
 
     /** Returns a list of all spots within the given [radius] around the [origin] in the current [timepoint]. */
-    private fun findSpotsInRange(timepoint: Int, origin: Vector3f, radius: Float): RefList<Spot> {
+    private fun findSpotsInRange(timepoint: Int, origin: Vector3f, radius: Float, adjustedScale: Float = 1f): RefList<Spot> {
         val spots = RefCollections.createRefList(mastodonData.model.graph.vertices())
         val spatialIndex = mastodonData.model.spatioTemporalIndex.getSpatialIndex(timepoint)
         if (spatialIndex.size() > 0) {
@@ -594,7 +594,7 @@ class GeometryHandler(
             var found: Spot
             while (spotSearch.hasNext()) {
                 found = spotSearch.next()
-                if (spotSearch.distance < (radius + getSpotRadius(found) ) ) {
+                if (spotSearch.distance < (radius + getSpotRadius(found) * adjustedScale ) ) {
                     spots.add(found)
                 } else {
                     break
@@ -724,15 +724,22 @@ class GeometryHandler(
         })
     }
 
-    /** Perform incremental nearest neighbor search in the current timepoint [tp],
+    /** Perform incremental nearest neighbor search in the current timepoint [timepoint],
      * based on a position given by the VR controller [pos] and a search [radius].
      * [addOnly] specifies whether to only add to the selection. If false, clicking away from a spot will deselect everything.
+     * [visualScale] adjust the search radius based on the visual scaling of the spots.
      * @return a Pair of the first selected spot itself and a boolean if the selection was valid (within the spot radius). */
-    fun selectClosestSpotsVR (pos: Vector3f, tp: Int, radius: Float, addOnly: Boolean) : Pair<Spot?, Boolean> {
+    fun selectClosestSpotsVR(
+        pos: Vector3f,
+        timepoint: Int,
+        radius: Float,
+        addOnly: Boolean,
+        visualScale: Float = 1f
+    ): Pair<Spot?, Boolean> {
             val start = TimeSource.Monotonic.markNow()
             val localPos = manvr3d.sciviewToMastodonCoords(pos)
-            val localRadius = manvr3d.sciviewToMastodonScale().max() * radius
-            val spots = findSpotsInRange(tp, localPos, localRadius)
+            val localRadius = manvr3d.sciviewToMastodonScale().max() * radius * visualScale
+            val spots = findSpotsInRange(timepoint, localPos, localRadius, visualScale)
             // only proceed if we found at least one spot
             if (spots.isNotEmpty()) {
                 spots.forEach { spot ->

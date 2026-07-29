@@ -213,7 +213,7 @@ open class CellTrackingBase(
                 it.mapper.updateLabel(it.ADD_DELETE_RESET, "Stop", it.trackingColor)
             }
 
-            // we dont want animation, because we track step by step
+            // we don't want animation, because we track step by step
             playing = false
             // Capture the start time, so we can write statistics on tracking duration
             fileLogger.beginControllerTracking()
@@ -223,7 +223,8 @@ open class CellTrackingBase(
         val p = cursor.getPosition()
         // did the user click on an existing cell?
         val (selectedSpot, isValidSelection) =
-            geometryHandler.selectClosestSpotsVR(p, volume.currentTimepoint, cursor.radius, false)
+            geometryHandler.selectClosestSpotsVR(p, volume.currentTimepoint,
+                cursor.radius * cursor.visualScale, false)
 
         logger.debug("Tracked a new spot at position $p")
         logger.debug("Selected spot is $selectedSpot")
@@ -818,8 +819,8 @@ open class CellTrackingBase(
                 // Only perform the selection method twenty times a second and when the button was pressed for more than 200ms
                 if (System.currentTimeMillis() - lastUpdate > 50 && System.currentTimeMillis() - startTime > 200) {
                     val p = cursor.getPosition()
-                    geometryHandler.selectClosestSpotsVR(p, volume.currentTimepoint, cursor.radius, true)
-                    geometryHandler.selectClosestEdgesVR(p, cursor.radius, true)
+                    geometryHandler.selectClosestSpotsVR(p, volume.currentTimepoint, cursor.radius, true, cursor.visualScale)
+                    geometryHandler.selectClosestEdgesVR(p, cursor.radius * cursor.visualScale, true)
                     lastUpdate = System.currentTimeMillis()
                     wasDragged = true
                 }
@@ -829,8 +830,8 @@ open class CellTrackingBase(
                 // If this wasn't a drag event but a click event, perform the selection now
                 if (!wasDragged) {
                     val p = cursor.getPosition()
-                    geometryHandler.selectClosestSpotsVR(p, volume.currentTimepoint, cursor.radius, false)
-                    geometryHandler.selectClosestEdgesVR(p, cursor.radius, false)
+                    geometryHandler.selectClosestSpotsVR(p, volume.currentTimepoint, cursor.radius, false, cursor.visualScale)
+                    geometryHandler.selectClosestEdgesVR(p, cursor.radius * cursor.visualScale, false)
                 }
                 cursor.resetColor()
 
