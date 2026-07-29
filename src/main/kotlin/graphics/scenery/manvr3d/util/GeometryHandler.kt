@@ -1320,7 +1320,11 @@ class GeometryHandler(
                 }
                 // start adding edges once the first vertex was added
                 if (index > 0) {
-                    val e = graph.addEdge(vertex, prevVertex)
+                    val e = if (prevVertex.timepoint < vertex.timepoint) {
+                        graph.addEdge(prevVertex, vertex)
+                    } else {
+                        graph.addEdge(vertex, prevVertex)
+                    }
                     e.init()
                     logger.debug("added {}", e)
                 }
@@ -1436,7 +1440,7 @@ class GeometryHandler(
                     val selectedSpots = RefCollections.createRefList(mastodonData.model.graph.vertices())
                     selectedEdges.forEach { edge ->
                         if (!selectedSpots.contains(edge.source)) {
-                            logger.info("Adding spots to the list from edge ${edge.internalPoolIndex}")
+                            logger.debug("Adding spots to the list from edge ${edge.internalPoolIndex}")
                             selectedSpots.addAll(selectBranch(edge.source))
                         }
                     }
