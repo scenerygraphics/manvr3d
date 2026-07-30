@@ -904,7 +904,7 @@ open class CellTrackingBase(
                     geometryHandler.setTrackVisibility(manvr3d.isTrackVisible)
                     // change volume visibility to what it was before
                     manvr3d.setVolumeOnlyVisibility(manvr3d.isVolumeVisible)
-                    mapper.updateLabel(buttonMapper.CYCLE_MENU, "Menu", buttonMapper.defaultColor)
+                    mapper.updateLabel(buttonMapper.CYCLE_MENU, "M Cycle", buttonMapper.defaultColor)
                 }
 
             },
