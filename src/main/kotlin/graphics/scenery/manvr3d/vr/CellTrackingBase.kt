@@ -24,6 +24,7 @@ import graphics.scenery.manvr3d.analysis.HedgehogAnalysis.SpineGraphVertex
 import graphics.scenery.controls.behaviours.MultiButtonManager
 import graphics.scenery.controls.behaviours.VRTwoHandNodeTransform
 import graphics.scenery.controls.behaviours.VRGrabTheWorld
+import graphics.scenery.controls.behaviours.VRPress
 import graphics.scenery.manvr3d.util.GeometryHandler
 import graphics.scenery.utils.TimepointObservable
 import graphics.scenery.manvr3d.util.SpineMetadata
@@ -334,18 +335,18 @@ open class CellTrackingBase(
 
         val undoButton = Button(
             "Undo",
-            command = { manvr3d.undoRedo() }, byTouch = true, depressDelay = 250,
+            command = { manvr3d.undoRedo() }, byTouch = false, depressDelay = 250,
             defaultColor = color, pressedColor = pressedColor, touchingColor = touchingColor, textInFront = true
         )
         val redoButton = Button(
             "Redo",
-            command = { manvr3d.undoRedo(redo = true) }, byTouch = true, depressDelay = 250,
+            command = { manvr3d.undoRedo(redo = true) }, byTouch = false, depressDelay = 250,
             defaultColor = color, pressedColor = pressedColor, touchingColor = touchingColor, textInFront = true
         )
         val resetViewButton = Button(
             "Recenter", command = {
                 manvr3d.resetView()
-            }, byTouch = true, depressDelay = 250,
+            }, byTouch = false, depressDelay = 250,
             defaultColor = color, pressedColor = pressedColor, touchingColor = touchingColor, textInFront = true
         )
 
@@ -360,7 +361,7 @@ open class CellTrackingBase(
                     "Play & Track ${if (direction == PlaybackDirection.Forward) "forward" else "backward"}",
                     distance = 1.2f, size = 0.2f, centered = true
                 )
-            }, byTouch = true, defaultColor = Vector3f(0.52f, 0.87f, 0.86f), default = false,
+            }, byTouch = false, defaultColor = Vector3f(0.52f, 0.87f, 0.86f), default = false,
             touchingColor = color, pressedColor = Vector3f(0.84f, 0.87f, 0.52f), textInFront = true
         )
         val playSlowerBtn = Button(
@@ -370,7 +371,7 @@ open class CellTrackingBase(
                     "Speed: ${"%.0f".format(volumesPerSecond)} vol/s",
                     distance = 1.2f, size = 0.2f, centered = true
                 )
-            }, byTouch = true, depressDelay = 250, defaultColor = color,
+            }, byTouch = false, depressDelay = 250, defaultColor = color,
             pressedColor = pressedColor, touchingColor = touchingColor, textInFront = true
         )
         val playFasterBtn = Button(
@@ -380,7 +381,7 @@ open class CellTrackingBase(
                     "Speed: ${"%.0f".format(volumesPerSecond)} vol/s",
                     distance = 1.2f, size = 0.2f, centered = true
                 )
-            }, byTouch = true, depressDelay = 250, defaultColor = color,
+            }, byTouch = false, depressDelay = 250, defaultColor = color,
             pressedColor = pressedColor, touchingColor = touchingColor, textInFront = true
         )
         val goToLastBtn = Button(
@@ -390,7 +391,7 @@ open class CellTrackingBase(
                 notifyObservers(volume.currentTimepoint)
                 cam.showMessage("Jumped to timepoint ${volume.currentTimepoint}.",
                     distance = 1.2f, size = 0.2f, centered = true)
-            }, byTouch = true, depressDelay = 250, defaultColor = color,
+            }, byTouch = false, depressDelay = 250, defaultColor = color,
             pressedColor = pressedColor, touchingColor = touchingColor, textInFront = true
         )
         val goToFirstBtn = Button(
@@ -400,7 +401,7 @@ open class CellTrackingBase(
                 notifyObservers(volume.currentTimepoint)
                 cam.showMessage("Jumped to timepoint ${volume.currentTimepoint}.",
                     distance = 1.2f, size = 0.2f, centered = true)
-            }, byTouch = true, depressDelay = 250, defaultColor = color,
+            }, byTouch = false, depressDelay = 250, defaultColor = color,
             pressedColor = pressedColor, touchingColor = touchingColor, textInFront = true
         )
 
@@ -417,14 +418,14 @@ open class CellTrackingBase(
         val decTransparencyBtn = Button(
             " - ", command = {
                 manvr3d.shiftVolumeTransparency(delta = -0.1f)
-            }, byTouch = true, depressDelay = 250,
+            }, byTouch = false, depressDelay = 250,
             defaultColor = color, pressedColor = pressedColor, touchingColor = touchingColor, textInFront = true
         )
 
         val incTransparencyBtn = Button(
             " + ", command = {
                 manvr3d.shiftVolumeTransparency(delta = 0.1f)
-            }, byTouch = true, depressDelay = 250,
+            }, byTouch = false, depressDelay = 250,
             defaultColor = color, pressedColor = pressedColor, touchingColor = touchingColor, textInFront = true
         )
 
@@ -432,7 +433,7 @@ open class CellTrackingBase(
             "Volume off", "Volume on", command = {
                 val state = volume.visible
                 manvr3d.setVolumeOnlyVisibility(!state)
-            }, byTouch = true, defaultColor = color, pressedColor = pressedColor,
+            }, byTouch = false, defaultColor = color, pressedColor = pressedColor,
             touchingColor = touchingColor, default = true, textInFront = true)
 
         leftWristMenu.addRow("Toggle Menu", volumeToggleBtn, decTransparencyBtn, incTransparencyBtn)
@@ -440,13 +441,13 @@ open class CellTrackingBase(
         val autoContrastBtn = Button(
             "Auto Contrast", command = {
                 manvr3d.toggleAutoIntensity()
-            }, byTouch = true, defaultColor = color, pressedColor = pressedColor, touchingColor = touchingColor, textInFront = true)
+            }, byTouch = false, defaultColor = color, pressedColor = pressedColor, touchingColor = touchingColor, textInFront = true)
 
         val lowerBoundUpBtn = Button(
             " L+ ", command =  {
                 manvr3d.intensity.rangeMin /= 0.8f
                 manvr3d.updateUI()
-            }, byTouch = true, depressDelay = 250,
+            }, byTouch = false, depressDelay = 250,
             defaultColor = color, pressedColor = pressedColor, touchingColor = touchingColor, textInFront = true
         )
 
@@ -454,7 +455,7 @@ open class CellTrackingBase(
             " L- ", command =  {
                 manvr3d.intensity.rangeMin *= 0.8f
                 manvr3d.updateUI()
-            }, byTouch = true, depressDelay = 250,
+            }, byTouch = false, depressDelay = 250,
             defaultColor = color, pressedColor = pressedColor, touchingColor = touchingColor, textInFront = true
         )
 
@@ -462,7 +463,7 @@ open class CellTrackingBase(
             " H+ ", command =  {
                 manvr3d.intensity.rangeMax /= 0.8f
                 manvr3d.updateUI()
-            }, byTouch = true, depressDelay = 250,
+            }, byTouch = false, depressDelay = 250,
             defaultColor = color, pressedColor = pressedColor, touchingColor = touchingColor, textInFront = true
         )
 
@@ -470,7 +471,7 @@ open class CellTrackingBase(
             " H- ", command =  {
                 manvr3d.intensity.rangeMax *= 0.8f
                 manvr3d.updateUI()
-            }, byTouch = true, depressDelay = 250,
+            }, byTouch = false, depressDelay = 250,
             defaultColor = color, pressedColor = pressedColor, touchingColor = touchingColor, textInFront = true
         )
 
@@ -486,20 +487,20 @@ open class CellTrackingBase(
                 } else {
                     fileLogger.endLensing()
                 }
-            }, byTouch = true, defaultColor = color, pressedColor = pressedColor,
+            }, byTouch = false, defaultColor = color, pressedColor = pressedColor,
             touchingColor = touchingColor, default = false, textInFront = true)
 
         val lensRadiusDownBtn = Button(
             " R- ", command = {
                 changeLensingRadius(0.8f)
-            }, byTouch = true, depressDelay = 250,
+            }, byTouch = false, depressDelay = 250,
             defaultColor = color, pressedColor = pressedColor, touchingColor = touchingColor, textInFront = true
         )
 
         val lensRadiusUpBtn = Button(
             " R+ ", command = {
                 changeLensingRadius(1.2f)
-            }, byTouch = true, depressDelay = 250,
+            }, byTouch = false, depressDelay = 250,
             defaultColor = color, pressedColor = pressedColor, touchingColor = touchingColor, textInFront = true
         )
 
@@ -509,7 +510,7 @@ open class CellTrackingBase(
             " + ", command = {
                 manvr3d.geometryHandler.increaseSphereInstanceScale()
                 manvr3d.updateUI()
-            }, byTouch = true, depressDelay = 250,
+            }, byTouch = false, depressDelay = 250,
             defaultColor = color, pressedColor = pressedColor, touchingColor = touchingColor, textInFront = true
         )
 
@@ -517,7 +518,7 @@ open class CellTrackingBase(
             " - ", command = {
                 manvr3d.geometryHandler.decreaseSphereInstanceScale()
                 manvr3d.updateUI()
-            }, byTouch = true, depressDelay = 250,
+            }, byTouch = false, depressDelay = 250,
             defaultColor = color, pressedColor = pressedColor, touchingColor = touchingColor, textInFront = true
         )
 
@@ -526,7 +527,7 @@ open class CellTrackingBase(
             command = {
                 manvr3d.isSpotVisible = !manvr3d.isSpotVisible
                 geometryHandler.setSpotVisibility(manvr3d.isSpotVisible)
-            }, byTouch = true, defaultColor = color, pressedColor = pressedColor,
+            }, byTouch = false, defaultColor = color, pressedColor = pressedColor,
             touchingColor = touchingColor, default = true, textInFront = true
         )
 
@@ -536,7 +537,7 @@ open class CellTrackingBase(
             " + ", command = {
                 manvr3d.geometryHandler.increaseLinkScale()
                 manvr3d.updateUI()
-            }, byTouch = true, depressDelay = 250,
+            }, byTouch = false, depressDelay = 250,
             defaultColor = color, pressedColor = pressedColor, touchingColor = touchingColor, textInFront = true
         )
 
@@ -544,7 +545,7 @@ open class CellTrackingBase(
             " - ", command = {
                 manvr3d.geometryHandler.decreaseLinkScale()
                 manvr3d.updateUI()
-            }, byTouch = true, depressDelay = 250,
+            }, byTouch = false, depressDelay = 250,
             defaultColor = color, pressedColor = pressedColor, touchingColor = touchingColor, textInFront = true
         )
 
@@ -553,7 +554,7 @@ open class CellTrackingBase(
             command = {
                 manvr3d.isTrackVisible = !manvr3d.isTrackVisible
                 geometryHandler.setTrackVisibility(manvr3d.isTrackVisible)
-            }, byTouch = true, defaultColor = color, pressedColor = pressedColor,
+            }, byTouch = false, defaultColor = color, pressedColor = pressedColor,
             touchingColor = touchingColor, default = true, textInFront = true
         )
 
@@ -574,10 +575,10 @@ open class CellTrackingBase(
         }, color = color, pressedColor = pressedColor, touchingColor = touchingColor)
         leftWristMenu.addButton("Cleanup Menu", "Delete Graph", command = {
             manvr3d.deleteGraphAndUpdate()
-        }, byTouch = true, color = color, pressedColor = pressedColor, touchingColor = touchingColor)
+        }, byTouch = false, color = color, pressedColor = pressedColor, touchingColor = touchingColor)
         leftWristMenu.addButton("Cleanup Menu", "Delete TP", command = {
             manvr3d.deleteTimepointAndUpdate(volume.currentTimepoint)
-        }, byTouch = true, color = color, pressedColor = pressedColor, touchingColor = touchingColor)
+        }, byTouch = false, color = color, pressedColor = pressedColor, touchingColor = touchingColor)
 
         logger.debug("Set up general menus.")
     }
@@ -860,6 +861,14 @@ open class CellTrackingBase(
             hmd,
             listOf(TrackerRole.RightHand),
             false,
+            customTip = cursor.cursorPointer
+        )
+
+        VRPress.createAndSet(
+            sciview.currentScene,
+            hmd,
+            listOf(OpenVRHMD.OpenVRButton.Trigger),
+            listOf(TrackerRole.RightHand),
             customTip = cursor.cursorPointer
         )
 
