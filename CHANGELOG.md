@@ -46,6 +46,7 @@
 - Block accidental controller tracking and editing/selection behaviors during menu interaction ([#30](https://github.com/scenerygraphics/manvr3d/pull/30)) 
 - Change default scenery log level to warn. Can be changed in args file ([#30](https://github.com/scenerygraphics/manvr3d/pull/30))
 - Adjust auto-contrast calculation to also include the volume's min values ([#30](https://github.com/scenerygraphics/manvr3d/pull/30))
+- VR buttons are now click-based to prevent accidental triggering ([#30](https://github.com/scenerygraphics/manvr3d/pull/30))
 
 ### Fixed
 - Moving the dataset is now possible when the volume is invisible (it will be turned visible for the duration of the transformation) ([#30](https://github.com/scenerygraphics/manvr3d/pull/30))
