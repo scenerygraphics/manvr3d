@@ -107,7 +107,7 @@ set APP_HOME=%DIRNAME%..
 for %%i in ("%APP_HOME%") do set APP_HOME=%%~fi
 
 @rem Add default JVM options here
-set DEFAULT_JVM_OPTS="--add-opens=java.base/java.lang=ALL-UNNAMED -Dorg.lwjgl.system.stackSize=300"
+set DEFAULT_JVM_OPTS="--add-opens=java.base/java.lang=ALL-UNNAMED"
 
 @rem Use bundled JDK
 set JAVA_EXE=%DIRNAME%jdk\bin\java.exe
@@ -126,9 +126,9 @@ set CLASSPATH=%APP_HOME%\lib\*
 
 @rem Check if args file exists
 if exist "%APP_HOME%\bin\manvr3d.args" (
-    "%JAVA_EXE%" @"%APP_HOME%\bin\manvr3d.args" %DEFAULT_JVM_OPTS% %JAVA_OPTS% -classpath "%CLASSPATH%" org.mastodon.mamut.plugins.StartMastodon %*
+    "%JAVA_EXE%" @"%APP_HOME%\bin\manvr3d.args" %DEFAULT_JVM_OPTS% %JAVA_OPTS% -classpath "%CLASSPATH%" graphics.scenery.manvr3d.plugins.StartMastodon %*
 ) else (
-    "%JAVA_EXE%" %DEFAULT_JVM_OPTS% %JAVA_OPTS% -classpath "%CLASSPATH%" org.mastodon.mamut.plugins.StartMastodon %*
+    "%JAVA_EXE%" %DEFAULT_JVM_OPTS% %JAVA_OPTS% -classpath "%CLASSPATH%" graphics.scenery.manvr3d.plugins.StartMastodon %*
 )
 
 :end
@@ -152,6 +152,9 @@ $launcherScript | Out-File -FilePath "$packageDir\bin\manvr3d.bat" -Encoding ASC
 $argsContent = @'
 # Enables file-based logging. Can be turned on by uncommenting this line.
 # -Dmanvr3d.enableLogFile
+
+# Temporary fix for OutOfStackSpace errors on recent Nvidia Blackwell GPU drivers
+-Dorg.lwjgl.system.stackSize=300
 
 # Scenery log level. Defaults to warn, change to info or debug for verbose logs.
 -Dorg.slf4j.simpleLogger.log.graphics.scenery=warn
