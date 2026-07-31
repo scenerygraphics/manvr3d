@@ -43,6 +43,9 @@ class ElephantListener(
     val predictionDurations = mutableListOf<Duration>()
     /** List of spot amounts predicted per event during a session. Used for aggregate statistics. */
     val predictedSpotCounts = mutableListOf<Int>()
+    /** Checks whether a new batch of vertices is arriving. graphChanged always fires before and after a batch,
+     * so we skip the first graphChanged event. */
+    private var batchStarted = false
 
     /** Attaches the ElephantListener as a graph listener and graph change listener to the Mastodon graph. */
     fun attach() {
@@ -61,35 +64,43 @@ class ElephantListener(
     }
 
     override fun graphChanged() {
-        // Simple debounce to prevent this callback  from triggering several times
-        if (isActive.get() && (TimeSource.Monotonic.markNow() - eventLaunchTime) > 0.02.seconds) {
-            fileLogger.incrementPrediction()
 
-            val predictionDuration = TimeSource.Monotonic.markNow() - eventLaunchTime
-            predictionDurations.add(predictionDuration)
-            val logString = "ELEPHANT predicted $predictedSpotCount spots in timepoint $predictedTimepoint in " +
-                    "${String.format("%.2f", predictionDuration.toDouble(DurationUnit.SECONDS))} s."
-            fileLogger.append(logString)
-            predictedSpotCounts.add(predictedSpotCount)
-            logger.debug(logString)
+        if (!isActive.get()) return
 
-            if (predictAll) {
-                // Reset launch time for next prediction round
-                eventLaunchTime = TimeSource.Monotonic.markNow()
-                goToTimepoint(predictedTimepoint)
-                // PredictAll sweeps through all timepoints, so we can disable the listener once we reach the end
-                if (predictedTimepoint == numTimepoints - 1) {
-                    isActive.set(false)
-                } else {
-                    // graphChanged is triggered once per TP, but vertexAdded is triggered with every vertex.
-                    // If we keep predicting TPs, we want to keep listening to timepoint changes too.
-                    listenForSpots = true
-                }
-            } else {
-                // If only a single TP was predicted, we can deactivate the listener right away.
-                isActive.set(false)
-            }
+        if (!batchStarted) {
+            batchStarted = true
+            return
         }
+
+        fileLogger.incrementPrediction()
+
+        val predictionDuration = TimeSource.Monotonic.markNow() - eventLaunchTime
+        predictionDurations.add(predictionDuration)
+        val logString = "ELEPHANT predicted $predictedSpotCount spots in timepoint $predictedTimepoint in " +
+                "${String.format("%.2f", predictionDuration.toDouble(DurationUnit.SECONDS))} s."
+        fileLogger.append(logString)
+        predictedSpotCounts.add(predictedSpotCount)
+        logger.debug(logString)
+
+        batchStarted = false
+
+        if (predictAll) {
+            // Reset launch time for next prediction round
+            eventLaunchTime = TimeSource.Monotonic.markNow()
+            goToTimepoint(predictedTimepoint)
+            // PredictAll sweeps through all timepoints, so we can disable the listener once we reach the end
+            if (predictedTimepoint == numTimepoints - 1) {
+                isActive.set(false)
+            } else {
+                // graphChanged is triggered once per TP, but vertexAdded is triggered with every vertex.
+                // If we keep predicting TPs, we want to keep listening to timepoint changes too.
+                listenForSpots = true
+            }
+        } else {
+            // If only a single TP was predicted, we can deactivate the listener right away.
+            isActive.set(false)
+        }
+
     }
 
     /** Indicate that a prediction event was just launched. Updates the [eventLaunchTime],
@@ -100,19 +111,21 @@ class ElephantListener(
         isActive.set(true)
         listenForSpots = true
         predictedSpotCount = 0
+        batchStarted = false
     }
 
     override fun vertexAdded(vertex: Spot?) {
-        if (isActive.get()) {
-            // We can stop listening once we updated the predicted timepoint
-            if (listenForSpots) {
-                vertex?.let {
-                    predictedTimepoint = vertex.timepoint
-                }
-                listenForSpots = false
+        if (!isActive.get()) return
+
+        // We can stop listening once we updated the predicted timepoint
+        if (listenForSpots) {
+            vertex?.let {
+                predictedTimepoint = vertex.timepoint
             }
-            predictedSpotCount++
+            listenForSpots = false
         }
+        predictedSpotCount++
+
     }
 
     override fun graphRebuilt() {}
