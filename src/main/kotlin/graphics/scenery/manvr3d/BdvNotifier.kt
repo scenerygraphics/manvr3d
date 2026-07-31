@@ -13,7 +13,6 @@ import org.mastodon.mamut.views.bdv.MamutViewBdv
 import org.mastodon.model.FocusListener
 import org.mastodon.spatial.VertexPositionListener
 import org.mastodon.ui.coloring.ColoringModel.ColoringChangedListener
-import org.mastodon.ui.coloring.feature.FeatureColorModeManager.FeatureColorModesListener
 import java.beans.PropertyChangeEvent
 import java.beans.PropertyChangeListener
 
@@ -47,25 +46,25 @@ class BdvNotifier(
     private val logger by lazyLogger()
     var movedSpot: Spot? = null
 
+    //create a listener for it (which will _immediately_ collect updates from BDV)
+    private val bdvUpdateListener: BdvEventsWatcher = BdvEventsWatcher(bdvWindow, mastodon)
+
+    //create a thread that would be watching over the listener and would take only
+    //the most recent data if no updates came from BDV for a little while
+    //(this is _delayed_ handling of the data, skipping over any intermediate changes)
+    private val eventsHandlerThread: BdvEventsCatcherThread = BdvEventsCatcherThread(
+        bdvUpdateListener,
+        10,
+        updateTimepointProcessor,
+        updateContentProcessor,
+        updateViewProcessor,
+        updateVertexProcessor,
+        updateGraphProcessor,
+        updateColoringProcessor,
+        updateFocusProcessor
+    )
+
     init {
-        //create a listener for it (which will _immediately_ collect updates from BDV)
-        val bdvUpdateListener = BdvEventsWatcher(bdvWindow, mastodon)
-
-        //create a thread that would be watching over the listener and would take only
-        //the most recent data if no updates came from BDV for a little while
-        //(this is _delayed_ handling of the data, skipping over any intermediate changes)
-        val cumulatingEventsHandlerThread = BdvEventsCatcherThread(
-            bdvUpdateListener,
-            10,
-            updateTimepointProcessor,
-            updateContentProcessor,
-            updateViewProcessor,
-            updateVertexProcessor,
-            updateGraphProcessor,
-            updateColoringProcessor,
-            updateFocusProcessor
-        )
-
         //register the BDV listener and start the thread
         bdvWindow.viewerPanelMamut.renderTransformListeners().add(bdvUpdateListener)
         bdvWindow.viewerPanelMamut.timePointListeners().add(bdvUpdateListener)
@@ -74,18 +73,24 @@ class BdvNotifier(
         mastodon.focusModel.listeners().add(bdvUpdateListener)
         mastodon.model.graph.addVertexPositionListener(bdvUpdateListener)
         mastodon.model.graph.addGraphChangeListener(bdvUpdateListener)
-        cumulatingEventsHandlerThread.start()
+        eventsHandlerThread.start()
         bdvWindow.onClose {
             logger.debug("Cleaning up while BDV window is closing.")
-            bdvWindow.viewerPanelMamut.renderTransformListeners().remove(bdvUpdateListener)
-            bdvWindow.viewerPanelMamut.timePointListeners().remove(bdvUpdateListener)
-            bdvWindow.viewerPanelMamut.removePropertyChangeListener(bdvUpdateListener)
-            bdvWindow.coloringModel.listeners().remove(bdvUpdateListener)
-            mastodon.focusModel.listeners().remove(bdvUpdateListener)
-            mastodon.model.graph.removeGraphChangeListener(bdvUpdateListener)
-            mastodon.model.graph.removeVertexPositionListener(bdvUpdateListener)
-            cumulatingEventsHandlerThread.stopTheWatching()
+            destroy()
         }
+    }
+
+    fun destroy() {
+
+        bdvWindow.viewerPanelMamut.renderTransformListeners().remove(bdvUpdateListener)
+        bdvWindow.viewerPanelMamut.timePointListeners().remove(bdvUpdateListener)
+        bdvWindow.viewerPanelMamut.removePropertyChangeListener(bdvUpdateListener)
+        bdvWindow.coloringModel.listeners().remove(bdvUpdateListener)
+        mastodon.focusModel.listeners().remove(bdvUpdateListener)
+        mastodon.model.graph.removeGraphChangeListener(bdvUpdateListener)
+        mastodon.model.graph.removeVertexPositionListener(bdvUpdateListener)
+        eventsHandlerThread.stopTheWatching()
+        logger.info("Stopped BDV notifier thread.")
     }
 
     /**
@@ -193,7 +198,9 @@ class BdvNotifier(
         val coloringProcessor: Runnable,
         val focusProcessor: Runnable
     ) : Thread(SERVICE_NAME) {
+
         var keepWatching = true
+
         fun stopTheWatching() {
             keepWatching = false
         }

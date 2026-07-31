@@ -452,6 +452,7 @@ class Manvr3dMain: TimepointObserver {
         }
         fileLogger.endManvr3dSession(mastodon, elephantListener.predictionDurations, elephantListener.predictedSpotCounts)
         elephantListener.detach()
+        bdvNotifier?.destroy()
         logger.debug("Removed elephant listener from the Mastodon graph.")
 
         stopAndDetachUI()
