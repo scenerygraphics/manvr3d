@@ -34,7 +34,7 @@ where the timepoint defines the color of each link, or using the corresponding s
 
 ## Getting started
 
-You can find packaged versions of manvr3d in the release section. They are primarily intended for testing purposes and may not be ready for day to day use use. A list of known issues is listed below.
+You can find packaged versions of manvr3d in the release section. They are primarily intended for testing purposes and may not be ready for day to day use use. [A list of known issues](#Known-Issues) is listed below.
 
 Simply execute the `manvr3d.bat` batch file in the `bin` folder. At this time, we only support the Windows platform due to support of VR hardware.
 After launch, a Mastodon and a Fiji window will open. From the Mastodon window, you can open existing projects or create new ones from your image dataset.
