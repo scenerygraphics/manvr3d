@@ -4,7 +4,7 @@ import graphics.scenery.*
 import graphics.scenery.attribute.material.Material
 import graphics.scenery.backends.Renderer
 import graphics.scenery.controls.ButtonMapping
-import graphics.scenery.controls.OpenVRHMD
+import graphics.scenery.controls.OpenXRHMD
 import graphics.scenery.controls.TrackedDevice
 import graphics.scenery.controls.TrackedDeviceType
 import graphics.scenery.controls.TrackerRole
@@ -54,7 +54,7 @@ class VRLabelPositioningTool(
     windowHeight = 720
 ) {
 
-    private lateinit var hmd: OpenVRHMD
+    private lateinit var hmd: OpenXRHMD
 
     // The controller that wears the labels being positioned
     private var labelController: TrackedDevice? = null
@@ -87,7 +87,7 @@ class VRLabelPositioningTool(
     private lateinit var progressBoard: TextBoard
 
     override fun init() {
-        hmd = OpenVRHMD(useCompositor = true)
+        hmd = OpenXRHMD(useCompositor = true)
 
         if (!hmd.initializedAndWorking()) {
             logger.error("No OpenVR-compatible HMD found. Exiting.")
@@ -354,15 +354,15 @@ class VRLabelPositioningTool(
             override fun drag(x: Int, y: Int)  { updateGrabbedLabelPosition() }
             override fun end(x: Int, y: Int)   { endGrab() }
         })
-        hmd.addKeyBinding("grab_label", helperRole, OpenVRHMD.OpenVRButton.Side)
+        hmd.addKeyBinding("grab_label", helperRole, OpenXRHMD.OpenXRButton.Side)
 
         // Confirm – Trigger on the helper controller
         hmd.addBehaviour("confirm_label", ClickBehaviour { _, _ -> confirmAndAdvance() })
-        hmd.addKeyBinding("confirm_label", helperRole, OpenVRHMD.OpenVRButton.Trigger)
+        hmd.addKeyBinding("confirm_label", helperRole, OpenXRHMD.OpenXRButton.Trigger)
 
         // Skip – A button on the helper controller
         hmd.addBehaviour("skip_label", ClickBehaviour { _, _ -> skipCurrent() })
-        hmd.addKeyBinding("skip_label", helperRole, OpenVRHMD.OpenVRButton.A)
+        hmd.addKeyBinding("skip_label", helperRole, OpenXRHMD.OpenXRButton.A)
     }
 
     companion object {

@@ -6,7 +6,7 @@ import bdv.viewer.Source
 import bdv.viewer.SourceAndConverter
 import graphics.scenery.*
 import graphics.scenery.backends.RenderConfigReader
-import graphics.scenery.controls.OpenVRHMD
+import graphics.scenery.controls.OpenXRHMD
 import graphics.scenery.controls.behaviours.SelectCommand
 import graphics.scenery.controls.behaviours.WithCameraDelegateBase
 import graphics.scenery.utils.extensions.minus
@@ -964,7 +964,7 @@ class Manvr3dMain: TimepointObserver {
     fun launchVR(wantEyeTracking: Boolean = true): Boolean {
 
         // Test whether a headset is connected before starting sciview's VR launch routines
-        val hmd = OpenVRHMD(false, true)
+        val hmd = OpenXRHMD(false, true)
         if (!hmd.initializedAndWorking()) {
             logger.warn("Could not find VR headset. Aborting launch of VR environment.")
             hmd.close()
