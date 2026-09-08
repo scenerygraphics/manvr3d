@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.4-snapshot]
+## [0.4]
 
 ### Added
 
