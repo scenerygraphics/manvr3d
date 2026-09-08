@@ -55,7 +55,7 @@ open class CellTrackingBase(
     lateinit var sessionId: String
     lateinit var sessionDirectory: Path
 
-    lateinit var hmd: OpenVRHMD
+    lateinit var hmd: OpenXRHMD
 
     val hedgehogs = Mesh()
     val hedgehogIds = AtomicInteger(0)
@@ -105,7 +105,7 @@ open class CellTrackingBase(
 
     open fun run() {
         sciview.toggleVRRendering(resolutionScale = resolutionScale)
-        hmd = sciview.hub.getWorkingHMD() as? OpenVRHMD ?: throw IllegalStateException("Could not find headset")
+        hmd = sciview.hub.getWorkingHMD() as? OpenXRHMD ?: throw IllegalStateException("Could not find headset")
 
         // Load profile for this headset
         if (!buttonMapper.loadProfileForHMD(hmd)) {
@@ -726,7 +726,7 @@ open class CellTrackingBase(
 
         /** Local class that handles double assignment of the left A key which is used to cycle menus as well as
          * reset the rotation when pressed while the [VRTwoHandNodeTransform] is active. */
-        class CycleMenuAndLockAxisBehavior(val button: OpenVRHMD.OpenVRButton, val role: TrackerRole)
+        class CycleMenuAndLockAxisBehavior(val button: OpenXRHMD.OpenXRButton, val role: TrackerRole)
             : DragBehaviour {
             fun registerConfig() {
                 logger.debug("Setting up keybinds for CycleMenuAndLockAxisBehavior")
@@ -744,7 +744,7 @@ open class CellTrackingBase(
             }
         }
 
-        val leftAButtonBehavior = CycleMenuAndLockAxisBehavior(OpenVRHMD.OpenVRButton.A, TrackerRole.LeftHand)
+        val leftAButtonBehavior = CycleMenuAndLockAxisBehavior(OpenXRHMD.OpenXRButton.A, TrackerRole.LeftHand)
         leftAButtonBehavior.let {
             it.registerConfig()
             mapper.bind(hmd, buttonMapper.CYCLE_MENU, it)
@@ -867,7 +867,7 @@ open class CellTrackingBase(
         VRPress.createAndSet(
             sciview.currentScene,
             hmd,
-            listOf(OpenVRHMD.OpenVRButton.Trigger),
+            listOf(OpenXRHMD.OpenXRButton.Trigger),
             listOf(TrackerRole.RightHand),
             customTip = cursor.cursorPointer
         )
@@ -875,14 +875,14 @@ open class CellTrackingBase(
         VRGrabTheWorld.createAndSet(
             sciview.currentScene,
             hmd,
-            listOf(OpenVRHMD.OpenVRButton.Side),
+            listOf(OpenXRHMD.OpenXRButton.Side),
             listOf(TrackerRole.LeftHand),
             grabButtonManager
         )
 
         VRTwoHandNodeTransform.createAndSet(
             hmd,
-            OpenVRHMD.OpenVRButton.Side,
+            OpenXRHMD.OpenXRButton.Side,
             sciview.currentScene,
             lockYaxis = false,
             target = volume,
@@ -914,12 +914,12 @@ open class CellTrackingBase(
 
         // drag behavior can stay enabled regardless of current tool mode
         MoveInstanceVR.createAndSet(manvr3d, hmd,
-            listOf(OpenVRHMD.OpenVRButton.Side), listOf(TrackerRole.RightHand),
+            listOf(OpenXRHMD.OpenXRButton.Side), listOf(TrackerRole.RightHand),
             grabButtonManager,
             { cursor.getPosition() }
         )
 
-        hmd.allowRepeats += OpenVRHMD.OpenVRButton.Trigger to TrackerRole.LeftHand
+        hmd.allowRepeats += OpenXRHMD.OpenXRButton.Trigger to TrackerRole.LeftHand
         logger.info("Registered VR controller bindings.")
     }
 
