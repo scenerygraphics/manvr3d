@@ -107,6 +107,11 @@ open class CellTrackingBase(
         sciview.toggleVRRendering(resolutionScale = resolutionScale)
         hmd = sciview.hub.getWorkingHMD() as? OpenXRHMD ?: throw IllegalStateException("Could not find headset")
 
+        if (!hmd.awaitInteractionProfile()) {
+            logger.warn("Headset did not report a controller profile in time (session not focused?)")
+            return
+        }
+
         // Load profile for this headset
         if (!buttonMapper.loadProfileForHMD(hmd)) {
             logger.warn("Failed to load controller profile")
@@ -143,7 +148,7 @@ open class CellTrackingBase(
         }
 
         logger.info("Adding onDeviceConnect handlers")
-        hmd.events.onDeviceConnect.add { hmd, device, timestamp ->
+        hmd.onDeviceConnect { hmd, device, timestamp ->
             logger.info("onDeviceConnect called, cam=${sciview.camera}")
             if (device.type == TrackedDeviceType.Controller) {
                 logger.info("Got device ${device.name} at $timestamp")
