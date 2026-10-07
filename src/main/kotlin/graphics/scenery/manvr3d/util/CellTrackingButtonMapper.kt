@@ -58,12 +58,7 @@ object CellTrackingButtonMapper {
             ),
             GRAB_WORLD to ButtonMapping(TrackerRole.LeftHand, OpenXRButton.Side),
             GRAB_SPOT to ButtonMapping(TrackerRole.RightHand, OpenXRButton.Side),
-//            PLAYBACK to ButtonMapping(
-//                TrackerRole.LeftHand, OpenXRButton.Menu, "Play",
-//                offset = Vector3f(0.023f, 0.003f, 0.056f),
-//                rotation = Quaternionf(-0.866f, -0.034f, -0.063f, 0.494f)
-//            ),
-            TOGGLE_MENU to ButtonMapping(TrackerRole.LeftHand, OpenXRButton.Menu, "Menu",
+            TOGGLE_MENU to ButtonMapping(TrackerRole.LeftHand, OpenXRButton.B, "Menu",
                 offset = Vector3f(0.023f, 0.003f, 0.056f),
                 rotation = Quaternionf(-0.866f, -0.034f, -0.063f, 0.494f)
             ),
@@ -92,7 +87,7 @@ object CellTrackingButtonMapper {
                 rotation = Quaternionf(-0.86f, 0.122f,0.075f, 0.491f)
             ),
             ADD_DELETE_RESET to ButtonMapping(
-                TrackerRole.RightHand, OpenXRButton.Menu, "Add",
+                TrackerRole.RightHand, OpenXRButton.B, "Add",
                 offset = Vector3f(-0.041f, 0.003f,0.059f),
                 rotation = Quaternionf(-0.893f, 0.072f,0.087f, 0.437f)
             ),

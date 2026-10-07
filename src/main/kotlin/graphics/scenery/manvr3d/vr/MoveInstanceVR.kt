@@ -111,7 +111,7 @@ class MoveInstanceVR(
             buttonmanager: MultiButtonManager,
             getTipPosition: () -> Vector3f
         ) {
-            hmd.events.onDeviceConnect.add { _, device, _ ->
+            hmd.onDeviceConnect { _, device, _ ->
                 if (device.type == TrackedDeviceType.Controller) {
                     device.model?.let { controller ->
                         if (controllerSide.contains(device.role)) {
