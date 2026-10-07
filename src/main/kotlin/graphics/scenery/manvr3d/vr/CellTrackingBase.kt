@@ -924,7 +924,7 @@ open class CellTrackingBase(
             { cursor.getPosition() }
         )
 
-        hmd.allowRepeats += OpenXRHMD.OpenXRButton.Trigger to TrackerRole.LeftHand
+        hmd.allowRepeats += OpenXRHMD.OpenXRButton.A to TrackerRole.RightHand
         logger.info("Registered VR controller bindings.")
     }
 
