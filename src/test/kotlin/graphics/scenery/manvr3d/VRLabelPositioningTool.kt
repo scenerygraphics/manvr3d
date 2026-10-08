@@ -130,7 +130,7 @@ class VRLabelPositioningTool(
         // Wait for controllers to connect
         thread {
             while (!running) Thread.sleep(100)
-            hmd.events.onDeviceConnect.add { hmd, device, timestamp ->
+            hmd.onDeviceConnect { hmd, device, timestamp ->
                 if (device.type == TrackedDeviceType.Controller) {
                     logger.info("Controller connected: ${device.name} role=${device.role} at $timestamp")
                     device.model?.let { hmd.attachToNode(device, it, cam) }
