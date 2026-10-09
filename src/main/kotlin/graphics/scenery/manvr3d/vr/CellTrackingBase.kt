@@ -35,6 +35,8 @@ import java.nio.file.Path
 import java.util.ArrayList
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.concurrent.thread
+import kotlin.time.Duration.Companion.seconds
+import kotlin.time.TimeSource
 
 /**
  * Base class for different VR cell tracking purposes. It includes functionality to add spines and edgehogs,
@@ -656,19 +658,28 @@ open class CellTrackingBase(
             }
         }
 
-        val nextTimepoint = ClickBehaviour { _, _ ->
-            if (!controllerTrackingActive) {
-                if (direction == PlaybackDirection.Backward) {
-                    skipToNext = true
-                } else {
-                    skipToPrevious = true
+
+        class TimepointScrollBehavior(val stickDirection: PlaybackDirection) : DragBehaviour {
+            var initTime = TimeSource.Monotonic.markNow()
+
+            override fun init(x: Int, y: Int) {
+                initTime = TimeSource.Monotonic.markNow()
+                scrollTimepoint()
+            }
+
+            override fun drag(x: Int, y: Int) {
+                if ((TimeSource.Monotonic.markNow() - initTime) > 0.6.seconds) {
+                    scrollTimepoint()
                 }
             }
-        }
 
-        val prevTimepoint = ClickBehaviour { _, _ ->
-            if (!controllerTrackingActive) {
-                if (direction == PlaybackDirection.Forward) {
+            override fun end(x: Int, y: Int) {}
+
+            fun scrollTimepoint() {
+                if (controllerTrackingActive) {
+                    return
+                }
+                if (stickDirection == PlaybackDirection.Forward) {
                     skipToNext = true
                 } else {
                     skipToPrevious = true
@@ -700,26 +711,15 @@ open class CellTrackingBase(
 
         val scaleCursorOrSpotsDown = AnalogInputWrapper(ScaleCursorOrSpotsBehavior(0.98f), sciview.currentScene)
 
-        val playPause = ClickBehaviour { _, _ ->
-            playing = !playing
-            if (playing) {
-                cam.showMessage("Playing", distance = 2f, size = 0.2f, centered = true)
-            } else {
-                cam.showMessage("Paused", distance = 2f, size = 0.2f, centered = true)
-            }
-            buttonMapper.let {
-                it.mapper.updateLabel(it.PLAYBACK, if (playing) "Pause" else "Play")
-            }
-        }
-
         val toggleMenu = ClickBehaviour { _, _ ->
             leftWristMenu.toggleVisibility()
         }
 
-        mapper.bind(hmd, buttonMapper.STEP_FWD, nextTimepoint)
-        mapper.bind(hmd, buttonMapper.STEP_BWD, prevTimepoint)
+        mapper.bind(hmd, buttonMapper.STEP_FWD, AnalogInputWrapper(
+            TimepointScrollBehavior(PlaybackDirection.Forward), sciview.currentScene))
+        mapper.bind(hmd, buttonMapper.STEP_BWD, AnalogInputWrapper(
+            TimepointScrollBehavior(PlaybackDirection.Backward), sciview.currentScene))
 
-//        mapper.bind(hmd, buttonMapper.PLAYBACK, playPause)
         mapper.bind(hmd, buttonMapper.TOGGLE_MENU, toggleMenu)
         mapper.bind(hmd, buttonMapper.RADIUS_INCREASE, scaleCursorOrSpotsUp)
         mapper.bind(hmd, buttonMapper.RADIUS_DECREASE, scaleCursorOrSpotsDown)
