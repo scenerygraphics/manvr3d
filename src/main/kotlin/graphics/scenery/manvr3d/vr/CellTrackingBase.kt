@@ -625,9 +625,9 @@ open class CellTrackingBase(
         volumeTimepointWidget.name = "Volume Timepoint Widget"
         volumeTimepointWidget.fontColor = Vector4f(0.4f, 0.45f, 1f, 1f)
         volumeTimepointWidget.spatial {
-            scale = Vector3f(0.07f)
-            position = Vector3f(-0.05f, -0.05f, 0.12f)
-            rotation = Quaternionf().rotationXYZ(-1.57f, -1.57f, 0f)
+            scale = Vector3f(0.06f)
+            position = Vector3f(-.035f, -.03f, .02f)
+            rotation = Quaternionf().rotationXYZ(-1.2f, .1f, 0f)
         }
 
         rightVRController?.model?.let {
