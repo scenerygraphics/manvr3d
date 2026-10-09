@@ -53,24 +53,18 @@ import graphics.scenery.manvr3d.util.GeometryHandler
 import graphics.scenery.manvr3d.vr.CellTrackingBase
 import graphics.scenery.manvr3d.vr.EyeTracking
 import graphics.scenery.volumes.Colormap
-import org.mastodon.graph.GraphChangeListener
-import org.mastodon.graph.GraphListener
 import java.awt.event.WindowAdapter
 import java.awt.event.WindowEvent
-import java.sql.Time
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.Executors
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
-import java.util.concurrent.atomic.AtomicBoolean
 import javax.swing.Action
 import javax.swing.JFrame
 import javax.swing.JPanel
 import kotlin.concurrent.thread
 import kotlin.math.*
-import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
-import kotlin.time.DurationUnit
 import kotlin.time.TimeSource
 
 /** Main class of Manvr3d. A [mastodon] instance is passed during construction, from which the volume data are taken.
@@ -123,7 +117,7 @@ class Manvr3dMain: TimepointObserver {
     val sciviewWin: SciView
     val geometryHandler: GeometryHandler
     //sink scene graph structuring nodes
-    val axesParent: DataAxes
+    val dataAxes: DataAxes
 
     /** Worker queue for async updates of graph changes for Mastodon. */
     private val updateQueue = LinkedBlockingQueue<() -> Unit>(100)
@@ -230,23 +224,19 @@ class Manvr3dMain: TimepointObserver {
         }
         sciviewWin.addNode(AmbientLight(0.05f, Vector3f(1f, 1f, 1f)))
 
-        //add "root" with data axes
-        axesParent = DataAxes()
-        sciviewWin.addNode(axesParent, activePublish = false)
-
         //get necessary metadata - from image data
         this.sourceID = sourceID
         this.initMipmapLevel = initMipmapLevel
         sac = mastodon.sharedBdvData.sources[this.sourceID]
         spimSource = sac.spimSource
         // number of pixels for each dimension at the highest res level
-        val volumeDims = spimSource.getSource(0, 0).dimensionsAsLongArray()
+        val volumePixelsMax = spimSource.getSource(0, 0).dimensionsAsLongArray()
         // number of pixels for each dimension of the volume at current res level
-        val volumeNumPixels = spimSource.getSource(0, this.initMipmapLevel).dimensionsAsLongArray()
+        val volumePixelsCurrentLevel = spimSource.getSource(0, this.initMipmapLevel).dimensionsAsLongArray()
         val volumeDownscale = Vector3f(
-            volumeDims[0].toFloat() / volumeNumPixels[0].toFloat(),
-            volumeDims[1].toFloat() / volumeNumPixels[1].toFloat(),
-            volumeDims[2].toFloat() / volumeNumPixels[2].toFloat()
+            volumePixelsMax[0].toFloat() / volumePixelsCurrentLevel[0].toFloat(),
+            volumePixelsMax[1].toFloat() / volumePixelsCurrentLevel[1].toFloat(),
+            volumePixelsMax[2].toFloat() / volumePixelsCurrentLevel[2].toFloat()
         )
         logger.info("downscale factors: ${volumeDownscale[0]} x, ${volumeDownscale[1]} x, ${volumeDownscale[2]} x")
         logger.info("number of mipmap levels: ${spimSource.numMipmapLevels}, available timepoints: ${mastodon.sharedBdvData.numTimepoints}")
@@ -272,12 +262,24 @@ class Manvr3dMain: TimepointObserver {
 
         // flip Z axis to align it with the synced BDV view
         volumeNode.spatial().scale *= Vector3f(1f, 1f, -1f)
+        // Prevent the grid from extending into the data axes
+        volumeNode.children.filterIsInstance<BoundingGrid>().firstOrNull()?.includeChildren = false
+
+        val volumePixelDims = Vector3f(volumeNode.getDimensions())
+
+        val voxelDims = sac.spimSource.voxelDimensions.dimensionsAsDoubleArray()
+
+        //add "root" with data axes, scaled to be visible when inheriting the volume scale
+        dataAxes = DataAxes(origin = volumePixelDims.times(Vector3f(
+            0f * voxelDims[0].toFloat(),
+            1f * voxelDims[1].toFloat(),
+            1f * voxelDims[2].toFloat())), size = 20f)
+        sciviewWin.addNode(dataAxes, activePublish = true, parent = volumeNode)
 
         centerCameraOnVolume()
 
         logger.info("volume node scale is ${volumeNode.spatialOrNull()?.scale}")
 
-        logger.info("volume size is ${volumeNode.boundingBox!!.max - volumeNode.boundingBox!!.min}")
         //add the sciview-side displaying handler for the spots
         geometryHandler = GeometryHandler(sciviewWin, this, updateQueue, mastodon, volumeNode, volumeNode)
 

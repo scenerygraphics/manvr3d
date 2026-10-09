@@ -5,29 +5,34 @@ import graphics.scenery.primitives.Cylinder
 import org.joml.Quaternionf
 import org.joml.Vector3f
 
-class DataAxes: Mesh() {
+class DataAxes(
+    origin: Vector3f = Vector3f(0f),
+    size: Float = 0.1f
+): Mesh() {
 
     init {
         //add the data axes
-        val AXES_LINE_WIDTHS = 0.01f
-        val AXES_LINE_LENGTHS = 0.1f
+        val axisWidth = size * 0.1f
+        val axisLength = size
+
+        this.spatial().position = origin
 
         this.name = "Data Axes"
 
-        var c = Cylinder(AXES_LINE_WIDTHS / 2.0f, AXES_LINE_LENGTHS, 12)
+        var c = Cylinder(axisWidth / 2.0f, axisLength, 12)
         c.name = "Data x axis"
         c.material().diffuse = Vector3f(1f, 0f, 0f)
         val halfPI = Math.PI.toFloat() / 2.0f
         c.spatial().rotation = Quaternionf().rotateLocalZ(-halfPI)
         this.addChild(c)
 
-        c = Cylinder(AXES_LINE_WIDTHS / 2.0f, AXES_LINE_LENGTHS, 12)
+        c = Cylinder(axisWidth / 2.0f, axisLength, 12)
         c.name = "Data y axis"
         c.material().diffuse = Vector3f(0f, 1f, 0f)
         c.spatial().rotation = Quaternionf().rotateLocalZ(Math.PI.toFloat())
         this.addChild(c)
 
-        c = Cylinder(AXES_LINE_WIDTHS / 2.0f, AXES_LINE_LENGTHS, 12)
+        c = Cylinder(axisWidth / 2.0f, axisLength, 12)
         c.name = "Data z axis"
         c.material().diffuse = Vector3f(0f, 0f, 1f)
         c.spatial().rotation = Quaternionf().rotateLocalX(-halfPI)
