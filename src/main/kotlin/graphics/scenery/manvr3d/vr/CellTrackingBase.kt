@@ -162,6 +162,7 @@ open class CellTrackingBase(
                             )
                             setupElephantMenu()
                             setupGeneralMenu()
+                            setupTrackingMenu()
                             onLeftHandReady()
                             leftWristMenu.hideAll()
                             buttonMapper.mapper.attachUIForRole(device.role, it, textScale = 0.02f)
@@ -583,6 +584,36 @@ open class CellTrackingBase(
         }, byTouch = false, color = color, pressedColor = pressedColor, touchingColor = touchingColor)
 
         logger.debug("Set up general menus.")
+    }
+
+    fun setupTrackingMenu() {
+        leftWristMenu.addColumn("Tracking Menu")
+
+        val trackAllButton = Button(" |<->| ", command = {
+            thread {
+                val selected = manvr3d.mastodon.selectionModel.selectedVertices
+                manvr3d.semiAutoTracker.track(true)
+                manvr3d.mastodon.selectionModel.clearSelection()
+                selected.forEach {
+                    manvr3d.mastodon.selectionModel.setSelected(it, true)
+                }
+                manvr3d.semiAutoTracker.track(false)
+            }
+        }, depressDelay = 250, textInFront = true)
+
+        val trackFwdButton = Button(" |-> ", command = {
+            thread {
+                manvr3d.semiAutoTracker.track(true)
+            }
+        }, depressDelay = 250, textInFront = true)
+
+        val trackBwdButton = Button(" <-| ", command = {
+            thread {
+                manvr3d.semiAutoTracker.track(false)
+            }
+        }, depressDelay = 250, textInFront = true)
+
+        leftWristMenu.addRow("Tracking Menu", trackAllButton, trackBwdButton, trackFwdButton)
     }
 
     var isLensingActive = false

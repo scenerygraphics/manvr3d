@@ -50,9 +50,15 @@ import sc.iview.SciView
 import org.mastodon.mamut.ProjectModel
 import graphics.scenery.utils.TimepointObserver
 import graphics.scenery.manvr3d.util.GeometryHandler
+import graphics.scenery.manvr3d.util.SemiAutomaticTrackerWrapper
 import graphics.scenery.manvr3d.vr.CellTrackingBase
 import graphics.scenery.manvr3d.vr.EyeTracking
 import graphics.scenery.volumes.Colormap
+import net.imagej.ops.special.computer.Computers
+import org.mastodon.tracking.mamut.trackmate.semiauto.SemiAutomaticTracker
+import org.mastodon.tracking.mamut.trackmate.semiauto.SemiAutomaticTrackerPlugin
+import org.mastodon.tracking.mamut.trackmate.semiauto.ui.SemiAutomaticTrackerSettingsManager
+import org.scijava.ui.behaviour.util.AbstractNamedAction
 import java.awt.event.WindowAdapter
 import java.awt.event.WindowEvent
 import java.util.concurrent.CopyOnWriteArrayList
@@ -182,6 +188,8 @@ class Manvr3dMain: TimepointObserver {
     private val trainFlowAction: Action? = null
     private var neighborLinkingAction: Action? = null
 
+    lateinit var semiAutoTracker: SemiAutomaticTrackerWrapper
+
     val fileLogger: FileStatsLogger
 
     constructor(
@@ -300,6 +308,8 @@ class Manvr3dMain: TimepointObserver {
         defaultVolumeRotation = volumeNode.spatial().rotation
 
         pluginActions = mastodon.plugins.pluginActions
+
+        semiAutoTracker = SemiAutomaticTrackerWrapper(this, mastodon, maxTimepoint + 1)
 
         openSyncedBDV()
 
