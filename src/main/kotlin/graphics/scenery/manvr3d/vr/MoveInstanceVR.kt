@@ -1,7 +1,7 @@
 package graphics.scenery.manvr3d.vr
 
 import graphics.scenery.manvr3d.Manvr3dMain
-import graphics.scenery.controls.OpenVRHMD
+import graphics.scenery.controls.OpenXRHMD
 import graphics.scenery.controls.TrackedDeviceType
 import graphics.scenery.controls.TrackerRole
 import graphics.scenery.controls.behaviours.MultiButtonManager
@@ -14,7 +14,7 @@ import org.scijava.ui.behaviour.DragBehaviour
 class MoveInstanceVR(
     val manvr3d: Manvr3dMain,
     val buttonmanager: MultiButtonManager,
-    val button: OpenVRHMD.OpenVRButton,
+    val button: OpenXRHMD.OpenXRButton,
     val trackerRole: TrackerRole,
     val getTipPosition: () -> Vector3f
 ): DragBehaviour {
@@ -105,13 +105,13 @@ class MoveInstanceVR(
          */
         fun createAndSet(
             manvr3d: Manvr3dMain,
-            hmd: OpenVRHMD,
-            buttons: List<OpenVRHMD.OpenVRButton>,
+            hmd: OpenXRHMD,
+            buttons: List<OpenXRHMD.OpenXRButton>,
             controllerSide: List<TrackerRole>,
             buttonmanager: MultiButtonManager,
             getTipPosition: () -> Vector3f
         ) {
-            hmd.events.onDeviceConnect.add { _, device, _ ->
+            hmd.onDeviceConnect { _, device, _ ->
                 if (device.type == TrackedDeviceType.Controller) {
                     device.model?.let { controller ->
                         if (controllerSide.contains(device.role)) {

@@ -22,6 +22,7 @@ import org.scijava.ui.behaviour.DragBehaviour
 import sc.iview.SciView
 import graphics.scenery.manvr3d.analysis.HedgehogAnalysis.SpineGraphVertex
 import graphics.scenery.controls.behaviours.MultiButtonManager
+import graphics.scenery.controls.behaviours.ThumbstickMovement
 import graphics.scenery.controls.behaviours.VRTwoHandNodeTransform
 import graphics.scenery.controls.behaviours.VRGrabTheWorld
 import graphics.scenery.controls.behaviours.VRPress
@@ -29,12 +30,19 @@ import graphics.scenery.manvr3d.util.GeometryHandler
 import graphics.scenery.utils.TimepointObservable
 import graphics.scenery.manvr3d.util.SpineMetadata
 import graphics.scenery.manvr3d.util.CellTrackingButtonMapper
+import org.joml.Quaternionf
+import org.joml.Vector2f
+import org.joml.Vector3f
+import org.joml.Vector4f
 import java.io.BufferedWriter
 import java.io.FileWriter
+import java.lang.Math
 import java.nio.file.Path
 import java.util.ArrayList
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.concurrent.thread
+import kotlin.math.pow
+import kotlin.math.sqrt
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.TimeSource
 
@@ -57,7 +65,7 @@ open class CellTrackingBase(
     lateinit var sessionId: String
     lateinit var sessionDirectory: Path
 
-    lateinit var hmd: OpenVRHMD
+    lateinit var hmd: OpenXRHMD
 
     val hedgehogs = Mesh()
     val hedgehogIds = AtomicInteger(0)
@@ -100,6 +108,7 @@ open class CellTrackingBase(
 
     val grabButtonManager = MultiButtonManager()
     val resetRotationBtnManager = MultiButtonManager()
+    lateinit var thumbstickMovement: ThumbstickMovement
 
     val buttonMapper = CellTrackingButtonMapper
 
@@ -107,7 +116,12 @@ open class CellTrackingBase(
 
     open fun run() {
         sciview.toggleVRRendering(resolutionScale = resolutionScale)
-        hmd = sciview.hub.getWorkingHMD() as? OpenVRHMD ?: throw IllegalStateException("Could not find headset")
+        hmd = sciview.hub.getWorkingHMD() as? OpenXRHMD ?: throw IllegalStateException("Could not find headset")
+
+        if (!hmd.awaitInteractionProfile()) {
+            logger.warn("Headset did not report a controller profile in time (session not focused?)")
+            return
+        }
 
         // Load profile for this headset
         if (!buttonMapper.loadProfileForHMD(hmd)) {
@@ -145,7 +159,7 @@ open class CellTrackingBase(
         }
 
         logger.info("Adding onDeviceConnect handlers")
-        hmd.events.onDeviceConnect.add { hmd, device, timestamp ->
+        hmd.onDeviceConnect { hmd, device, timestamp ->
             logger.info("onDeviceConnect called, cam=${sciview.camera}")
             if (device.type == TrackedDeviceType.Controller) {
                 logger.info("Got device ${device.name} at $timestamp")
@@ -675,19 +689,10 @@ open class CellTrackingBase(
 
         val mapper = buttonMapper.mapper
 
-        // Get the existing movement behaviors from sciview and map them to the VR controllers
-        sciview.sceneryInputHandler?.let { handler ->
-            mapOf(
-                buttonMapper.MOVE_FORWARD to "move_forward_fast",
-                buttonMapper.MOVE_BACKWARD to "move_back_fast",
-                buttonMapper.MOVE_LEFT to "move_left_fast",
-                buttonMapper.MOVE_RIGHT to "move_right_fast").forEach { (binding, name) ->
-                handler.getBehaviour(name)?.let { behaviour ->
-                    (behaviour as MovementCommand).speed = 0.3f
-                    mapper.bind(hmd, binding, behaviour)
-                }
-            }
-        }
+        thumbstickMovement = ThumbstickMovement.createAndSet(
+            hmd, TrackerRole.LeftHand, cam, 1.5f, 1.5f,
+            Quaternionf().rotateX(Math.toRadians(-45.0).toFloat())
+        )
 
 
         class TimepointScrollBehavior(val stickDirection: PlaybackDirection) : DragBehaviour {
@@ -757,7 +762,7 @@ open class CellTrackingBase(
 
         /** Local class that handles double assignment of the left A key which is used to cycle menus as well as
          * reset the rotation when pressed while the [VRTwoHandNodeTransform] is active. */
-        class CycleMenuAndLockAxisBehavior(val button: OpenVRHMD.OpenVRButton, val role: TrackerRole)
+        class CycleMenuAndLockAxisBehavior(val button: OpenXRHMD.OpenXRButton, val role: TrackerRole)
             : DragBehaviour {
             fun registerConfig() {
                 logger.debug("Setting up keybinds for CycleMenuAndLockAxisBehavior")
@@ -775,7 +780,7 @@ open class CellTrackingBase(
             }
         }
 
-        val leftAButtonBehavior = CycleMenuAndLockAxisBehavior(OpenVRHMD.OpenVRButton.A, TrackerRole.LeftHand)
+        val leftAButtonBehavior = CycleMenuAndLockAxisBehavior(OpenXRHMD.OpenXRButton.A, TrackerRole.LeftHand)
         leftAButtonBehavior.let {
             it.registerConfig()
             mapper.bind(hmd, buttonMapper.CYCLE_MENU, it)
@@ -898,7 +903,7 @@ open class CellTrackingBase(
         VRPress.createAndSet(
             sciview.currentScene,
             hmd,
-            listOf(OpenVRHMD.OpenVRButton.Trigger),
+            listOf(OpenXRHMD.OpenXRButton.Trigger),
             listOf(TrackerRole.RightHand),
             customTip = cursor.cursorPointer
         )
@@ -906,14 +911,14 @@ open class CellTrackingBase(
         VRGrabTheWorld.createAndSet(
             sciview.currentScene,
             hmd,
-            listOf(OpenVRHMD.OpenVRButton.Side),
+            listOf(OpenXRHMD.OpenXRButton.Side),
             listOf(TrackerRole.LeftHand),
             grabButtonManager
         )
 
         VRTwoHandNodeTransform.createAndSet(
             hmd,
-            OpenVRHMD.OpenVRButton.Side,
+            OpenXRHMD.OpenXRButton.Side,
             sciview.currentScene,
             lockYaxis = false,
             target = volume,
@@ -945,12 +950,12 @@ open class CellTrackingBase(
 
         // drag behavior can stay enabled regardless of current tool mode
         MoveInstanceVR.createAndSet(manvr3d, hmd,
-            listOf(OpenVRHMD.OpenVRButton.Side), listOf(TrackerRole.RightHand),
+            listOf(OpenXRHMD.OpenXRButton.Side), listOf(TrackerRole.RightHand),
             grabButtonManager,
             { cursor.getPosition() }
         )
 
-        hmd.allowRepeats += OpenVRHMD.OpenVRButton.Trigger to TrackerRole.LeftHand
+        hmd.allowRepeats += OpenXRHMD.OpenXRButton.A to TrackerRole.RightHand
         logger.info("Registered VR controller bindings.")
     }
 
@@ -1063,7 +1068,7 @@ open class CellTrackingBase(
 
         val sphereDirection = sphere.origin.minus(center)
         val sphereDist =
-            Math.sqrt(sphereDirection.x * sphereDirection.x + sphereDirection.y * sphereDirection.y + sphereDirection.z * sphereDirection.z) - sphere.radius
+            sqrt(sphereDirection.x * sphereDirection.x + sphereDirection.y * sphereDirection.y + sphereDirection.z * sphereDirection.z) - sphere.radius
 
         val p1 = center
         val temp = direction.mul(sphereDist + 2.0f * sphere.radius)
@@ -1165,7 +1170,7 @@ open class CellTrackingBase(
     }
 
     /**
-     * Stops the current tracking environment and restore the original state.
+     * Stops the current VR tracking environment and restore the original state.
      * This method should be overridden if functionality is extended, to make sure any extra objects are also deleted.
      */
     open fun stop() {
@@ -1184,6 +1189,8 @@ open class CellTrackingBase(
         leftVRController?.model?.let {
             sciview.deleteNode(it)
         }
+
+        thumbstickMovement.deregisterBehavior()
 
         logger.info("Cleaned up basic VR objects. Objects left: ${sciview.allSceneNodes.map { it.name }}")
 
