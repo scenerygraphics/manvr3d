@@ -7,6 +7,8 @@ import net.imagej.ops.special.computer.Computers
 import org.mastodon.mamut.ProjectModel
 import org.mastodon.tracking.mamut.trackmate.semiauto.SemiAutomaticTracker
 import org.mastodon.tracking.mamut.trackmate.semiauto.SemiAutomaticTrackerKeys
+import org.scijava.log.LogLevel
+import org.scijava.log.LogService
 
 class SemiAutomaticTrackerWrapper(
     val manvr3d: Manvr3dMain,
@@ -31,6 +33,9 @@ class SemiAutomaticTrackerWrapper(
         val opsService = mastodon.context.getService(OpService::class.java)
             ?: throw IllegalStateException("No OpService")
 
+        val trackerLog = mastodon.context.getService(LogService::class.java)
+            .subLogger("SemiAutomaticTracker", LogLevel.WARN)
+
         settings = SemiAutomaticTrackerKeys.getDefaultDetectorSettingsMap().apply {
             put(SemiAutomaticTrackerKeys.KEY_N_TIMEPOINTS, numTimepoints)
             put(SemiAutomaticTrackerKeys.KEY_FORWARD_IN_TIME, true)
@@ -50,7 +55,8 @@ class SemiAutomaticTrackerWrapper(
             mastodon.sharedBdvData,
             navigation,
             mastodon.selectionModel,
-            mastodon.focusModel
+            mastodon.focusModel,
+            trackerLog
         ) as SemiAutomaticTracker
     }
 
