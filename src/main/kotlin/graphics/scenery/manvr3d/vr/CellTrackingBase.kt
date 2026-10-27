@@ -102,6 +102,8 @@ open class CellTrackingBase(
     val cursorSelectColor = Vector3f(1f, 0.25f, 0.25f)
     val cursorTrackingColor = Vector3f(0.65f, 1f, 0.22f)
 
+    val controllerColor = Vector3f(0.12f)
+
     lateinit var leftWristMenu: MultiWristMenu
 
     var enableTrackingPreview = true
@@ -163,7 +165,22 @@ open class CellTrackingBase(
             logger.info("onDeviceConnect called, cam=${sciview.camera}")
             if (device.type == TrackedDeviceType.Controller) {
                 logger.info("Got device ${device.name} at $timestamp")
-                device.model?.let { hmd.attachToNode(device, it, sciview.camera) }
+                device.model?.let {
+                    hmd.attachToNode(device, it, sciview.camera)
+                    val meshPrimitives = mutableListOf<Mesh>()
+                    fun collectMeshChildren(node: Node) {
+                        if (node is Mesh) {
+                            meshPrimitives.add(node)
+                        }
+                        node.children.forEach { n ->
+                            collectMeshChildren(n)
+                        }
+                    }
+                    collectMeshChildren(it)
+                    meshPrimitives.forEach { mesh ->
+                        mesh.ifMaterial { diffuse = controllerColor }
+                    }
+                }
                 when (device.role) {
                     TrackerRole.Invalid -> {}
                     TrackerRole.LeftHand -> {
@@ -179,7 +196,7 @@ open class CellTrackingBase(
                             setupTrackingMenu()
                             onLeftHandReady()
                             leftWristMenu.hideAll()
-                            buttonMapper.mapper.attachUIForRole(device.role, it, textScale = 0.02f)
+                            buttonMapper.mapper.attachUIForRole(device.role, it, textScale = 0.018f)
                             logger.info("Finished setting up left controller button layout")
                         }
                     }
