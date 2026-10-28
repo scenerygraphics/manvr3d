@@ -5,7 +5,6 @@ import graphics.scenery.*
 import graphics.scenery.attribute.material.Material
 import graphics.scenery.controls.*
 import graphics.scenery.controls.behaviours.AnalogInputWrapper
-import graphics.scenery.controls.behaviours.MovementCommand
 import graphics.scenery.controls.behaviours.VRTouch
 import graphics.scenery.primitives.TextBoard
 import graphics.scenery.ui.*
@@ -15,7 +14,6 @@ import graphics.scenery.utils.extensions.*
 import graphics.scenery.utils.lazyLogger
 import graphics.scenery.volumes.RAIVolume
 import graphics.scenery.volumes.Volume
-import org.joml.*
 import org.mastodon.mamut.model.Spot
 import org.scijava.ui.behaviour.ClickBehaviour
 import org.scijava.ui.behaviour.DragBehaviour
@@ -31,7 +29,6 @@ import graphics.scenery.utils.TimepointObservable
 import graphics.scenery.manvr3d.util.SpineMetadata
 import graphics.scenery.manvr3d.util.CellTrackingButtonMapper
 import org.joml.Quaternionf
-import org.joml.Vector2f
 import org.joml.Vector3f
 import org.joml.Vector4f
 import java.io.BufferedWriter
@@ -41,8 +38,8 @@ import java.nio.file.Path
 import java.util.ArrayList
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.concurrent.thread
-import kotlin.math.pow
 import kotlin.math.sqrt
+import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.TimeSource
 
@@ -253,13 +250,14 @@ open class CellTrackingBase(
             // Capture the start time, so we can write statistics on tracking duration
             fileLogger.beginControllerTracking()
         }
-        // play the volume backwards, step by step, so cell split events can simply be turned into a merge event
 
         val p = cursor.getPosition()
         // did the user click on an existing cell?
         val (selectedSpot, isValidSelection) =
             geometryHandler.selectClosestSpotsVR(p, volume.currentTimepoint,
                 cursor.radius * cursor.visualScale, false)
+
+        fileLogger.incrementControllerTracking(p, hmd.getPosition(), volume.spatial())
 
         logger.debug("Tracked a new spot at position $p")
         logger.debug("Selected spot is $selectedSpot")
@@ -858,8 +856,8 @@ open class CellTrackingBase(
         /** This behavior selects/deselects spots and edges on click,
          * and performs paint stroke-like selection drawing on drag events. */
         class DragSelectBehavior: DragBehaviour {
-            var lastUpdate = System.currentTimeMillis()
-            var startTime = System.currentTimeMillis()
+            var lastUpdate = TimeSource.Monotonic.markNow()
+            var startTime = TimeSource.Monotonic.markNow()
             var wasDragged = false
             // Checks whether we are interacting with a menu -> if true, we don't perform the behavior
             private var wantDrag = false
@@ -868,30 +866,33 @@ open class CellTrackingBase(
                 // Only perform drag actions when not interacting with the menu
                 wantDrag = !cursor.showPointer
                 if (!wantDrag) return
-                lastUpdate = System.currentTimeMillis()
+                lastUpdate = TimeSource.Monotonic.markNow()
                 cursor.setColor(cursorSelectColor)
-                startTime = System.currentTimeMillis()
+                startTime = TimeSource.Monotonic.markNow()
                 wasDragged = false
             }
             override fun drag(x: Int, y: Int) {
                 if (!wantDrag) return
                 // Only perform the selection method twenty times a second and when the button was pressed for more than 200ms
-                if (System.currentTimeMillis() - lastUpdate > 50 && System.currentTimeMillis() - startTime > 200) {
+                if (TimeSource.Monotonic.markNow() - lastUpdate > 50.milliseconds &&
+                    TimeSource.Monotonic.markNow() - startTime > 200.milliseconds) {
                     val p = cursor.getPosition()
                     geometryHandler.selectClosestSpotsVR(p, volume.currentTimepoint, cursor.radius, true, cursor.visualScale)
                     geometryHandler.selectClosestEdgesVR(p, cursor.radius * cursor.visualScale, true)
-                    lastUpdate = System.currentTimeMillis()
+                    lastUpdate = TimeSource.Monotonic.markNow()
                     wasDragged = true
                 }
             }
             override fun end(x: Int, y: Int) {
                 if (!wantDrag) return
                 // If this wasn't a drag event but a click event, perform the selection now
+                val p = cursor.getPosition()
                 if (!wasDragged) {
-                    val p = cursor.getPosition()
                     geometryHandler.selectClosestSpotsVR(p, volume.currentTimepoint, cursor.radius, false, cursor.visualScale)
                     geometryHandler.selectClosestEdgesVR(p, cursor.radius * cursor.visualScale, false)
                 }
+                manvr3d.recordVREditEvent("${if (wasDragged) "Drag" else "Click"} selection", p,
+                    TimeSource.Monotonic.markNow() - startTime)
                 cursor.resetColor()
 
                 if (manvr3d.selectedLinkNodes.isNotEmpty() || manvr3d.selectedSpotInstances.isNotEmpty()) {

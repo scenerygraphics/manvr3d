@@ -70,6 +70,7 @@ import javax.swing.JFrame
 import javax.swing.JPanel
 import kotlin.concurrent.thread
 import kotlin.math.*
+import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.TimeSource
 
@@ -969,6 +970,13 @@ class Manvr3dMain: TimepointObserver {
         // TODO this is a hacky workaround for the geometry not updating properly when resetting the volume
         rebuildGeometry()
         rebuildGeometry()
+    }
+
+    /** Forwards an edit event to [fileLogger] for recording. */
+    fun recordVREditEvent(eventName: String, cursorPosition: Vector3f, duration: Duration = 0.seconds) {
+        if (!isVRactive) return
+        fileLogger.recordEvent(eventName, cursorPosition, vrTracking.hmd.getPosition(),
+            volumeNode.spatial(), duration)
     }
 
     /** Starts the sciview VR environment and optionally the eye tracking environment,

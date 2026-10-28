@@ -10,6 +10,7 @@ import graphics.scenery.utils.extensions.plus
 import graphics.scenery.utils.lazyLogger
 import org.joml.Vector3f
 import org.scijava.ui.behaviour.DragBehaviour
+import kotlin.time.TimeSource
 
 class MoveInstanceVR(
     val manvr3d: Manvr3dMain,
@@ -25,10 +26,13 @@ class MoveInstanceVR(
 
     var currentControllerPos = Vector3f()
 
+    private var startTime = TimeSource.Monotonic.markNow()
+
     override fun init(x: Int, y: Int) {
         buttonmanager.pressButton(button, trackerRole)
         // Return when a different behavior was intended
         if (buttonmanager.isTwoHandedActive()) return
+        startTime = TimeSource.Monotonic.markNow()
 
         val pos = getTipPosition()
         // Guard against empty selection
@@ -95,6 +99,8 @@ class MoveInstanceVR(
             )
             adjacentEdges.clear()
             manvr3d.fileLogger.incrementSpotMoved()
+            manvr3d.recordVREditEvent("Spots moved", getTipPosition(),
+                TimeSource.Monotonic.markNow() - startTime)
         }
     }
 
