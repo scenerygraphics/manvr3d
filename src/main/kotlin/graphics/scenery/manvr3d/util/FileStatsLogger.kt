@@ -238,7 +238,7 @@ class FileStatsLogger(val isEnabled: Boolean) {
     /** Capture intermediate states during controller tracking. */
     fun incrementControllerTracking(cursorPosition: Vector3f, hmdPosition: Vector3f, volumeSpatial: Spatial) {
         val now = TimeSource.Monotonic.markNow()
-        val elapsed = lastTrackIntervalTime - now
+        val elapsed = now - lastTrackIntervalTime
         lastTrackIntervalTime = now
         appendStat(trackStats, "Track spot added", cursorPosition, hmdPosition, volumeSpatial, elapsed)
         append("Tracked cell at $cursorPosition in $elapsed.")
@@ -251,8 +251,9 @@ class FileStatsLogger(val isEnabled: Boolean) {
         val trackDuration = TimeSource.Monotonic.markNow() - trackingStartTime
         val minTp = trackPointList.minOf { it.tp }
         val maxTp = trackPointList.maxOf { it.tp }
-        val avgSpeed = trackStats.map { it.duration.toDouble(DurationUnit.SECONDS) }.average()
-        val stdSpeed = trackStats.map { it.duration.toDouble(DurationUnit.SECONDS).toFloat() }.stdDev()
+        val speeds = trackStats.map { 1f / it.duration.toDouble(DurationUnit.SECONDS).toFloat() }
+        val avgSpeed = speeds.average()
+        val stdSpeed = speeds.stdDev()
         append(
             "Controller track with ${trackPointList.size} spots finished in " +
                     trackDuration.toString(DurationUnit.SECONDS, 2) +
