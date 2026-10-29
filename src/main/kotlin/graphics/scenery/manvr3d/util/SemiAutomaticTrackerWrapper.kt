@@ -9,6 +9,9 @@ import org.mastodon.tracking.mamut.trackmate.semiauto.SemiAutomaticTracker
 import org.mastodon.tracking.mamut.trackmate.semiauto.SemiAutomaticTrackerKeys
 import org.scijava.log.LogLevel
 import org.scijava.log.LogService
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.seconds
+import kotlin.time.TimeSource
 
 class SemiAutomaticTrackerWrapper(
     val manvr3d: Manvr3dMain,
@@ -60,20 +63,20 @@ class SemiAutomaticTrackerWrapper(
         ) as SemiAutomaticTracker
     }
 
-    fun track(forward: Boolean = true) {
-        logger.info("Tracking ${if (forward) "forward" else "backward"}")
+    fun track(forward: Boolean = true): Duration {
+        logger.debug("Tracking ${if (forward) "forward" else "backward"}")
         val fwdKey = SemiAutomaticTrackerKeys.KEY_FORWARD_IN_TIME
         if (settings[fwdKey] != forward) {
             settings[fwdKey] = forward
         }
-        logger.info("Set settings to ${settings[fwdKey]}")
         val selected = mastodon.selectionModel.selectedVertices
-        if (selected.isEmpty()) { logger.warn("No spots selected"); return }
+        if (selected.isEmpty()) { logger.warn("No spots selected"); return 0.seconds }
 
         manvr3d.bdvNotifier?.lockUpdates = true
+        val start = TimeSource.Monotonic.markNow()
         tracker.compute(selected, settings, mastodon.model)
         manvr3d.bdvNotifier?.lockUpdates = false
-
+        return TimeSource.Monotonic.markNow() - start
     }
 
 }
