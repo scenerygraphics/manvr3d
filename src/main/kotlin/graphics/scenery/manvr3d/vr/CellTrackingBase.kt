@@ -633,7 +633,7 @@ open class CellTrackingBase(
                 }
                 val bwdTime = manvr3d.semiAutoTracker.track(false)
                 val totalTime = fwdTime.plus(bwdTime)
-                val logText = "Tracked ${selected.size} cell${if (selected.size == 1) "" else "s"}" +
+                val logText = "Tracked ${selected.size} cell${if (selected.size == 1) "" else "s"} " +
                         "forward and backward in ${totalTime.toString(DurationUnit.SECONDS, 2)}."
                 logger.info(logText)
                 fileLogger.append(logText)
@@ -645,7 +645,7 @@ open class CellTrackingBase(
             thread {
                 val selected = manvr3d.mastodon.selectionModel.selectedVertices
                 val fwdTime = manvr3d.semiAutoTracker.track(true)
-                val logText = "Tracked ${selected.size} cell${if (selected.size == 1) "" else "s"} forward" +
+                val logText = "Tracked ${selected.size} cell${if (selected.size == 1) "" else "s"} forward " +
                         "in ${fwdTime.toString(DurationUnit.SECONDS, 2)}."
                 logger.info(logText)
                 fileLogger.append(logText)
@@ -657,7 +657,7 @@ open class CellTrackingBase(
             thread {
                 val selected = manvr3d.mastodon.selectionModel.selectedVertices
                 val bwdTime = manvr3d.semiAutoTracker.track(false)
-                val logText = "Tracked ${selected.size} cell${if (selected.size == 1) "" else "s"} backward" +
+                val logText = "Tracked ${selected.size} cell${if (selected.size == 1) "" else "s"} backward " +
                         "in ${bwdTime.toString(DurationUnit.SECONDS, 2)}."
                 logger.info(logText)
                 fileLogger.append(logText)

@@ -32,9 +32,9 @@ import kotlin.time.TimeSource
 class FileStatsLogger(val isEnabled: Boolean) {
     private val logger by lazyLogger()
     private val sessionStartString = now()
-    private val logDir = "manvr3d_logs"
-    private val logPath = "manvr3d_session_${sessionStartString}.log"
-    private val logFile = File(logDir, logPath)
+    private lateinit var logDir: File
+    private val logPath = "${sessionStartString}.log"
+    private lateinit var logFile: File
 
     private var sessionStartTime = TimeSource.Monotonic.markNow()
     private var vrSessionStartTime = TimeSource.Monotonic.markNow()
@@ -76,8 +76,9 @@ class FileStatsLogger(val isEnabled: Boolean) {
     /** Initialize the manvr3d session recording and create a log file if [isEnabled] is true. */
     fun beginManvr3dSession(mastodon: ProjectModel) {
         if (isEnabled) {
-            val dir = File(logDir)
-            dir.mkdirs()
+            logDir = File("manvr3d_logs", "manvr3d_session_$sessionStartString")
+            logDir.mkdirs()
+            logFile = File(logDir, logPath)
             logFile.createNewFile()
             logger.info("Created session log at $logPath.")
         }
@@ -143,7 +144,7 @@ class FileStatsLogger(val isEnabled: Boolean) {
         val countStd = sqrt(predictionCounts.map { (it - countAvg).pow(2) }.average())
 
         val editStatsPath = if (globalEditStats.isNotEmpty()) {
-             writeStatsToCSV(globalEditStats, "manvr3d_session_${sessionStartString}_edit_events.csv")
+             writeStatsToCSV(globalEditStats, "${sessionStartString}_edit_events.csv")
         } else ""
 
         val elephantBlock = if (numTimepointsPredicted > 0) {
@@ -157,7 +158,7 @@ class FileStatsLogger(val isEnabled: Boolean) {
         } else ""
 
         val editBlock = if (globalEditStats.isNotEmpty()) {
-            "Edit event log written to $editStatsPath."
+            "\nEdit event log written to $editStatsPath."
         } else ""
 
         append(
@@ -273,7 +274,7 @@ class FileStatsLogger(val isEnabled: Boolean) {
         )
 
         if (trackPointList.size > 1 && isEnabled) {
-            val trackPath = writeStatsToCSV(trackStats, "manvr3d_session_${sessionStartString}_track_$numTracksRecorded.csv")
+            val trackPath = writeStatsToCSV(trackStats, "${sessionStartString}_track_$numTracksRecorded.csv")
             append("Dumped track file to $trackPath.")
         }
     }
