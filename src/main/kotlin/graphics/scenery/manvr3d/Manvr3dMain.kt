@@ -930,13 +930,17 @@ class Manvr3dMain: TimepointObserver {
         spots.addAll(selectedSpotInstances.map { geometryHandler.findSpotFromInstance(it) }.distinct())
         geometryHandler.mergeSpots(spots)
         fileLogger.incrementMerge()
+        recordVREditEvent("Merge Selection")
         geometryHandler.clearSpotSelection()
+        geometryHandler.clearLinkSelection()
         geometryHandler.showInstancedSpots(currentTimepoint, currentColorizer)
     }
 
     /** Find all spots that overlap and then rebuild the spot */
     fun mergeOverlapsAndUpdate(tp: Int = volumeNode.currentTimepoint) {
         geometryHandler.mergeOverlappingSpots(tp)
+        fileLogger.incrementMerge()
+        recordVREditEvent("Merge Overlaps")
         rebuildGeometry()
     }
 
@@ -945,6 +949,8 @@ class Manvr3dMain: TimepointObserver {
         val spots = RefCollections.createRefSet<Spot>(mastodon.model.graph.vertices())
         spots.addAll(mastodon.model.graph.vertices())
         geometryHandler.deleteSpots(spots)
+        geometryHandler.clearSpotSelection()
+        geometryHandler.clearLinkSelection()
         rebuildGeometry()
     }
 
@@ -973,9 +979,9 @@ class Manvr3dMain: TimepointObserver {
     }
 
     /** Forwards an edit event to [fileLogger] for recording. */
-    fun recordVREditEvent(eventName: String, cursorPosition: Vector3f, duration: Duration = 0.seconds) {
+    fun recordVREditEvent(eventName: String, duration: Duration = 0.seconds) {
         if (!isVRactive) return
-        fileLogger.recordEvent(eventName, cursorPosition, vrTracking.hmd.getPosition(),
+        fileLogger.recordEvent(eventName, vrTracking.cursor.getPosition(), vrTracking.hmd.getPosition(),
             volumeNode.spatial(), duration)
     }
 

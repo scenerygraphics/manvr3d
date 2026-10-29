@@ -636,6 +636,7 @@ class GeometryHandler(
             }
             mastodonData.model.graph.releaseRef(currentSpot)
             clearSpotSelection()
+            clearLinkSelection()
             manvr3d.bdvNotifier?.lockUpdates = false
             manvr3d.fileLogger.incrementMerge()
         }
@@ -1344,7 +1345,6 @@ class GeometryHandler(
             // Once we send the new track to Mastodon, we can assume we no longer need the previews and can clear them
             mainLinkInstance?.instances?.removeAll(linkPreviewList.map { it.instance }.toSet())
             linkPreviewList.clear()
-            trackPointList.clear()
             clearSpotSelection()
         }
     }
@@ -1391,7 +1391,7 @@ class GeometryHandler(
             if (!selectedSpots.isEmpty()) {
                 if (!deleteBranch) {
                     deleteSpots(selectedSpots)
-                    manvr3d.recordVREditEvent("Spots deleted", sciviewPos)
+                    manvr3d.recordVREditEvent("Spots deleted",)
                 } else {
                     logger.info("Deleting the whole branch...")
                     val spotList = mutableListOf<Spot>()
@@ -1405,10 +1405,11 @@ class GeometryHandler(
                         mastodonData.model.graph.remove(it)
                     }
                     mastodonData.model.graph.lock.writeLock().unlock()
-                    clearSpotSelection()
+
                     manvr3d.fileLogger.incrementBranchDeleted()
-                    manvr3d.recordVREditEvent("Branch deleted", sciviewPos)
+                    manvr3d.recordVREditEvent("Branch deleted",)
                 }
+                clearSpotSelection()
                 mastodonData.model.graph.notifyGraphChanged()
             } else {
                 // Only add a new spot if the edges are empty too (otherwise delete the edges later on)
@@ -1428,7 +1429,7 @@ class GeometryHandler(
                             logger.info("Added new spot at position $pos, radius is $localRadius")
                             logger.debug("we now have ${mastodonData.model.graph.vertices().size} spots in total")
                             manvr3d.fileLogger.incrementSpotAdded()
-                            manvr3d.recordVREditEvent("Spot added", sciviewPos)
+                            manvr3d.recordVREditEvent("Spot added")
                         } else {
                             logger.warn("Not adding new spot, $pos is outside the volume!")
                             manvr3d.flashVolumeGrid()
@@ -1463,7 +1464,7 @@ class GeometryHandler(
                         mastodonData.model.graph.remove(edge)
                     }
                     manvr3d.fileLogger.incrementEdgeDeleted()
-                    manvr3d.recordVREditEvent("Edges deleted", sciviewPos)
+                    manvr3d.recordVREditEvent("Edges deleted")
                 }
                 mastodonData.model.graph.lock.writeLock().unlock()
                 manvr3d.bdvNotifier?.lockUpdates = false
