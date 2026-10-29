@@ -38,9 +38,11 @@ import java.nio.file.Path
 import java.util.ArrayList
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.concurrent.thread
+import kotlin.math.log
 import kotlin.math.sqrt
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
+import kotlin.time.DurationUnit
 import kotlin.time.TimeSource
 
 /**
@@ -239,8 +241,11 @@ open class CellTrackingBase(
         // First, ensure the tracking flag is active
         if (!controllerTrackingActive) {
             controllerTrackingActive = true
+            trackPointList.clear()
             cursor.setColor(cursorTrackingColor)
-
+            // Also ensure nothing is selected
+            geometryHandler.clearSpotSelection()
+            geometryHandler.clearLinkSelection()
             buttonMapper.let {
                 it.mapper.updateLabel(it.ADD_DELETE_RESET, "Stop", it.trackingColor)
             }
@@ -621,24 +626,42 @@ open class CellTrackingBase(
         val trackAllButton = Button(" |<->| ", command = {
             thread {
                 val selected = manvr3d.mastodon.selectionModel.selectedVertices
-                manvr3d.semiAutoTracker.track(true)
+                val fwdTime = manvr3d.semiAutoTracker.track(true)
                 manvr3d.mastodon.selectionModel.clearSelection()
                 selected.forEach {
                     manvr3d.mastodon.selectionModel.setSelected(it, true)
                 }
-                manvr3d.semiAutoTracker.track(false)
+                val bwdTime = manvr3d.semiAutoTracker.track(false)
+                val totalTime = fwdTime.plus(bwdTime)
+                val logText = "Tracked ${selected.size} cell${if (selected.size == 1) "" else "s"}" +
+                        "forward and backward in ${totalTime.toString(DurationUnit.SECONDS, 2)}."
+                logger.info(logText)
+                fileLogger.append(logText)
+                manvr3d.recordVREditEvent("Semi-auto Track Full", totalTime)
             }
         }, depressDelay = 250, textInFront = true)
 
         val trackFwdButton = Button(" |-> ", command = {
             thread {
-                manvr3d.semiAutoTracker.track(true)
+                val selected = manvr3d.mastodon.selectionModel.selectedVertices
+                val fwdTime = manvr3d.semiAutoTracker.track(true)
+                val logText = "Tracked ${selected.size} cell${if (selected.size == 1) "" else "s"} forward" +
+                        "in ${fwdTime.toString(DurationUnit.SECONDS, 2)}."
+                logger.info(logText)
+                fileLogger.append(logText)
+                manvr3d.recordVREditEvent("Semi-auto Track Forward", fwdTime)
             }
         }, depressDelay = 250, textInFront = true)
 
         val trackBwdButton = Button(" <-| ", command = {
             thread {
-                manvr3d.semiAutoTracker.track(false)
+                val selected = manvr3d.mastodon.selectionModel.selectedVertices
+                val bwdTime = manvr3d.semiAutoTracker.track(false)
+                val logText = "Tracked ${selected.size} cell${if (selected.size == 1) "" else "s"} backward" +
+                        "in ${bwdTime.toString(DurationUnit.SECONDS, 2)}."
+                logger.info(logText)
+                fileLogger.append(logText)
+                manvr3d.recordVREditEvent("Semi-auto Track Backward", bwdTime)
             }
         }, depressDelay = 250, textInFront = true)
 
@@ -746,7 +769,7 @@ open class CellTrackingBase(
 
             override fun drag(p0: Int, p1: Int) {
                 if (selection.isNotEmpty()) {
-                    geometryHandler.changeSpotRadius(selection,factor, false)
+                    geometryHandler.changeSpotRadius(selection, factor, false)
                 } else {
                     // Make cursor movement a little faster than  changing the spot radii
                     cursor.scaleByFactor(factor * factor)
@@ -860,19 +883,19 @@ open class CellTrackingBase(
             var startTime = TimeSource.Monotonic.markNow()
             var wasDragged = false
             // Checks whether we are interacting with a menu -> if true, we don't perform the behavior
-            private var wantDrag = false
+            private var isActive = false
 
             override fun init(x: Int, y: Int) {
                 // Only perform drag actions when not interacting with the menu
-                wantDrag = !cursor.showPointer
-                if (!wantDrag) return
+                isActive = !cursor.showPointer && !controllerTrackingActive
+                if (!isActive) return
                 lastUpdate = TimeSource.Monotonic.markNow()
                 cursor.setColor(cursorSelectColor)
                 startTime = TimeSource.Monotonic.markNow()
                 wasDragged = false
             }
             override fun drag(x: Int, y: Int) {
-                if (!wantDrag) return
+                if (!isActive) return
                 // Only perform the selection method twenty times a second and when the button was pressed for more than 200ms
                 if (TimeSource.Monotonic.markNow() - lastUpdate > 50.milliseconds &&
                     TimeSource.Monotonic.markNow() - startTime > 200.milliseconds) {
@@ -884,14 +907,14 @@ open class CellTrackingBase(
                 }
             }
             override fun end(x: Int, y: Int) {
-                if (!wantDrag) return
+                if (!isActive) return
                 // If this wasn't a drag event but a click event, perform the selection now
                 val p = cursor.getPosition()
                 if (!wasDragged) {
                     geometryHandler.selectClosestSpotsVR(p, volume.currentTimepoint, cursor.radius, false, cursor.visualScale)
                     geometryHandler.selectClosestEdgesVR(p, cursor.radius * cursor.visualScale, false)
                 }
-                manvr3d.recordVREditEvent("${if (wasDragged) "Drag" else "Click"} selection", p,
+                manvr3d.recordVREditEvent("${if (wasDragged) "Drag" else "Click"} selection",
                     TimeSource.Monotonic.markNow() - startTime)
                 cursor.resetColor()
 
