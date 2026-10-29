@@ -99,8 +99,7 @@ class MoveInstanceVR(
             )
             adjacentEdges.clear()
             manvr3d.fileLogger.incrementSpotMoved()
-            manvr3d.recordVREditEvent("Spots moved", getTipPosition(),
-                TimeSource.Monotonic.markNow() - startTime)
+            manvr3d.recordVREditEvent("Spots moved", TimeSource.Monotonic.markNow() - startTime)
         }
     }
 

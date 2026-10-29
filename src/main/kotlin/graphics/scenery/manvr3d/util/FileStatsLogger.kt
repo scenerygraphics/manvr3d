@@ -17,6 +17,7 @@ import kotlin.math.absoluteValue
 import kotlin.math.pow
 import kotlin.math.sqrt
 import kotlin.time.Duration
+import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.DurationUnit
 import kotlin.time.TimeSource
@@ -145,28 +146,34 @@ class FileStatsLogger(val isEnabled: Boolean) {
              writeStatsToCSV(globalEditStats, "manvr3d_session_${sessionStartString}_edit_events.csv")
         } else ""
 
+        val elephantBlock = if (numTimepointsPredicted > 0) {
+            """
+                
+            ==== ELEPHANT ====
+            Number of timepoints predicted: $numTimepointsPredicted
+            Average (+std.) prediction time: ${String.format("%.2f", durationAvg)} ± ${String.format("%.2f", durationStd)} s/tp
+            Average (+std.) spot count: ${String.format("%.2f", countAvg)} ± ${String.format("%.2f", countStd)} spots/tp
+            """.trimIndent()
+        } else ""
+
+        val editBlock = if (globalEditStats.isNotEmpty()) {
+            "Edit event log written to $editStatsPath."
+        } else ""
+
         append(
             """
                 
-                ==== Stopped manvr3d session ====
-                Closing the session at: ${now()}.
-                Total session length was: ${sessionLength.toString(DurationUnit.SECONDS)}.
-                Undo actions performed: $numUndos
-                Mastodon file now has ${mastodon.model.graph.vertices().size} vertices and ${mastodon.model.graph.edges().size} edges.
-                New vertices added: $numNewVertices
-                New edges added:    $numNewEdges
-                ${if (globalEditStats.isNotEmpty()) {"\nEdit event log written to $editStatsPath.\n" } else ""}
-                ${if (numTimepointsPredicted > 0) { 
-                """
-                ==== ELEPHANT ====
-                Number of timepoints predicted: $numTimepointsPredicted
-                Average (+std.) prediction time: ${String.format("%.2f", durationAvg)} ± ${String.format("%.2f", durationStd)} s/tp
-                Average (+std.) spot count: ${String.format("%.2f", countAvg)} ± ${String.format("%.2f", countStd)} spots/tp
-                """.trimIndent()
-                } else ""
-                }
+            ==== Stopped manvr3d session ====
+            Closing the session at: ${now()}.
+            Total session length was: ${sessionLength.toString(DurationUnit.SECONDS)}.
+            Undo actions performed: $numUndos
+            Mastodon file now has ${mastodon.model.graph.vertices().size} vertices and ${mastodon.model.graph.edges().size} edges.
+            New vertices added: $numNewVertices
+            New edges added:    $numNewEdges
             """.trimIndent()
         )
+        append(editBlock)
+        append(elephantBlock)
     }
 
     /** Increments the Mastodon undo counter. */
@@ -241,7 +248,7 @@ class FileStatsLogger(val isEnabled: Boolean) {
         val elapsed = now - lastTrackIntervalTime
         lastTrackIntervalTime = now
         appendStat(trackStats, "Track spot added", cursorPosition, hmdPosition, volumeSpatial, elapsed)
-        append("Tracked cell at $cursorPosition in $elapsed.")
+        append("Tracked cell at $cursorPosition in ${elapsed.toString(DurationUnit.SECONDS, 3)}.")
     }
 
     /** End the controller tracking interaction recording and log the duration and track statistics to file if [isEnabled] is true. */
@@ -251,7 +258,10 @@ class FileStatsLogger(val isEnabled: Boolean) {
         val trackDuration = TimeSource.Monotonic.markNow() - trackingStartTime
         val minTp = trackPointList.minOf { it.tp }
         val maxTp = trackPointList.maxOf { it.tp }
-        val speeds = trackStats.map { 1f / it.duration.toDouble(DurationUnit.SECONDS).toFloat() }
+        // Remove implausible durations from the speed calculation,
+        // as is the case with the first annotated cell in the track
+        val speeds = trackStats.filter { it.duration > 2.milliseconds }
+            .map { 1f / it.duration.toDouble(DurationUnit.SECONDS).toFloat() }
         val avgSpeed = speeds.average()
         val stdSpeed = speeds.stdDev()
         append(
@@ -275,7 +285,7 @@ class FileStatsLogger(val isEnabled: Boolean) {
         file.bufferedWriter().use { out ->
             out.write("EventName;EventTime;VolumeSize;VolumeDistance;VolumePosition;HMDPosition;CursorPosition;CursorDistance;Duration\n")
             stats.forEach {
-                out.write("${it.eventName};${dateTimeToString(it.eventTime, true)};${it.volumeSize};" +
+                out.write("${it.eventName};${dateTimeToString(it.eventTime)};${it.volumeSize};" +
                         "${it.volumeDistance};${it.volumePosition};${it.hmdPosition};${it.cursorPosition};" +
                         "${it.cursorDistance};${it.duration.toDouble(DurationUnit.SECONDS)}\n")
             }
@@ -308,11 +318,9 @@ class FileStatsLogger(val isEnabled: Boolean) {
         append("Lensing was enabled for ${lensOnTime.toString(DurationUnit.SECONDS)}.")
     }
 
-    private fun dateTimeToString(dt: LocalDateTime, includeDecimals: Boolean = false): String {
+    private fun dateTimeToString(dt: LocalDateTime): String {
         return dt.format(
-            DateTimeFormatter.ofPattern(
-                "yyyy-MM-dd_HH-mm-ss${if (!includeDecimals) "" else ".sss"}"
-            )
+            DateTimeFormatter.ofPattern("yyyy-MM-dd_HH-mm-ss")
         )
     }
 
