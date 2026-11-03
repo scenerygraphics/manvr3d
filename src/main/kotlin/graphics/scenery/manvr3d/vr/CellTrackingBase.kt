@@ -38,7 +38,6 @@ import java.nio.file.Path
 import java.util.ArrayList
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.concurrent.thread
-import kotlin.math.log
 import kotlin.math.sqrt
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
@@ -114,6 +113,10 @@ open class CellTrackingBase(
     val buttonMapper = CellTrackingButtonMapper
 
     val fileLogger = manvr3d.fileLogger
+
+    var lensPosition = Vector3f(0f)
+    var wantLensAtCell = true
+    val selectedTrackForLens = mutableMapOf<Int, Spot>()
 
     open fun run() {
         sciview.toggleVRRendering(resolutionScale = resolutionScale)
@@ -666,6 +669,34 @@ open class CellTrackingBase(
         }, depressDelay = 250, textInFront = true)
 
         leftWristMenu.addRow("Tracking Menu", trackAllButton, trackBwdButton, trackFwdButton)
+
+        // Store whether lensing was previously active already
+        val wasLensingActive = isLensingActive
+
+        val attachLensToCellBtn = Button("Lens to cell", command = {
+            // Grab the first selected spot
+            val selected = manvr3d.selectedSpotInstances.map {
+                manvr3d.geometryHandler.findSpotFromInstance(it)
+            }
+            val chosen = selected.firstOrNull { it!!.timepoint == manvr3d.currentTimepoint } ?: return@Button
+            selectedTrackForLens.clear()
+            val track = manvr3d.geometryHandler.selectBranch(chosen)
+            // Group the full branch by timepoints and only take the first one. This isn't great, but handles subbranches
+            // by selecting one
+            selectedTrackForLens.putAll(
+                track.groupBy { it.timepoint }.
+                map { it.value.first().timepoint to it.value.first() })
+            wantLensAtCell = true
+            isLensingActive = true
+            updateLensAtCellPosition()
+        }, depressDelay = 250, textInFront = true)
+
+        val resetLensBtn = Button("Reset lens", command = {
+            wantLensAtCell = false
+            isLensingActive = wasLensingActive
+        }, depressDelay = 250, textInFront = true)
+
+        leftWristMenu.addRow("Tracking Menu", attachLensToCellBtn, resetLensBtn)
     }
 
     var isLensingActive = false
@@ -675,6 +706,16 @@ open class CellTrackingBase(
             manvr3d.geometryHandler.cylinder.enableLens = value
             field = value
         }
+
+    private fun updateLensAtCellPosition() {
+        if (!wantLensAtCell) return
+        val posArray = FloatArray(3)
+        selectedTrackForLens[volume.viewerState.currentTimepoint]?.let {
+            it.localize(posArray)
+            val pos = manvr3d.mastodonToSciviewCoords(posArray)
+            lensPosition = pos
+        }
+    }
 
     fun changeLensingRadius(factor: Float) {
         val oldRadius = manvr3d.volumeNode.lensingRadius
@@ -688,7 +729,8 @@ open class CellTrackingBase(
             logger.debug("Launched lensing thread")
             while (sciview.running && manvr3d.isVRactive) {
                 if (isLensingActive) {
-                    manvr3d.geometryHandler.updateLensPosition(cursor.getPosition())
+                    val pos = if (wantLensAtCell) lensPosition else cursor.getPosition()
+                    manvr3d.geometryHandler.updateLensPosition(pos)
                     Thread.sleep(20)
                 } else {
                     Thread.sleep(200)
@@ -973,6 +1015,9 @@ open class CellTrackingBase(
                 mapper.updateLabel(buttonMapper.CYCLE_MENU, "Reset",
                     Vector3f(1f, 0.5f, 0.5f))
             },
+            onDragCallback = {
+                updateLensAtCellPosition()
+            },
             onEndCallback = {
                 thread {
                     manvr3d.rebuildGeometry()
@@ -981,6 +1026,7 @@ open class CellTrackingBase(
                     geometryHandler.setTrackVisibility(manvr3d.isTrackVisible)
                     // change volume visibility to what it was before
                     manvr3d.setVolumeOnlyVisibility(manvr3d.isVolumeVisible)
+                    updateLensAtCellPosition()
                     mapper.updateLabel(buttonMapper.CYCLE_MENU, "M Cycle", buttonMapper.defaultColor)
                 }
 
@@ -1027,6 +1073,7 @@ open class CellTrackingBase(
                             notifyObservers(oldTimepoint + 1)
                         }
                     }
+                    updateLensAtCellPosition()
 
                     if (hedgehogs.visible) {
                         if (hedgehogVisibility == HedgehogVisibility.PerTimePoint) {
@@ -1231,7 +1278,9 @@ open class CellTrackingBase(
             sciview.deleteNode(it)
         }
 
-        thumbstickMovement.deregisterBehavior()
+        if (::thumbstickMovement.isInitialized) {
+            thumbstickMovement.deregisterBehavior()
+        }
 
         logger.info("Cleaned up basic VR objects. Objects left: ${sciview.allSceneNodes.map { it.name }}")
 
