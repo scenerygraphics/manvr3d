@@ -831,12 +831,17 @@ open class CellTrackingBase(
             leftWristMenu.toggleVisibility()
         }
 
+        val cycleMenuPrevious = ClickBehaviour { _, _ ->
+            leftWristMenu.cyclePrevious()
+        }
+
         mapper.bind(hmd, buttonMapper.STEP_FWD, AnalogInputWrapper(
             TimepointScrollBehavior(PlaybackDirection.Forward), sciview.currentScene))
         mapper.bind(hmd, buttonMapper.STEP_BWD, AnalogInputWrapper(
             TimepointScrollBehavior(PlaybackDirection.Backward), sciview.currentScene))
 
         mapper.bind(hmd, buttonMapper.TOGGLE_MENU, toggleMenu)
+        mapper.bind(hmd, buttonMapper.CYCLE_MENU_BWD, cycleMenuPrevious)
         mapper.bind(hmd, buttonMapper.RADIUS_INCREASE, scaleCursorOrSpotsUp)
         mapper.bind(hmd, buttonMapper.RADIUS_DECREASE, scaleCursorOrSpotsDown)
 
@@ -863,7 +868,7 @@ open class CellTrackingBase(
         val leftAButtonBehavior = CycleMenuAndLockAxisBehavior(OpenXRHMD.OpenXRButton.A, TrackerRole.LeftHand)
         leftAButtonBehavior.let {
             it.registerConfig()
-            mapper.bind(hmd, buttonMapper.CYCLE_MENU, it)
+            mapper.bind(hmd, buttonMapper.CYCLE_MENU_FWD, it)
         }
 
         mapper.bind(hmd, buttonMapper.CONTROLLER_TRACKING, trackCellsWithController)
@@ -1012,7 +1017,7 @@ open class CellTrackingBase(
                 manvr3d.isVolumeVisible = volume.visible
                 manvr3d.setVolumeOnlyVisibility(true)
 
-                mapper.updateLabel(buttonMapper.CYCLE_MENU, "Reset",
+                mapper.updateLabel(buttonMapper.CYCLE_MENU_FWD, "Reset",
                     Vector3f(1f, 0.5f, 0.5f))
             },
             onDragCallback = {
@@ -1027,7 +1032,7 @@ open class CellTrackingBase(
                     // change volume visibility to what it was before
                     manvr3d.setVolumeOnlyVisibility(manvr3d.isVolumeVisible)
                     updateLensAtCellPosition()
-                    mapper.updateLabel(buttonMapper.CYCLE_MENU, "M Cycle", buttonMapper.defaultColor)
+                    mapper.updateLabel(buttonMapper.CYCLE_MENU_FWD, "M Cycle", buttonMapper.defaultColor)
                 }
 
             },
