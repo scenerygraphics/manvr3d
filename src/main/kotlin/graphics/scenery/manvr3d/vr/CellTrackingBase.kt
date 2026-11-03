@@ -674,13 +674,12 @@ open class CellTrackingBase(
         val wasLensingActive = isLensingActive
 
         val attachLensToCellBtn = Button("Lens to cell", command = {
-            // Grab the first selected spot
-            val selected = manvr3d.selectedSpotInstances.map {
-                manvr3d.geometryHandler.findSpotFromInstance(it)
-            }
-            val chosen = selected.firstOrNull { it!!.timepoint == manvr3d.currentTimepoint } ?: return@Button
+            // Grab the first selected spot in the current timepoint
+            val selected =
+                manvr3d.mastodon.selectionModel.selectedVertices.firstOrNull { it.timepoint == manvr3d.currentTimepoint }
+                    ?: return@Button
             selectedTrackForLens.clear()
-            val track = manvr3d.geometryHandler.selectBranch(chosen)
+            val track = manvr3d.geometryHandler.selectBranch(selected)
             // Group the full branch by timepoints and only take the first one. This isn't great, but handles subbranches
             // by selecting one
             selectedTrackForLens.putAll(

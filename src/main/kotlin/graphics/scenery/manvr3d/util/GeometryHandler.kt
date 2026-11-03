@@ -511,7 +511,6 @@ class GeometryHandler(
     }
 
     /** Tries to find a spot in the current time point for the given [instance].
-     * It does that by filtering through the names of the spots.
      * @return either a [Spot] or null. */
     fun findSpotFromInstance(instance: InstancedNode.Instance): Spot? {
         val spotIdx = instanceToSpotMap[instance] ?: return null
