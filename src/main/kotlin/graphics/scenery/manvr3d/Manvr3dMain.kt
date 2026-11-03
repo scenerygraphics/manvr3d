@@ -258,6 +258,7 @@ class Manvr3dMain: TimepointObserver {
         )
 
         while (!volumeNode.volumeManager.readyToRender()) {
+            // TODO this sometimes throws a ConcurrentModificationException
             Thread.sleep(20)
         }
 
@@ -522,10 +523,17 @@ class Manvr3dMain: TimepointObserver {
         globalCoords.mul(volumeNode.pixelToWorldRatio)
         val scaleFactor = Vector3f(volumeNode.spatial().scale).div(sceneScale).mul(1f, 1f, -1f)
         globalCoords.mul(scaleFactor)
-        Quaternionf(volumeNode.spatial().rotation).conjugate().transform(globalCoords)
+        Quaternionf(volumeNode.spatial().rotation).transform(globalCoords)
         globalCoords.add(volumeNode.spatial().position)
 
         return globalCoords
+    }
+
+    /** Convert a [FloatArray], Mastodon's native type when localizing spots, from Mastodon's voxel space into
+     * sciview space, taking the volume's transforms into account. */
+    fun mastodonToSciviewCoords(pos: FloatArray): Vector3f {
+        if (pos.size != 3) throw IllegalArgumentException("Position array must have 3 elements")
+        return mastodonToSciviewCoords(Vector3f(pos[0], pos[1], pos[2]))
     }
 
     /** Adds a volume to the sciview scene, scales it by [scale], adjusts the transfer function to a ramp from [0, 0] to [1, 1]
