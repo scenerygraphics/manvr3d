@@ -190,6 +190,7 @@ open class CellTrackingBase(
                         device.model?.let {
                             it.name = "leftHand"
                             leftWristMenu = MultiWristMenu(it,
+                                columnScale = 0.03f,
                                 columnBasePosition = Vector3f(0.03f, 0.02f, 0.11f),
                                 columnRotation = Quaternionf().rotationXYZ(-1.5f, 1.7f, 0f)
                             )
