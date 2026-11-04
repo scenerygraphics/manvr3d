@@ -115,7 +115,7 @@ open class CellTrackingBase(
     val fileLogger = manvr3d.fileLogger
 
     var lensPosition = Vector3f(0f)
-    var wantLensAtCell = true
+    var wantLensAtCell = false
     val selectedTrackForLens = mutableMapOf<Int, Spot>()
 
     open fun run() {
@@ -544,7 +544,14 @@ open class CellTrackingBase(
             defaultColor = color, pressedColor = pressedColor, touchingColor = touchingColor, textInFront = true
         )
 
-        leftWristMenu.addRow("Toggle Menu", lensToggleButton, lensRadiusDownBtn, lensRadiusUpBtn)
+        val lensBackgroundButton = ToggleButton("Context Off", "Context On", command = {
+            val backgroundState = volume.lensingBackgroundStrength > 0.001
+            volume.lensingBackgroundStrength = if (backgroundState) 0.0f else 0.04f
+        }, byTouch = false, defaultColor = color,pressedColor = pressedColor,
+            touchingColor = touchingColor, default = true, textInFront = true)
+
+        leftWristMenu.addRow("Toggle Menu",
+            lensToggleButton, lensRadiusDownBtn, lensRadiusUpBtn, lensBackgroundButton)
 
         val spotRadiusUpBtn = Button(
             " + ", command = {
@@ -641,6 +648,8 @@ open class CellTrackingBase(
                 logger.info(logText)
                 fileLogger.append(logText)
                 manvr3d.recordVREditEvent("Semi-auto Track Full", totalTime)
+                manvr3d.geometryHandler.clearSpotSelection()
+                manvr3d.geometryHandler.clearLinkSelection()
             }
         }, depressDelay = 250, textInFront = true)
 
@@ -653,6 +662,8 @@ open class CellTrackingBase(
                 logger.info(logText)
                 fileLogger.append(logText)
                 manvr3d.recordVREditEvent("Semi-auto Track Forward", fwdTime)
+                manvr3d.geometryHandler.clearSpotSelection()
+                manvr3d.geometryHandler.clearLinkSelection()
             }
         }, depressDelay = 250, textInFront = true)
 
@@ -665,19 +676,23 @@ open class CellTrackingBase(
                 logger.info(logText)
                 fileLogger.append(logText)
                 manvr3d.recordVREditEvent("Semi-auto Track Backward", bwdTime)
+                manvr3d.geometryHandler.clearSpotSelection()
+                manvr3d.geometryHandler.clearLinkSelection()
             }
         }, depressDelay = 250, textInFront = true)
 
         leftWristMenu.addRow("Tracking Menu", trackAllButton, trackBwdButton, trackFwdButton)
 
         // Store whether lensing was previously active already
-        val wasLensingActive = isLensingActive
+        var wasLensingActive = false
 
         val attachLensToCellBtn = Button("Lens to cell", command = {
+
             // Grab the first selected spot in the current timepoint
             val selected =
                 manvr3d.mastodon.selectionModel.selectedVertices.firstOrNull { it.timepoint == manvr3d.currentTimepoint }
                     ?: return@Button
+            wasLensingActive = isLensingActive
             selectedTrackForLens.clear()
             val track = manvr3d.geometryHandler.selectBranch(selected)
             // Group the full branch by timepoints and only take the first one. This isn't great, but handles subbranches
