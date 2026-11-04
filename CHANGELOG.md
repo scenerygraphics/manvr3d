@@ -1,5 +1,30 @@
 # Changelog
 
+## [v0.5 Snapshot]
+
+### Added
+
+- Add semi-automatic tracking from Mastodon; allows tracking backward, forward or both ways ([#33](https://github.com/scenerygraphics/manvr3d/pull/33))
+- Improved file logging: every session gets a folder in a `manvr3d_log` folder; log records HMD, cursor and volume positions, distances and individual timings during tracking and all editing events; dumps each track to CSV ([#33](https://github.com/scenerygraphics/manvr3d/pull/33))
+- Add button to attach a volume lens to a selected cell and follow it ([#33](https://github.com/scenerygraphics/manvr3d/pull/33))
+- Add support for Steam Frame; utilize additional buttons for backward and forward menu cycling ([#33](https://github.com/scenerygraphics/manvr3d/pull/33), [#825](https://github.com/scenerygraphics/scenery/pull/825))
+
+### Removed
+
+
+### Changed
+
+- Reposition timepoint widget to float between cursor and controller, facing upward ([#33](https://github.com/scenerygraphics/manvr3d/pull/33))
+- Data axes always stick to the volume origin now ([#33](https://github.com/scenerygraphics/manvr3d/pull/33))
+- Major rewrite of scenery VR backend: replaces OpenVR with OpenXR API ([#825](https://github.com/scenerygraphics/scenery/pull/825))
+- Controller color is dark grey now to improve readability of menu labels ([#33](https://github.com/scenerygraphics/manvr3d/pull/33))
+
+### Fixed
+
+- Debounce timepoint cycling for precise steps; keeps press-and-hold behavior for scrubbing ([#33](https://github.com/scenerygraphics/manvr3d/pull/33))
+- Fix having to press the menu button twice to show the menu ([#825](https://github.com/scenerygraphics/scenery/pull/825))
+- Always clear selections after spot/link edit events to prevent stale hidden selections ([#33](https://github.com/scenerygraphics/manvr3d/pull/33))
+
 ## [0.4]
 
 ### Added

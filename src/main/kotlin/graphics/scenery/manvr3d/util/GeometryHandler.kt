@@ -511,7 +511,6 @@ class GeometryHandler(
     }
 
     /** Tries to find a spot in the current time point for the given [instance].
-     * It does that by filtering through the names of the spots.
      * @return either a [Spot] or null. */
     fun findSpotFromInstance(instance: InstancedNode.Instance): Spot? {
         val spotIdx = instanceToSpotMap[instance] ?: return null
@@ -636,6 +635,7 @@ class GeometryHandler(
             }
             mastodonData.model.graph.releaseRef(currentSpot)
             clearSpotSelection()
+            clearLinkSelection()
             manvr3d.bdvNotifier?.lockUpdates = false
             manvr3d.fileLogger.incrementMerge()
         }
@@ -842,7 +842,7 @@ class GeometryHandler(
     }
 
     /** Deletes the passed spots from the graph. */
-    val deleteSpots: ((spots: RefSet<Spot>) -> Unit) = { spots ->
+    fun deleteSpots(spots: RefSet<Spot>) {
         enqueueUpdate("deleteSpots(count=${spots.size})") {
             manvr3d.bdvNotifier?.lockUpdates = true
             mastodonData.model.setUndoPoint()
@@ -1344,7 +1344,6 @@ class GeometryHandler(
             // Once we send the new track to Mastodon, we can assume we no longer need the previews and can clear them
             mainLinkInstance?.instances?.removeAll(linkPreviewList.map { it.instance }.toSet())
             linkPreviewList.clear()
-            trackPointList.clear()
             clearSpotSelection()
         }
     }
@@ -1390,7 +1389,8 @@ class GeometryHandler(
             // Treat spots first
             if (!selectedSpots.isEmpty()) {
                 if (!deleteBranch) {
-                    deleteSpots.invoke(selectedSpots)
+                    deleteSpots(selectedSpots)
+                    manvr3d.recordVREditEvent("Spots deleted",)
                 } else {
                     logger.info("Deleting the whole branch...")
                     val spotList = mutableListOf<Spot>()
@@ -1404,9 +1404,11 @@ class GeometryHandler(
                         mastodonData.model.graph.remove(it)
                     }
                     mastodonData.model.graph.lock.writeLock().unlock()
-                    clearSpotSelection()
+
                     manvr3d.fileLogger.incrementBranchDeleted()
+                    manvr3d.recordVREditEvent("Branch deleted",)
                 }
+                clearSpotSelection()
                 mastodonData.model.graph.notifyGraphChanged()
             } else {
                 // Only add a new spot if the edges are empty too (otherwise delete the edges later on)
@@ -1426,7 +1428,7 @@ class GeometryHandler(
                             logger.info("Added new spot at position $pos, radius is $localRadius")
                             logger.debug("we now have ${mastodonData.model.graph.vertices().size} spots in total")
                             manvr3d.fileLogger.incrementSpotAdded()
-
+                            manvr3d.recordVREditEvent("Spot added")
                         } else {
                             logger.warn("Not adding new spot, $pos is outside the volume!")
                             manvr3d.flashVolumeGrid()
@@ -1443,7 +1445,7 @@ class GeometryHandler(
                 manvr3d.bdvNotifier?.lockUpdates = true
                 mastodonData.model.graph.lock.writeLock().lock()
                 if (deleteBranch) {
-                    // Delete the branches corresponding the selected edges
+                    // Delete the branches corresponding to the selected edges
                     val selectedSpots = RefCollections.createRefList(mastodonData.model.graph.vertices())
                     selectedEdges.forEach { edge ->
                         if (!selectedSpots.contains(edge.source)) {
@@ -1461,6 +1463,7 @@ class GeometryHandler(
                         mastodonData.model.graph.remove(edge)
                     }
                     manvr3d.fileLogger.incrementEdgeDeleted()
+                    manvr3d.recordVREditEvent("Edges deleted")
                 }
                 mastodonData.model.graph.lock.writeLock().unlock()
                 manvr3d.bdvNotifier?.lockUpdates = false
