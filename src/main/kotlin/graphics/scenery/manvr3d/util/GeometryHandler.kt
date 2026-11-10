@@ -996,6 +996,10 @@ class GeometryHandler(
         sphereScaleFactor += amount
     }
 
+    fun resetSphereInstanceScale() {
+        sphereScaleFactor = 1f
+    }
+
     fun increaseLinkScale(amount: Float = 0.2f) {
         val oldScale = linkScaleFactor
         linkScaleFactor += amount

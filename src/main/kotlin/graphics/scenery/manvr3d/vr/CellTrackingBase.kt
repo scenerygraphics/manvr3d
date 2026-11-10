@@ -510,7 +510,15 @@ open class CellTrackingBase(
             touchingColor = touchingColor, default = true, textInFront = true
         )
 
-        leftWristMenu.addRow("Toggle Menu", toggleSpotVisBtn, spotRadiusDownBtn, spotRadiusUpBtn)
+        val resetSpotRadiusBtn = Button(
+            "Reset Size", command = {
+                manvr3d.geometryHandler.resetSphereInstanceScale()
+                manvr3d.updateUI()
+            }, byTouch = false, depressDelay = 250,
+            defaultColor = color, pressedColor = pressedColor, touchingColor = touchingColor, textInFront = true
+        )
+
+        leftWristMenu.addRow("Toggle Menu", toggleSpotVisBtn, spotRadiusDownBtn, spotRadiusUpBtn, resetSpotRadiusBtn)
 
         val trackRadiusUpBtn = Button(
             " + ", command = {
