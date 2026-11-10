@@ -6,7 +6,8 @@ import org.scijava.ui.behaviour.DragBehaviour
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.TimeSource
 
-/** This lambda is called every time the user performs a click with controller-based tracking. */
+/** This behaviour is called every time the user performs a click with controller-based tracking.
+ * Also supports drag-based tracking. */
 class ControllerTrackBehaviour(val context: CellTrackingBase) : DragBehaviour {
 
     private val logger by lazyLogger()

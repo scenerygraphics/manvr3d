@@ -5,7 +5,7 @@ import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.TimeSource
 
 /** This behavior selects/deselects spots and edges on click,
- * and performs paint stroke-like selection drawing on drag events. */
+ * and performs stroke-like selection drawing on drag events. */
 class DragSelectBehavior(val context: CellTrackingBase): DragBehaviour {
     var lastUpdate = TimeSource.Monotonic.markNow()
     var startTime = TimeSource.Monotonic.markNow()

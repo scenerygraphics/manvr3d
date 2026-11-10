@@ -4,6 +4,7 @@ import graphics.scenery.InstancedNode
 import graphics.scenery.manvr3d.Manvr3dMain
 import org.scijava.ui.behaviour.DragBehaviour
 
+/** Behaviour that either scales the VR cursor or the selected spots. */
 class ScaleCursorOrSpotsBehaviour(val manvr3d: Manvr3dMain, val factor: Float): DragBehaviour {
     var selection = listOf<InstancedNode.Instance>()
     override fun init(p0: Int, p1: Int) {
