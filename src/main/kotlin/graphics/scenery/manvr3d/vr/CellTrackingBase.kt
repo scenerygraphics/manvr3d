@@ -35,6 +35,7 @@ import java.io.FileWriter
 import java.lang.Math
 import java.nio.file.Path
 import java.util.ArrayList
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.concurrent.thread
 import kotlin.math.sqrt
@@ -627,22 +628,9 @@ open class CellTrackingBase(
         var wasLensingActive = false
 
         val attachLensToCellBtn = Button("Lens to cell", command = {
-
-            // Grab the first selected spot in the current timepoint
-            val selected =
-                manvr3d.mastodon.selectionModel.selectedVertices.firstOrNull { it.timepoint == manvr3d.currentTimepoint }
-                    ?: return@Button
-            wasLensingActive = isLensingActive
-            selectedTrackForLens.clear()
-            val track = manvr3d.geometryHandler.selectBranch(selected)
-            // Group the full branch by timepoints and only take the first one. This isn't great, but handles subbranches
-            // by selecting one
-            selectedTrackForLens.putAll(
-                track.groupBy { it.timepoint }.
-                map { it.value.first().timepoint to it.value.first() })
-            wantLensAtCell = true
-            isLensingActive = true
-            updateLensAtCellPosition()
+            // If this returns a boolean, it indicates whether (controller) lensing was previously active
+            // so we can restore the state later
+            attachLensToCell()?.let { wasLensingActive = it }
         }, depressDelay = 250, textInFront = true)
 
         val resetLensBtn = Button("Reset lens", command = {
@@ -669,6 +657,28 @@ open class CellTrackingBase(
             val pos = manvr3d.mastodonToSciviewCoords(posArray)
             lensPosition = pos
         }
+    }
+
+    /** Attach a volume lens to the first selected cell in the current timepoint. This selects the whole connected
+     * branch and follows it with the lens.
+     * Returns a boolean that indicates whether (controller) lensing was previously active or not.*/
+    private fun attachLensToCell() : Boolean? {
+        // Grab the first selected spot in the current timepoint
+        val selected =
+            manvr3d.mastodon.selectionModel.selectedVertices.firstOrNull { it.timepoint == manvr3d.currentTimepoint }
+                ?: return null
+        val wasLensingActive = isLensingActive
+        selectedTrackForLens.clear()
+        val track = manvr3d.geometryHandler.selectBranch(selected)
+        // Group the full branch by timepoints and only take the first one. This isn't great, but handles subbranches
+        // by selecting one
+        selectedTrackForLens.putAll(
+            track.groupBy { it.timepoint }.
+            map { it.value.first().timepoint to it.value.first() })
+        wantLensAtCell = true
+        isLensingActive = true
+        updateLensAtCellPosition()
+        return wasLensingActive
     }
 
     fun changeLensingRadius(factor: Float) {
