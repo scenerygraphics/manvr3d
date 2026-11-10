@@ -39,7 +39,6 @@ import java.util.ArrayList
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.concurrent.thread
 import kotlin.math.sqrt
-import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.DurationUnit
 import kotlin.time.TimeSource
@@ -238,104 +237,8 @@ open class CellTrackingBase(
      * and possibly existing spots that were selected. */
     val trackPointList = mutableListOf<TrackedPoint>()
 
-    /** This lambda is called every time the user performs a click with controller-based tracking. */
-    inner class ControllerDragBehavior : DragBehaviour {
-        var initTime = TimeSource.Monotonic.markNow()
-        var lastTrackTime = TimeSource.Monotonic.markNow()
-        // Tracks this behavior state only, not the overall controller tracking state
-        var isActive = false
-
-        override fun init(p0: Int, p1: Int) {
-            initTime = TimeSource.Monotonic.markNow()
-
-            // We don't track things while interacting with a menu
-            if (cursor.showPointer) return
-            isActive = true
-
-            // First, ensure the tracking flag is active
-            if (!controllerTrackingActive) {
-                controllerTrackingActive = true
-                trackPointList.clear()
-                cursor.setColor(cursorTrackingColor)
-                // Also ensure nothing is selected
-                geometryHandler.clearSpotSelection()
-                geometryHandler.clearLinkSelection()
-                buttonMapper.let {
-                    it.mapper.updateLabel(it.ADD_DELETE_RESET, "Stop", it.trackingColor)
-                }
-
-                // we don't want animation, because we track step by step
-                playing = false
-                // Capture the start time, so we can write statistics on tracking duration
-                fileLogger.beginControllerTracking()
-            }
-            trackTimepoint()
-        }
-
-        override fun drag(p0: Int, p1: Int) {
-            if (!isActive) return
-            val timeSinceInit = TimeSource.Monotonic.markNow() - initTime
-            val timeSinceTrack = TimeSource.Monotonic.markNow() - lastTrackTime
-            if (timeSinceInit > 0.6.seconds && timeSinceTrack > 1.seconds / volumesPerSecond.toDouble() ) {
-                trackTimepoint()
-            }
-        }
-
-        override fun end(p0: Int, p1: Int) {
-            isActive = false
-        }
-
-        fun trackTimepoint() {
-            lastTrackTime = TimeSource.Monotonic.markNow()
-            val p = cursor.getPosition()
-            // did the user click on an existing cell?
-            val (selectedSpot, isValidSelection) =
-                geometryHandler.selectClosestSpotsVR(p, volume.currentTimepoint,
-                    cursor.radius * cursor.visualScale, false)
-
-            fileLogger.incrementControllerTracking(p, hmd.getPosition(), volume.spatial())
-
-            logger.debug("Tracked a new spot at position $p")
-            logger.debug("Selected spot is $selectedSpot")
-            // Create a placeholder link during tracking for immediate feedback
-            geometryHandler.addTrackedPoint(
-                p, volume.currentTimepoint, cursor.radius, selectedSpot, enableTrackingPreview, trackPointList
-            )
-
-            // check whether we approach the first or last timepoint, depending on playback direction
-            if ((volume.currentTimepoint > 0 && playDirection == PlaybackDirection.Backward) ||
-                (volume.currentTimepoint < volume.timepointCount - 1 && playDirection == PlaybackDirection.Forward)) {
-                val direction = if (playDirection == PlaybackDirection.Forward) 1 else -1
-                volume.goToTimepoint(volume.currentTimepoint + direction)
-                // If the user clicked a cell, and it is *not* the first in the track, we assume it is a merge event and end the tracking,
-                // but only if the selected spot already has an edge. We continue tracking/linking when the selected spot has no connections
-                if (isValidSelection && trackPointList.size > 1 && selectedSpot!!.edges().size() > 0) {
-                    endControllerTracking()
-                    isActive = false
-                }
-            } else {
-                sciview.camera?.showMessage(
-                    "Reached the ${if (playDirection == PlaybackDirection.Forward) "last" else "first"} time point!",
-                    centered = true, distance = 2f, size = 0.2f
-                )
-                // Let's head back to the last/first timepoint for starting a new track fast-like
-                if (playDirection == PlaybackDirection.Forward) {
-                    volume.goToFirstTimepoint()
-                } else {
-                    volume.goToLastTimepoint()
-                }
-                endControllerTracking()
-                isActive = false
-            }
-
-            // This will also redraw all geometry using Mastodon as source
-            notifyObservers(volume.currentTimepoint)
-        }
-    }
-
-
     /** Stops the current controller tracking process and sends the created track to Mastodon. */
-    private fun endControllerTracking() {
+    fun endControllerTracking() {
         if (!controllerTrackingActive) return
 
         logger.info("Ending controller tracking now and sending ${trackPointList.size} spots to Mastodon to chew on.")
@@ -820,58 +723,8 @@ open class CellTrackingBase(
             Quaternionf().rotateX(Math.toRadians(-45.0).toFloat())
         )
 
-
-        class TimepointScrollBehavior(val stickDirection: PlaybackDirection) : DragBehaviour {
-            var initTime = TimeSource.Monotonic.markNow()
-
-            override fun init(x: Int, y: Int) {
-                initTime = TimeSource.Monotonic.markNow()
-                scrollTimepoint()
-            }
-
-            override fun drag(x: Int, y: Int) {
-                if ((TimeSource.Monotonic.markNow() - initTime) > 0.6.seconds) {
-                    scrollTimepoint()
-                }
-            }
-
-            override fun end(x: Int, y: Int) {}
-
-            fun scrollTimepoint() {
-                if (controllerTrackingActive) {
-                    return
-                }
-                if (stickDirection == PlaybackDirection.Forward) {
-                    skipToNext = true
-                } else {
-                    skipToPrevious = true
-                }
-            }
-        }
-
-        class ScaleCursorOrSpotsBehavior(val factor: Float): DragBehaviour {
-            var selection = listOf<InstancedNode.Instance>()
-            override fun init(p0: Int, p1: Int) {
-                selection = manvr3d.selectedSpotInstances.toList()
-            }
-
-            override fun drag(p0: Int, p1: Int) {
-                if (selection.isNotEmpty()) {
-                    geometryHandler.changeSpotRadius(selection, factor, false)
-                } else {
-                    // Make cursor movement a little faster than  changing the spot radii
-                    cursor.scaleByFactor(factor * factor)
-                }
-            }
-
-            override fun end(p0: Int, p1: Int) {
-                geometryHandler.changeSpotRadius(selection, factor, true)
-            }
-        }
-
-        val scaleCursorOrSpotsUp = AnalogInputWrapper(ScaleCursorOrSpotsBehavior(1.02f), sciview.currentScene)
-
-        val scaleCursorOrSpotsDown = AnalogInputWrapper(ScaleCursorOrSpotsBehavior(0.98f), sciview.currentScene)
+        val scaleCursorOrSpotsUp = AnalogInputWrapper(ScaleCursorOrSpotsBehaviour(manvr3d, .02f), sciview.currentScene)
+        val scaleCursorOrSpotsDown = AnalogInputWrapper(ScaleCursorOrSpotsBehaviour(manvr3d,0.98f), sciview.currentScene)
 
         val toggleMenu = ClickBehaviour { _, _ ->
             leftWristMenu.toggleVisibility()
@@ -882,149 +735,26 @@ open class CellTrackingBase(
         }
 
         mapper.bind(hmd, buttonMapper.STEP_FWD, AnalogInputWrapper(
-            TimepointScrollBehavior(PlaybackDirection.Forward), sciview.currentScene))
+            TimepointScrollBehavior(this, PlaybackDirection.Forward), sciview.currentScene))
         mapper.bind(hmd, buttonMapper.STEP_BWD, AnalogInputWrapper(
-            TimepointScrollBehavior(PlaybackDirection.Backward), sciview.currentScene))
+            TimepointScrollBehavior(this, PlaybackDirection.Backward), sciview.currentScene))
 
         mapper.bind(hmd, buttonMapper.TOGGLE_MENU, toggleMenu)
         mapper.bind(hmd, buttonMapper.CYCLE_MENU_BWD, cycleMenuPrevious)
         mapper.bind(hmd, buttonMapper.RADIUS_INCREASE, scaleCursorOrSpotsUp)
         mapper.bind(hmd, buttonMapper.RADIUS_DECREASE, scaleCursorOrSpotsDown)
 
-        /** Local class that handles double assignment of the left A key which is used to cycle menus as well as
-         * reset the rotation when pressed while the [VRTwoHandNodeTransform] is active. */
-        class CycleMenuAndLockAxisBehavior(val button: OpenXRHMD.OpenXRButton, val role: TrackerRole)
-            : DragBehaviour {
-            fun registerConfig() {
-                logger.debug("Setting up keybinds for CycleMenuAndLockAxisBehavior")
-                resetRotationBtnManager.registerButtonConfig(button, role)
-            }
-            override fun init(x: Int, y: Int) {
-                resetRotationBtnManager.pressButton(button, role)
-                if (!resetRotationBtnManager.isTwoHandedActive()) {
-                    leftWristMenu.cycleNext()
-                }
-            }
-            override fun drag(x: Int, y: Int) {}
-            override fun end(x: Int, y: Int) {
-                resetRotationBtnManager.releaseButton(button, role)
-            }
-        }
-
-        val leftAButtonBehavior = CycleMenuAndLockAxisBehavior(OpenXRHMD.OpenXRButton.A, TrackerRole.LeftHand)
+        val leftAButtonBehavior = CycleMenuAndLockAxisBehaviour(this, OpenXRHMD.OpenXRButton.A, TrackerRole.LeftHand)
         leftAButtonBehavior.let {
             it.registerConfig()
             mapper.bind(hmd, buttonMapper.CYCLE_MENU_FWD, it)
         }
 
-        val trackCellsWithController = ControllerDragBehavior()
+        val trackCellsWithController = ControllerTrackBehaviour(this)
+
         mapper.bind(hmd, buttonMapper.CONTROLLER_TRACKING, trackCellsWithController)
-
-        /** Several behaviors mapped per default to the right menu button. If controller tracking is active,
-         * end the tracking. If not, clicking will either create or delete a spot, depending on whether the user
-         * previously selected a spot. Holding the button for more than 0.5s deletes the whole connected branch. */
-        class AddDeleteResetBehavior : DragBehaviour {
-            var start = System.currentTimeMillis()
-            var wasExecuted = false
-            // Check whether we are interacting with a menu -> if true, we don't interact
-            private var wantInteract = false
-
-            override fun init(x: Int, y: Int) {
-                wantInteract = !cursor.showPointer
-                if (!wantInteract) return
-                start = System.currentTimeMillis()
-                wasExecuted = false
-            }
-            override fun drag(x: Int, y: Int) {
-                if (!wantInteract) return
-                // If the button was pressed for more than 0.5s, delete the branch
-                if (System.currentTimeMillis() - start > 500 && !wasExecuted) {
-                    val p = cursor.getPosition()
-                    geometryHandler.addOrRemoveSpotsAndEdges(
-                        volume.currentTimepoint,
-                        p,
-                        cursor.radius,
-                        true,
-                        true)
-                    wasExecuted = true
-                }
-            }
-            override fun end(x: Int, y: Int) {
-                if (!wantInteract) return
-                if (controllerTrackingActive) {
-                    endControllerTracking()
-                } else {
-                    val p = cursor.getPosition()
-                    logger.debug("Got cursor position: $p")
-                    if (!wasExecuted) {
-                        geometryHandler.addOrRemoveSpotsAndEdges(
-                            volume.currentTimepoint,
-                            p,
-                            cursor.radius,
-                            false,
-                            true)
-                    }
-                }
-            }
-        }
-
-        mapper.bind(hmd, "addDeleteReset", AddDeleteResetBehavior())
-
-        /** This behavior selects/deselects spots and edges on click,
-         * and performs paint stroke-like selection drawing on drag events. */
-        class DragSelectBehavior: DragBehaviour {
-            var lastUpdate = TimeSource.Monotonic.markNow()
-            var startTime = TimeSource.Monotonic.markNow()
-            var wasDragged = false
-            // Checks whether we are interacting with a menu -> if true, we don't perform the behavior
-            private var isActive = false
-
-            override fun init(x: Int, y: Int) {
-                // Only perform drag actions when not interacting with the menu
-                isActive = !cursor.showPointer && !controllerTrackingActive
-                if (!isActive) return
-                lastUpdate = TimeSource.Monotonic.markNow()
-                cursor.setColor(cursorSelectColor)
-                startTime = TimeSource.Monotonic.markNow()
-                wasDragged = false
-            }
-            override fun drag(x: Int, y: Int) {
-                if (!isActive) return
-                // Only perform the selection method twenty times a second and when the button was pressed for more than 200ms
-                if (TimeSource.Monotonic.markNow() - lastUpdate > 50.milliseconds &&
-                    TimeSource.Monotonic.markNow() - startTime > 200.milliseconds) {
-                    val p = cursor.getPosition()
-                    geometryHandler.selectClosestSpotsVR(p, volume.currentTimepoint, cursor.radius, true, cursor.visualScale)
-                    geometryHandler.selectClosestEdgesVR(p, cursor.radius * cursor.visualScale, true)
-                    lastUpdate = TimeSource.Monotonic.markNow()
-                    wasDragged = true
-                }
-            }
-            override fun end(x: Int, y: Int) {
-                if (!isActive) return
-                // If this wasn't a drag event but a click event, perform the selection now
-                val p = cursor.getPosition()
-                if (!wasDragged) {
-                    geometryHandler.selectClosestSpotsVR(p, volume.currentTimepoint, cursor.radius, false, cursor.visualScale)
-                    geometryHandler.selectClosestEdgesVR(p, cursor.radius * cursor.visualScale, false)
-                }
-                manvr3d.recordVREditEvent("${if (wasDragged) "Drag" else "Click"} selection",
-                    TimeSource.Monotonic.markNow() - startTime)
-                cursor.resetColor()
-
-                if (manvr3d.selectedLinkNodes.isNotEmpty() || manvr3d.selectedSpotInstances.isNotEmpty()) {
-                    mapper.updateLabel(
-                        buttonMapper.ADD_DELETE_RESET,
-                        "Del", buttonMapper.selectColor)
-                } else {
-                    mapper.updateLabel(
-                        buttonMapper.ADD_DELETE_RESET,
-                        "Add", buttonMapper.defaultColor)
-                }
-            }
-        }
-
-        mapper.bind(hmd, "select", DragSelectBehavior())
+        mapper.bind(hmd, "addDeleteReset", AddDeleteResetBehavior(this))
+        mapper.bind(hmd, "select", DragSelectBehavior(this))
 
         // this behavior is needed for touching the menu buttons
         VRTouch.createAndSet(
