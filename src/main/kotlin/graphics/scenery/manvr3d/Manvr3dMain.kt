@@ -611,51 +611,6 @@ class Manvr3dMain: TimepointObserver {
         }
     }
 
-    // TODO for now this is not used because it introduces lag to timeline scrubbing. Should maybe be done on the GPU instead?
-    /** Change voxel values based on the intensity values like contrast, shift, gamma, etc. */
-    fun <T : IntegerType<T>?> volumeIntensityProcessing(
-        srcImg: RandomAccessibleInterval<T>?
-    ) {
-        logger.info("started volumeIntensityProcessing...")
-        val gammaEnabledIntensityProcessor: (T) -> Unit =
-            { src: T -> src?.setReal(
-                    intensity.clampTop * ( //TODO, replace pow() with LUT for several gammas
-                            min(
-                                intensity.contrast * src.realFloat + intensity.shift,
-                                intensity.clampTop
-                            ) / intensity.clampTop
-                        ).pow(intensity.gamma)
-                    )
-            }
-        val noGammaIntensityProcessor: (T) -> Unit =
-            { src: T -> src?.setReal(
-                        min(
-                            // TODO This needs to incorporate INTENSITY_RANGE_MIN and MAX
-                            intensity.contrast * src.realFloat + intensity.shift,
-                            intensity.clampTop
-                        )
-                    )
-            }
-
-        // choose processor depending on the gamma value selected
-        val intensityProcessor = if (intensity.gamma != 1.0f)
-            gammaEnabledIntensityProcessor else noGammaIntensityProcessor
-
-        if (srcImg == null) logger.warn("volumeIntensityProcessing: srcImg is null !!!")
-
-        // apply processor lambda to each pixel using ImgLib2
-        LoopBuilder.setImages(srcImg)
-            .multiThreaded()
-            .forEachPixel(intensityProcessor)
-
-    }
-
-    /** Overload that implicitly uses the existing [spimSource] for [volumeIntensityProcessing] */
-    fun volumeIntensityProcessing() {
-        val srcImg = spimSource.getSource(currentTimepoint, initMipmapLevel) as RandomAccessibleInterval<UnsignedShortType>
-        volumeIntensityProcessing(srcImg)
-    }
-
     /** Create a BDV window and launch a [BdvNotifier] instance to synchronize timepoint and viewing direction,
      * as well as update handling for changes in color, vertices or the graph. */
     fun openSyncedBDV() {
