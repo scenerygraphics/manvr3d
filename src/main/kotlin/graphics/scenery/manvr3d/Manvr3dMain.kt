@@ -55,6 +55,7 @@ import graphics.scenery.manvr3d.vr.CellTrackingBase
 import graphics.scenery.manvr3d.vr.EyeTracking
 import graphics.scenery.volumes.Colormap
 import net.imagej.ops.special.computer.Computers
+import org.mastodon.tracking.mamut.detection.DetectionQualityFeature
 import org.mastodon.tracking.mamut.trackmate.semiauto.SemiAutomaticTracker
 import org.mastodon.tracking.mamut.trackmate.semiauto.SemiAutomaticTrackerPlugin
 import org.mastodon.tracking.mamut.trackmate.semiauto.ui.SemiAutomaticTrackerSettingsManager
@@ -178,6 +179,7 @@ class Manvr3dMain: TimepointObserver {
     var isTrackVisible = true
     var isSpotVisible = true
 
+    val qualityFeature: DetectionQualityFeature?
     var showUncertainty = false
     var invertLut = false
 
@@ -312,6 +314,14 @@ class Manvr3dMain: TimepointObserver {
         pluginActions = mastodon.plugins.pluginActions
 
         semiAutoTracker = SemiAutomaticTrackerWrapper(this, mastodon, maxTimepoint + 1)
+
+        val qualitySpec = mastodon.model.featureModel.featureSpecs.find { it.key == "Detection quality" }
+
+        qualityFeature = if (qualitySpec != null) {
+            mastodon.model.featureModel.getFeature(qualitySpec) as? DetectionQualityFeature
+        } else {
+            null
+        }
 
         openSyncedBDV()
 

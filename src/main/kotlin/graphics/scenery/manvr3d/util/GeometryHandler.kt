@@ -259,14 +259,6 @@ class GeometryHandler(
             visibleSpots = mastodonData.model.spatioTemporalIndex.getSpatialIndex(timepoint)
             sv.blockOnNewNodes = false
 
-            val qualitySpec = mastodonData.model.featureModel.featureSpecs.find { it.key == "Detection quality" }
-
-            val qualityFeature = if (qualitySpec != null) {
-                 mastodonData.model.featureModel.getFeature(qualitySpec) as? DetectionQualityFeature
-            } else {
-                null
-            }
-
             // We need to store elephants detection threshold here so we can normalize the uncertainty data.
             // They will be in range elephantThreshold to 1
             val elephantSettings = ElephantMainSettingsManager.getInstance().forwardDefaultStyle
@@ -308,7 +300,7 @@ class GeometryHandler(
 
                 if (manvr3d.showUncertainty) {
                     // Normalize the uncertainty into range 0-1
-                    val factor = ((qualityFeature?.value(spot) ?: 1.0) - elephantThreshold) / (1 - elephantThreshold)
+                    val factor = ((manvr3d.qualityFeature?.value(spot) ?: 1.0) - elephantThreshold) / (1 - elephantThreshold)
 
                     if (manvr3d.invertLut) {
                         val color = lut.sample(1f - factor.toFloat())
@@ -1322,6 +1314,8 @@ class GeometryHandler(
                     val v = graph.addVertex()
                     // val localPos = if (isWorldSpace) manvr3d.sciviewToMastodonCoords(pos) else pos
                     v.init(trackedPoint.tp, trackedPoint.pos.toDoubleArray(), localRadius.toDouble())
+                    // Manually set this point's quality to perfect if we have the feature available
+                    manvr3d.qualityFeature?.set(v, 1.0)
                     vertex.refTo(v)
                     logger.debug("added {}", v)
                 }
@@ -1425,6 +1419,8 @@ class GeometryHandler(
                             val localRadius = manvr3d.sciviewToMastodonScale().max() * radius
                             val v = mastodonData.model.graph.addVertex()
                             v.init(tp, pos.toDoubleArray(), localRadius.toDouble())
+                            // Set the detection quality to true if we have such a feature available
+                            manvr3d.qualityFeature?.set(v, 1.0)
                             logger.info("Added new spot at position $pos, radius is $localRadius")
                             logger.debug("we now have ${mastodonData.model.graph.vertices().size} spots in total")
                             manvr3d.fileLogger.incrementSpotAdded()

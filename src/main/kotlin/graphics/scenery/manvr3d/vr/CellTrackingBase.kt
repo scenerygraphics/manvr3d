@@ -16,7 +16,6 @@ import graphics.scenery.volumes.RAIVolume
 import graphics.scenery.volumes.Volume
 import org.mastodon.mamut.model.Spot
 import org.scijava.ui.behaviour.ClickBehaviour
-import org.scijava.ui.behaviour.DragBehaviour
 import sc.iview.SciView
 import graphics.scenery.manvr3d.analysis.HedgehogAnalysis.SpineGraphVertex
 import graphics.scenery.controls.behaviours.MultiButtonManager
@@ -39,9 +38,7 @@ import java.util.ArrayList
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.concurrent.thread
 import kotlin.math.sqrt
-import kotlin.time.Duration.Companion.seconds
 import kotlin.time.DurationUnit
-import kotlin.time.TimeSource
 
 /**
  * Base class for different VR cell tracking purposes. It includes functionality to add spines and edgehogs,
@@ -735,9 +732,9 @@ open class CellTrackingBase(
         }
 
         mapper.bind(hmd, buttonMapper.STEP_FWD, AnalogInputWrapper(
-            TimepointScrollBehavior(this, PlaybackDirection.Forward), sciview.currentScene))
+            TimepointScrollBehaviour(this, PlaybackDirection.Forward), sciview.currentScene))
         mapper.bind(hmd, buttonMapper.STEP_BWD, AnalogInputWrapper(
-            TimepointScrollBehavior(this, PlaybackDirection.Backward), sciview.currentScene))
+            TimepointScrollBehaviour(this, PlaybackDirection.Backward), sciview.currentScene))
 
         mapper.bind(hmd, buttonMapper.TOGGLE_MENU, toggleMenu)
         mapper.bind(hmd, buttonMapper.CYCLE_MENU_BWD, cycleMenuPrevious)
