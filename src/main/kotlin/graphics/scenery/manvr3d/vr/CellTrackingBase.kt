@@ -73,7 +73,7 @@ open class CellTrackingBase(
 
     @Volatile var eyeTrackingActive = false
     var playing = false
-    var direction = PlaybackDirection.Backward
+    var playDirection = PlaybackDirection.Backward
     var volumesPerSecond = 6f
     var skipToNext = false
     var skipToPrevious = false
@@ -239,84 +239,115 @@ open class CellTrackingBase(
     val trackPointList = mutableListOf<TrackedPoint>()
 
     /** This lambda is called every time the user performs a click with controller-based tracking. */
-    val trackCellsWithController = ClickBehaviour { _, _ ->
-        // We don't track things while interacting with a menu
-        if (cursor.showPointer) return@ClickBehaviour
-        // First, ensure the tracking flag is active
-        if (!controllerTrackingActive) {
-            controllerTrackingActive = true
-            trackPointList.clear()
-            cursor.setColor(cursorTrackingColor)
-            // Also ensure nothing is selected
-            geometryHandler.clearSpotSelection()
-            geometryHandler.clearLinkSelection()
-            buttonMapper.let {
-                it.mapper.updateLabel(it.ADD_DELETE_RESET, "Stop", it.trackingColor)
-            }
+    inner class ControllerDragBehavior : DragBehaviour {
+        var initTime = TimeSource.Monotonic.markNow()
+        var lastTrackTime = TimeSource.Monotonic.markNow()
+        // Tracks this behavior state only, not the overall controller tracking state
+        var isActive = false
 
-            // we don't want animation, because we track step by step
-            playing = false
-            // Capture the start time, so we can write statistics on tracking duration
-            fileLogger.beginControllerTracking()
+        override fun init(p0: Int, p1: Int) {
+            initTime = TimeSource.Monotonic.markNow()
+
+            // We don't track things while interacting with a menu
+            if (cursor.showPointer) return
+            isActive = true
+
+            // First, ensure the tracking flag is active
+            if (!controllerTrackingActive) {
+                controllerTrackingActive = true
+                trackPointList.clear()
+                cursor.setColor(cursorTrackingColor)
+                // Also ensure nothing is selected
+                geometryHandler.clearSpotSelection()
+                geometryHandler.clearLinkSelection()
+                buttonMapper.let {
+                    it.mapper.updateLabel(it.ADD_DELETE_RESET, "Stop", it.trackingColor)
+                }
+
+                // we don't want animation, because we track step by step
+                playing = false
+                // Capture the start time, so we can write statistics on tracking duration
+                fileLogger.beginControllerTracking()
+            }
+            trackTimepoint()
         }
 
-        val p = cursor.getPosition()
-        // did the user click on an existing cell?
-        val (selectedSpot, isValidSelection) =
-            geometryHandler.selectClosestSpotsVR(p, volume.currentTimepoint,
-                cursor.radius * cursor.visualScale, false)
-
-        fileLogger.incrementControllerTracking(p, hmd.getPosition(), volume.spatial())
-
-        logger.debug("Tracked a new spot at position $p")
-        logger.debug("Selected spot is $selectedSpot")
-        // Create a placeholder link during tracking for immediate feedback
-        geometryHandler.addTrackedPoint(
-            p, volume.currentTimepoint, cursor.radius, selectedSpot, enableTrackingPreview, trackPointList
-        )
-
-        // check whether we approach the first or last timepoint, depending on playback direction
-        if ((volume.currentTimepoint > 0 && direction == PlaybackDirection.Backward) ||
-            (volume.currentTimepoint < volume.timepointCount - 1 && direction == PlaybackDirection.Forward)) {
-            val dir = if (direction == PlaybackDirection.Forward) 1 else -1
-            volume.goToTimepoint(volume.currentTimepoint + dir)
-            // If the user clicked a cell, and it is *not* the first in the track, we assume it is a merge event and end the tracking,
-            // but only if the selected spot already has an edge. We continue tracking/linking when the selected spot has no connections
-            if (isValidSelection && trackPointList.size > 1 && selectedSpot!!.edges().size() > 0) {
-                endControllerTracking()
+        override fun drag(p0: Int, p1: Int) {
+            if (!isActive) return
+            val timeSinceInit = TimeSource.Monotonic.markNow() - initTime
+            val timeSinceTrack = TimeSource.Monotonic.markNow() - lastTrackTime
+            if (timeSinceInit > 0.6.seconds && timeSinceTrack > 1.seconds / volumesPerSecond.toDouble() ) {
+                trackTimepoint()
             }
-        } else {
-            sciview.camera?.showMessage(
-                "Reached the ${if (direction == PlaybackDirection.Forward) "last" else "first"} time point!",
-                centered = true, distance = 2f, size = 0.2f
+        }
+
+        override fun end(p0: Int, p1: Int) {
+            isActive = false
+        }
+
+        fun trackTimepoint() {
+            lastTrackTime = TimeSource.Monotonic.markNow()
+            val p = cursor.getPosition()
+            // did the user click on an existing cell?
+            val (selectedSpot, isValidSelection) =
+                geometryHandler.selectClosestSpotsVR(p, volume.currentTimepoint,
+                    cursor.radius * cursor.visualScale, false)
+
+            fileLogger.incrementControllerTracking(p, hmd.getPosition(), volume.spatial())
+
+            logger.debug("Tracked a new spot at position $p")
+            logger.debug("Selected spot is $selectedSpot")
+            // Create a placeholder link during tracking for immediate feedback
+            geometryHandler.addTrackedPoint(
+                p, volume.currentTimepoint, cursor.radius, selectedSpot, enableTrackingPreview, trackPointList
             )
-            // Let's head back to the last/first timepoint for starting a new track fast-like
-            if (direction == PlaybackDirection.Forward) {
-                volume.goToFirstTimepoint()
+
+            // check whether we approach the first or last timepoint, depending on playback direction
+            if ((volume.currentTimepoint > 0 && playDirection == PlaybackDirection.Backward) ||
+                (volume.currentTimepoint < volume.timepointCount - 1 && playDirection == PlaybackDirection.Forward)) {
+                val direction = if (playDirection == PlaybackDirection.Forward) 1 else -1
+                volume.goToTimepoint(volume.currentTimepoint + direction)
+                // If the user clicked a cell, and it is *not* the first in the track, we assume it is a merge event and end the tracking,
+                // but only if the selected spot already has an edge. We continue tracking/linking when the selected spot has no connections
+                if (isValidSelection && trackPointList.size > 1 && selectedSpot!!.edges().size() > 0) {
+                    endControllerTracking()
+                    isActive = false
+                }
             } else {
-                volume.goToLastTimepoint()
+                sciview.camera?.showMessage(
+                    "Reached the ${if (playDirection == PlaybackDirection.Forward) "last" else "first"} time point!",
+                    centered = true, distance = 2f, size = 0.2f
+                )
+                // Let's head back to the last/first timepoint for starting a new track fast-like
+                if (playDirection == PlaybackDirection.Forward) {
+                    volume.goToFirstTimepoint()
+                } else {
+                    volume.goToLastTimepoint()
+                }
+                endControllerTracking()
+                isActive = false
             }
-            endControllerTracking()
+
+            // This will also redraw all geometry using Mastodon as source
+            notifyObservers(volume.currentTimepoint)
         }
-        // This will also redraw all geometry using Mastodon as source
-        notifyObservers(volume.currentTimepoint)
     }
 
 
     /** Stops the current controller tracking process and sends the created track to Mastodon. */
     private fun endControllerTracking() {
-        if (controllerTrackingActive) {
-            logger.info("Ending controller tracking now and sending ${trackPointList.size} spots to Mastodon to chew on.")
-            controllerTrackingActive = false
-            geometryHandler.addTrackToMastodon(trackPointList)
-            cursor.resetColor()
+        if (!controllerTrackingActive) return
 
-            buttonMapper.let {
-                it.mapper.updateLabel(it.ADD_DELETE_RESET, "Add", it.defaultColor)
-            }
+        logger.info("Ending controller tracking now and sending ${trackPointList.size} spots to Mastodon to chew on.")
+        controllerTrackingActive = false
+        geometryHandler.addTrackToMastodon(trackPointList)
+        cursor.resetColor()
 
-            fileLogger.endControllerTracking(trackPointList)
+        buttonMapper.let {
+            it.mapper.updateLabel(it.ADD_DELETE_RESET, "Add", it.defaultColor)
         }
+
+        fileLogger.endControllerTracking(trackPointList)
     }
 
     fun setupElephantMenu() {
@@ -393,13 +424,13 @@ open class CellTrackingBase(
 
         val togglePlaybackDirBtn = ToggleButton(
             textFalse = "BW", textTrue = "FW", command = {
-                direction = if (direction == PlaybackDirection.Forward) {
+                playDirection = if (playDirection == PlaybackDirection.Forward) {
                     PlaybackDirection.Backward
                 } else {
                     PlaybackDirection.Forward
                 }
                 manvr3d.sciviewWin.camera?.showMessage(
-                    "Play & Track ${if (direction == PlaybackDirection.Forward) "forward" else "backward"}",
+                    "Play & Track ${if (playDirection == PlaybackDirection.Forward) "forward" else "backward"}",
                     distance = 1.2f, size = 0.2f, centered = true
                 )
             }, byTouch = false, defaultColor = Vector3f(0.52f, 0.87f, 0.86f), default = false,
@@ -886,6 +917,7 @@ open class CellTrackingBase(
             mapper.bind(hmd, buttonMapper.CYCLE_MENU_FWD, it)
         }
 
+        val trackCellsWithController = ControllerDragBehavior()
         mapper.bind(hmd, buttonMapper.CONTROLLER_TRACKING, trackCellsWithController)
 
         /** Several behaviors mapped per default to the right menu button. If controller tracking is active,
@@ -1085,14 +1117,14 @@ open class CellTrackingBase(
                     val oldTimepoint = volume.viewerState.currentTimepoint
                     if (skipToNext || playing) {
                         skipToNext = false
-                        if (direction == PlaybackDirection.Forward) {
+                        if (playDirection == PlaybackDirection.Forward) {
                             notifyObservers(oldTimepoint + 1)
                         } else {
                             notifyObservers(oldTimepoint - 1)
                         }
                     } else {
                         skipToPrevious = false
-                        if (direction == PlaybackDirection.Forward) {
+                        if (playDirection == PlaybackDirection.Forward) {
                             notifyObservers(oldTimepoint - 1)
                         } else {
                             notifyObservers(oldTimepoint + 1)

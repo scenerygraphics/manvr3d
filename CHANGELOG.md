@@ -8,6 +8,9 @@
 - Improved file logging: every session gets a folder in a `manvr3d_log` folder; log records HMD, cursor and volume positions, distances and individual timings during tracking and all editing events; dumps each track to CSV ([#33](https://github.com/scenerygraphics/manvr3d/pull/33))
 - Add button to attach a volume lens to a selected cell and follow it ([#33](https://github.com/scenerygraphics/manvr3d/pull/33))
 - Add support for Steam Frame; utilize additional buttons for backward and forward menu cycling ([#33](https://github.com/scenerygraphics/manvr3d/pull/33), [#825](https://github.com/scenerygraphics/scenery/pull/825))
+- Press and hold the right trigger to track continuously ([#33](https://github.com/scenerygraphics/manvr3d/pull/33))
+- Add toggleable volume background for context when lensing is enabled; 
+  enabled per default  ([#33](https://github.com/scenerygraphics/manvr3d/pull/33))
 
 ### Removed
 
