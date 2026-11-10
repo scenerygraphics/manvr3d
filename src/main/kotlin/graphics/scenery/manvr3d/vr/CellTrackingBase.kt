@@ -1019,6 +1019,8 @@ open class CellTrackingBase(
             grabButtonManager
         )
 
+        val defaultCycleFwdLabel = mapper.getMapping(buttonMapper.CYCLE_MENU_FWD)?.label ?: ""
+
         VRTwoHandNodeTransform.createAndSet(
             hmd,
             OpenXRHMD.OpenXRButton.Side,
@@ -1047,7 +1049,10 @@ open class CellTrackingBase(
                     // change volume visibility to what it was before
                     manvr3d.setVolumeOnlyVisibility(manvr3d.isVolumeVisible)
                     updateLensAtCellPosition()
-                    mapper.updateLabel(buttonMapper.CYCLE_MENU_FWD, "M Cycle", buttonMapper.defaultColor)
+                    mapper.updateLabel(
+                        buttonMapper.CYCLE_MENU_FWD, defaultCycleFwdLabel,
+                        buttonMapper.defaultColor
+                    )
                 }
 
             },
