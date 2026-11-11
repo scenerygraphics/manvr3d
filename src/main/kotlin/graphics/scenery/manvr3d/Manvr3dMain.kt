@@ -635,6 +635,10 @@ class Manvr3dMain: TimepointObserver {
                 redrawSciviewSpots()
                 geometryHandler.highlightFocusedSpot()
             },
+            {
+                geometryHandler.updateSelection()
+                geometryHandler.showInstancedSpots()
+            },
             mastodon,
             this,
             bdvWindow

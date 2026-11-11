@@ -200,8 +200,8 @@ class GeometryHandler(
 
     /** Shows or initializes the main spot instance, publishes it to the scene and populates it with instances from the current time-point. */
     fun showInstancedSpots(
-        timepoint: Int,
-        colorizer: GraphColorGenerator<Spot, Link>
+        timepoint: Int = manvr3d.currentTimepoint,
+        colorizer: GraphColorGenerator<Spot, Link> = manvr3d.currentColorizer
     ) {
         enqueueUpdate("showInstancedSpots(tp=$timepoint)") {
             // Skip the rest if spots aren't visible
@@ -313,15 +313,16 @@ class GeometryHandler(
                 } else {
                     inst.setColorFromSpot(vertexRef, currentColorizer)
                 }
-                // highlight the spots currently selected or focused in BDV or trackscheme
-                if (selectedSpotRef.any { it.internalPoolIndex == vertexRef.internalPoolIndex }) {
-                    inst.instancedProperties["Color"] = { selectedColor }
-                }
 
                 spotToInstanceMap[vertexRef.internalPoolIndex] = inst
                 instanceToSpotMap[inst] = vertexRef.internalPoolIndex
 
                 index++
+            }
+
+            // highlight the spots currently selected or focused in BDV or trackscheme
+            manvr3d.selectedSpotInstances.forEach {
+                it.instancedProperties["Color"] = { selectedColor }
             }
 
             manvr3d.bdvNotifier?.lockUpdates = false
@@ -538,6 +539,8 @@ class GeometryHandler(
             mastodonData.highlightModel.highlightVertex(it)
             mastodonData.selectionModel.setSelected(it, true)
         }
+        instance.instancedProperties["Color"] = { selectedColor }
+        mainSpotInstance?.updateInstanceBuffers()
     }
 
     /** Given a [timepoint] and a [pos]ition, return the nearest spot in the Mastodon graph. */
@@ -859,7 +862,9 @@ class GeometryHandler(
             }
         }
 
-        showInstancedLinks()
+        updateSelection()
+
+//        showInstancedLinks()
         showInstancedSpots(manvr3d.currentTimepoint, manvr3d.currentColorizer)
     }
 
@@ -1303,6 +1308,31 @@ class GeometryHandler(
             mainLinkInstance?.updateInstanceBuffers()
         }
         logger.debug("Updating link colors took ${end - start}.")
+    }
+
+    /** Updates the internal geometry states to match the Mastodon source. */
+    fun updateSelection() {
+        manvr3d.selectedLinkNodes.clear()
+        manvr3d.selectedSpotInstances.clear()
+
+        val newLinks = mutableListOf<LinkNode>()
+        var link: LinkNode?
+
+        mastodonData.selectionModel.selectedEdges.forEach { edge ->
+            link = links[edge.internalPoolIndex]
+            link?.let {
+                manvr3d.selectedLinkNodes.add(it)
+                newLinks.add(it)
+            }
+        }
+        updateLinkColors(linkList = newLinks)
+
+        mastodonData.selectionModel.selectedVertices.forEach { spot ->
+            findInstanceFromSpot(spot)?.let {
+                manvr3d.selectedSpotInstances.add(it)
+            }
+        }
+        logger.info("Updated selection in manvr3d from Mastodon")
     }
 
     fun updateSegmentVisibility(currentTP: Int = manvr3d.currentTimepoint) {
