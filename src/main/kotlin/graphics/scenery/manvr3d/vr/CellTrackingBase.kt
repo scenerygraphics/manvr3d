@@ -35,7 +35,6 @@ import java.io.FileWriter
 import java.lang.Math
 import java.nio.file.Path
 import java.util.ArrayList
-import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.concurrent.thread
 import kotlin.math.sqrt
@@ -639,6 +638,27 @@ open class CellTrackingBase(
         }, depressDelay = 250, textInFront = true)
 
         leftWristMenu.addRow("Tracking Menu", attachLensToCellBtn, resetLensBtn)
+
+        val selectTrackBtn = Button("Select Track", command = {
+
+        }, depressDelay = 250, textInFront = true)
+
+        val markVerifiedBtn = Button("Mark Verified", command = {
+
+        }, depressDelay = 250, textInFront = true)
+
+        leftWristMenu.addRow("Tracking Menu", selectTrackBtn, markVerifiedBtn)
+
+        val hideUnselectedBtn = Button("Hide Unselected", command = {
+
+        }, depressDelay = 250, textInFront = true)
+
+        val resetVisibilityBtn = Button("Reset Visibility", command = {
+
+        }, depressDelay = 250, textInFront = true)
+
+        leftWristMenu.addRow("Tracking Menu", hideUnselectedBtn, resetVisibilityBtn)
+
     }
 
     var isLensingActive = false
@@ -669,7 +689,7 @@ open class CellTrackingBase(
                 ?: return null
         val wasLensingActive = isLensingActive
         selectedTrackForLens.clear()
-        val track = manvr3d.geometryHandler.selectBranch(selected)
+        val track = manvr3d.geometryHandler.gatherBranch(selected)
         // Group the full branch by timepoints and only take the first one. This isn't great, but handles subbranches
         // by selecting one
         selectedTrackForLens.putAll(
