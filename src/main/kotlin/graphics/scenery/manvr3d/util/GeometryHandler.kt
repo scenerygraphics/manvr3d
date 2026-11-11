@@ -38,6 +38,7 @@ import net.imglib2.RealPoint
 import net.imglib2.neighborsearch.RadiusNeighborSearchOnKDTree
 import org.elephant.setting.main.ElephantMainSettingsManager
 import org.mastodon.tracking.mamut.detection.DetectionQualityFeature
+import org.mastodon.ui.SelectionActions
 import spim.fiji.spimdata.interestpoints.InterestPoint
 import java.awt.Color
 import java.lang.Math
@@ -833,6 +834,35 @@ class GeometryHandler(
         updateLinkColors( currentColorizer, linkList = listOf(linkNode), updateBuffers = updateBuffers)
     }
 
+    fun selectBranch() {
+
+        val selectionModel = mastodonData.selectionModel
+        // Grab all selected spots, or source spots from selected edges
+        val selectedSpots = selectionModel.selectedVertices + selectionModel.selectedEdges.map { it.source }
+        if (selectedSpots.isEmpty()) { return }
+
+        val spotList = RefCollections.createRefSet(mastodonData.model.graph.vertices())
+
+        // Traverse all selected spots, gather the branch of them only if they weren't traversed yet
+        selectedSpots.forEach { spot ->
+            if (spotList.contains(spot)) { return@forEach }
+
+            spotList.addAll(gatherBranch(spot))
+        }
+
+        // Set all newly found spots to selected
+        spotList.forEach { spot ->
+            selectionModel.setSelected(spot, true)
+            findInstanceFromSpot(spot)?.let {
+                manvr3d.selectedSpotInstances.addIfAbsent(it)
+                it.instancedProperties["Color"] = { selectedColor }
+            }
+        }
+
+        showInstancedLinks()
+        showInstancedSpots(manvr3d.currentTimepoint, manvr3d.currentColorizer)
+    }
+
     /** Deletes the passed spots from the graph. */
     fun deleteSpots(spots: RefSet<Spot>) {
         enqueueUpdate("deleteSpots(count=${spots.size})") {
@@ -1395,7 +1425,7 @@ class GeometryHandler(
                     // Perform a recursive forward and backward search for each selected spot
                     // This deletes all branches connected to the selected spot(s)
                     selectedSpots.forEach {
-                        spotList.addAll(selectBranch(it))
+                        spotList.addAll(gatherBranch(it))
                     }
                     mastodonData.model.graph.lock.writeLock().lock()
                     spotList.distinct().forEach {
@@ -1450,7 +1480,7 @@ class GeometryHandler(
                     selectedEdges.forEach { edge ->
                         if (!selectedSpots.contains(edge.source)) {
                             logger.debug("Adding spots to the list from edge ${edge.internalPoolIndex}")
-                            selectedSpots.addAll(selectBranch(edge.source))
+                            selectedSpots.addAll(gatherBranch(edge.source))
                         }
                     }
                     selectedSpots.forEach {
@@ -1477,7 +1507,7 @@ class GeometryHandler(
 
     /** Recursively traverse every sub-branch connected to a spot. Returns a list of all spots that are connected
      * to the spot. */
-    fun selectBranch(spot: Spot): List<Spot> {
+    fun gatherBranch(spot: Spot): List<Spot> {
         val spotList = mutableListOf<Spot>()
         val spotRef = mastodonData.model.graph.vertexRef()
         spotRef.refTo(spot)
