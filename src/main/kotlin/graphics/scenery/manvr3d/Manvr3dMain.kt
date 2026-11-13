@@ -8,10 +8,7 @@ import graphics.scenery.*
 import graphics.scenery.backends.RenderConfigReader
 import graphics.scenery.controls.OpenXRHMD
 import graphics.scenery.controls.behaviours.SelectCommand
-import graphics.scenery.controls.behaviours.WithCameraDelegateBase
 import graphics.scenery.manvr3d.behaviours.MoveSpotByMouseBehaviour
-import graphics.scenery.utils.extensions.minus
-import graphics.scenery.utils.extensions.plus
 import graphics.scenery.utils.extensions.times
 import graphics.scenery.utils.lazyLogger
 import graphics.scenery.volumes.BufferedVolume
@@ -19,9 +16,7 @@ import graphics.scenery.volumes.RAIVolume
 import graphics.scenery.volumes.TransferFunction
 import graphics.scenery.volumes.Volume
 import net.imglib2.RandomAccessibleInterval
-import net.imglib2.loops.LoopBuilder
 import net.imglib2.realtransform.AffineTransform3D
-import net.imglib2.type.numeric.IntegerType
 import net.imglib2.type.numeric.integer.UnsignedShortType
 import net.imglib2.view.Views
 import org.elephant.actions.NearestNeighborLinkingAction
@@ -45,7 +40,6 @@ import org.mastodon.ui.coloring.GraphColorGenerator
 import org.mastodon.ui.coloring.TagSetGraphColorGenerator
 import org.scijava.event.EventService
 import org.scijava.ui.behaviour.ClickBehaviour
-import org.scijava.ui.behaviour.DragBehaviour
 import org.scijava.ui.behaviour.util.Actions
 import sc.iview.SciView
 import org.mastodon.mamut.ProjectModel
@@ -55,12 +49,7 @@ import graphics.scenery.manvr3d.util.SemiAutomaticTrackerWrapper
 import graphics.scenery.manvr3d.vr.CellTrackingBase
 import graphics.scenery.manvr3d.vr.EyeTracking
 import graphics.scenery.volumes.Colormap
-import net.imagej.ops.special.computer.Computers
 import org.mastodon.tracking.mamut.detection.DetectionQualityFeature
-import org.mastodon.tracking.mamut.trackmate.semiauto.SemiAutomaticTracker
-import org.mastodon.tracking.mamut.trackmate.semiauto.SemiAutomaticTrackerPlugin
-import org.mastodon.tracking.mamut.trackmate.semiauto.ui.SemiAutomaticTrackerSettingsManager
-import org.scijava.ui.behaviour.util.AbstractNamedAction
 import java.awt.event.WindowAdapter
 import java.awt.event.WindowEvent
 import java.util.concurrent.CopyOnWriteArrayList
@@ -397,13 +386,11 @@ class Manvr3dMain: TimepointObserver {
     /** Prepare all spots in the scene for ELEPHANT training. */
     fun stageSpots() {
         logger.info("Adding all spots to the true positive tag set...")
-        val tagResult = geometryHandler.applyTagToAllSpots("Detection", "tp")
+        val tagResult = geometryHandler.applyTagToSpots("Detection", "tp")
         if (!tagResult) {
             logger.warn("Could not find tag or tag set! Please ensure both exist.")
         } else {
-            geometryHandler.showInstancedSpots(
-                currentTimepoint,
-                currentColorizer)
+            geometryHandler.refreshSelectionColors()
         }
     }
 

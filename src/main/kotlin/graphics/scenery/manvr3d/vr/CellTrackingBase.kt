@@ -37,6 +37,7 @@ import graphics.scenery.manvr3d.util.CellTrackingButtonMapper
 import org.joml.Quaternionf
 import org.joml.Vector3f
 import org.joml.Vector4f
+import org.mastodon.collection.RefCollections
 import java.io.BufferedWriter
 import java.io.FileWriter
 import java.lang.Math
@@ -651,7 +652,7 @@ open class CellTrackingBase(
         }, depressDelay = 250, textInFront = true)
 
         val markVerifiedBtn = Button("Mark Verified", command = {
-
+            geometryHandler.markSelectionVerified()
         }, depressDelay = 250, textInFront = true)
 
         leftWristMenu.addRow("Tracking Menu", selectBranchBtn, markVerifiedBtn)

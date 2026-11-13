@@ -37,6 +37,7 @@ import net.imglib2.KDTree
 import net.imglib2.RealPoint
 import net.imglib2.neighborsearch.RadiusNeighborSearchOnKDTree
 import org.elephant.setting.main.ElephantMainSettingsManager
+import org.mastodon.model.tag.TagSetStructure
 import org.mastodon.tracking.mamut.detection.DetectionQualityFeature
 import spim.fiji.spimdata.interestpoints.InterestPoint
 import java.awt.Color
@@ -314,14 +315,18 @@ class GeometryHandler(
         // They will be in range elephantThreshold to 1
         val threshold = ElephantMainSettingsManager.getInstance().forwardDefaultStyle.probThreshold
         val selectedInstances = ArrayList<InstancedNode.Instance>()
+
+        // Check for the verified tags once, then use isVerified as a small lambda to check against the tag map
+        val isVerified = verifiedSpotCheck()
+
         for (spot in visibleSpots) {
             val inst = spotToInstanceMap[spot.internalPoolIndex] ?: continue
             val isSelected = selection.isSelected(spot)
             if (isSelected) selectedInstances.add(inst)
-            if (isSelected || spot == focused) {
-                inst.instancedProperties["Color"] = { selectedColor }
-            } else {
-                inst.setBaseSpotColor(spot, threshold, currentColorizer)
+            when {
+                isSelected || spot == focused -> inst.instancedProperties["Color"] = { selectedColor }
+                isVerified(spot) -> inst.instancedProperties["Color"] = { verifiedColor }
+                else -> inst.setBaseSpotColor(spot, threshold, manvr3d.currentColorizer)
             }
         }
         // derived cache for the edit behaviors, only ever written here
@@ -477,17 +482,61 @@ class GeometryHandler(
         return quaternion
     }
 
-    /** Takes a tag set name and a tag name and tries to apply it to all spots.
+    /** Takes a tag set name and a tag name and tries to apply it to the selected [spots]. Uses all spots if [spots] is null.
      * Returns false if either name can't be found. */
-    fun applyTagToAllSpots(tagSetName: String, tagName: String): Boolean {
+    fun applyTagToSpots(tagSetName: String, tagName: String, spots: List<Spot>? = null): Boolean {
+        val (ts, tag) = findTag(tagSetName, tagName) ?: return false
         val tsModel = mastodonData.model.tagSetModel
-        val ts = tsModel.tagSetStructure.tagSets.find { it.name == tagSetName } ?: return false
-        val tag = ts.tags?.find { it.label() == tagName } ?: return false
-        val spots = mastodonData.model.graph.vertices()
+        val spots = spots ?: mastodonData.model.graph.vertices()
         spots.forEach { s ->
             tsModel.vertexTags.set(s, tag)
+            s.outgoingEdges().forEach {e ->
+                tsModel.edgeTags.set(e, tag)
+            }
         }
         return true
+    }
+
+
+    val VERIFIED_SET = "Tracking"
+    val VERIFIED_TAG = "Approved"
+    private val verifiedColor = Vector4f(0.3f, 1f, 0.4f, 1f)
+
+    private fun findTag(tagSetName: String, tagName: String): Pair<TagSetStructure.TagSet, TagSetStructure.Tag>? {
+        val ts = mastodonData.model.tagSetModel.tagSetStructure.tagSets.find { it.name == tagSetName } ?: return null
+        val tag = ts.tags.find { it.label() == tagName } ?: return null
+        return ts to tag
+    }
+
+    /** Returns a cheap per-spot check. Resolve it once per color pass, not once per spot. */
+    private fun verifiedSpotCheck(): (Spot) -> Boolean {
+        val (ts, tag) = findTag(VERIFIED_SET, VERIFIED_TAG) ?: return { false }
+        val map = mastodonData.model.tagSetModel.vertexTags.tags(ts)
+        return { map.get(it) == tag }
+    }
+    private fun verifiedLinkCheck(): (Link) -> Boolean {
+        val (ts, tag) = findTag(VERIFIED_SET, VERIFIED_TAG) ?: return { false }
+        val map = mastodonData.model.tagSetModel.edgeTags.tags(ts)
+        return { map.get(it) == tag }
+    }
+
+    fun markSelectionVerified() {
+        enqueueUpdate("markSelectionVerified") {
+            val (_, tag) = findTag(VERIFIED_SET, VERIFIED_TAG) ?: run {
+                logger.warn("Tag set '$VERIFIED_SET' with tag '$VERIFIED_TAG' not found.")
+                return@enqueueUpdate
+            }
+            val selection = mastodonData.selectionModel
+            if (selection.isEmpty) return@enqueueUpdate
+            val tags = mastodonData.model.tagSetModel
+            selection.selectedEdges.forEach { tags.edgeTags.set(it, tag) }
+            selection.selectedVertices.forEach { s ->
+                tags.vertexTags.set(s, tag)
+                s.outgoingEdges().forEach { e -> if (selection.isSelected(e.target)) tags.edgeTags.set(e, tag) }
+            }
+            mastodonData.model.setUndoPoint()
+            refreshSelectionColors()
+        }
     }
 
     fun updateLensPosition(position: Vector3f) {
@@ -1291,6 +1340,13 @@ class GeometryHandler(
                     logger.info("Could not find uncertainty information in the dataset. " +
                             "Make sure your annotation data come from ELEPHANT and that you use ELEPHANT server v0.7.0+.")
                 }
+            }
+        }
+
+        val isVerified = verifiedLinkCheck()
+        links.forEach {
+            if (isVerified(it.link)) {
+                it.instance.instancedProperties["Color"] = { verifiedColor }
             }
         }
 
