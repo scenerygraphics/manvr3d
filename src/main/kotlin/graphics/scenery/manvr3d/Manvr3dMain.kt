@@ -302,8 +302,8 @@ class Manvr3dMain: TimepointObserver {
         // when a vertex position change occurs on the BDV side
         moveSpotInSciview = { spot: Spot? ->
             spot?.let {
-                selectedSpotInstances.clear()
-                geometryHandler.findInstanceFromSpot(spot)?.let { selectedSpotInstances.add(it) }
+//                selectedSpotInstances.clear()
+//                geometryHandler.findInstanceFromSpot(spot)?.let { selectedSpotInstances.add(it) }
                 geometryHandler.moveAndScaleSpotInSciview(spot) }
         }
 
@@ -624,6 +624,7 @@ class Manvr3dMain: TimepointObserver {
             { updateSciviewContent() },
             moveSpotInSciview as (Spot?) -> Unit,
             {
+                geometryHandler.invalidateRadii()
                 geometryHandler.showInstancedLinks()
                 geometryHandler.showInstancedSpots(currentTimepoint, currentColorizer)
             },
@@ -632,12 +633,10 @@ class Manvr3dMain: TimepointObserver {
                 setColorizer(bdvWindow, true)
             },
             {
-                redrawSciviewSpots()
-                geometryHandler.highlightFocusedSpot()
+                // We have no use for focussing right now, its taken care of by the selection processor
             },
             {
-                geometryHandler.updateSelection()
-                geometryHandler.showInstancedSpots()
+                geometryHandler.refreshSelectionColors()
             },
             mastodon,
             this,
@@ -778,10 +777,10 @@ class Manvr3dMain: TimepointObserver {
             BehaviourTriple(desc_NEXT_TP, key_NEXT_TP,
                 { _, _ -> nextTimepoint(); updateSciviewContent() }),
             BehaviourTriple("Scale Instance Up", "ctrl E",
-                { _, _ -> geometryHandler.changeSpotRadius(selectedSpotInstances, 1.1f) }),
+                { _, _ -> geometryHandler.scaleSelectedSpots(currentTimepoint, 1.1f) }),
             BehaviourTriple("Scale Instance Down", "ctrl Q",
-                { _, _ -> geometryHandler.changeSpotRadius(selectedSpotInstances, 0.9f) }),
-        )
+                { _, _ -> geometryHandler.scaleSelectedSpots(currentTimepoint, 1 / 1.1f) }),
+            )
 
         behaviourCollection.forEach {
             handler.addKeyBinding(it.name, it.key)
@@ -795,18 +794,14 @@ class Manvr3dMain: TimepointObserver {
             "Click Instance", renderer, scene, { scene.findObserver() },
             ignoredObjects = listOf(Volume::class.java, RAIVolume::class.java, BufferedVolume::class.java, Mesh::class.java),
             action = { result, _, _ ->
-                if (result.matches.isNotEmpty()) {
-                    // Remove previous selections first
-                    geometryHandler.clearSpotSelection()
-                    // Try to cast the result to an instance, or clear the existing selection if it fails
-                    selectedSpotInstances.add(result.matches.first().node as InstancedNode.Instance)
-                    logger.debug("selected instance {}", selectedSpotInstances)
-                    selectedSpotInstances.forEach { s ->
-                        geometryHandler.selectSpot2D(s)
-                    }
-                } else {
-                    geometryHandler.clearSpotSelection()
+                // Remove previous selections first
+                geometryHandler.clearSpotSelection()
+                result.matches.firstOrNull()?.let { match ->
+                    (match.node as? InstancedNode.Instance)?.let {
+                    geometryHandler.selectSpot2D(it)
                 }
+                }
+
             }
         )
 
@@ -826,59 +821,44 @@ class Manvr3dMain: TimepointObserver {
         camera: () -> Camera?
     ): DragBehaviour, WithCameraDelegateBase(camera) {
 
-        private var currentHit: Vector3f = Vector3f()
-        private var distance: Float = 0f
-        private var edges = mutableListOf<Int>()
+        private val movingSpots = RefCollections.createRefList(mastodon.model.graph.vertices())
+        private val edges = mutableListOf<Int>()
+        private var distance = 0f
+        private var lastHit = Vector3f()
+
+        /** Point along the mouse ray at the grab depth, in Mastodon coords. */
+        private fun hitAt(cam: Camera, x: Int, y: Int): Vector3f {
+            val (rayStart, rayDir) = cam.screenPointToRay(x, y)
+            return sciviewToMastodonCoords(rayStart + rayDir.normalize() * distance)
+        }
 
         override fun init(x: Int, y: Int) {
+            distance = 0f
+            val cam = cam ?: return
+            geometryHandler.collectSelectedSpots(currentTimepoint, movingSpots, edges)
+            val anchor = movingSpots.firstOrNull()?.let { geometryHandler.findInstanceFromSpot(it) } ?: return
             bdvNotifier?.lockUpdates = true
-            cam?.let { cam ->
-                val (rayStart, rayDir) = cam.screenPointToRay(x, y)
-                rayDir.normalize()
-                if (selectedSpotInstances.isNotEmpty()) {
-                    distance = cam.spatial().position.distance(selectedSpotInstances.first().spatial().position)
-                    currentHit = rayStart + rayDir * distance
-                    val spot = geometryHandler.findSpotFromInstance(selectedSpotInstances.first())
-                    spot?.let {
-                        edges.addAll(it.edges().map { it.internalPoolIndex })
-                    }
-                }
-            }
+            distance = cam.spatial().position.distance(anchor.spatial().worldPosition())
+            lastHit = hitAt(cam, x, y)
         }
 
         override fun drag(x: Int, y: Int) {
             if (distance <= 0)
                 return
 
-            cam?.let { cam ->
-                if (selectedSpotInstances.isNotEmpty()) {
-                    selectedSpotInstances.first().let {
-                        val (rayStart, rayDir) = cam.screenPointToRay(x, y)
-                        rayDir.normalize()
-                        val newHit = rayStart + rayDir * distance
-                        val movement = newHit - currentHit
-                        movement.y *= -1f
-                        it.ifSpatial {
-                            // Rotation around camera's center
-                            val newPos = position + movement / worldScale() / volumeNode.spatial().scale / 1.7f
-                            it.spatialOrNull()?.position = newPos
-                            currentHit = newHit
-                            it.instancedParent.updateInstanceBuffers()
-                        }
-                        geometryHandler.moveSpotInBDV(it, movement)
-                        geometryHandler.updateLinkTransforms(edges)
-                        geometryHandler.links.values
-                    }
-                }
-
-            }
+            val cam = cam ?: return
+            val hit = hitAt(cam, x, y)
+            geometryHandler.moveSpots(movingSpots, hit - lastHit, edges)
+            lastHit = hit
         }
 
         override fun end(x: Int, y: Int) {
+            if (distance <= 0f) return
+            distance = 0f
+            movingSpots.clear()
             edges.clear()
             bdvNotifier?.lockUpdates = false
-            geometryHandler.showInstancedSpots(currentTimepoint,
-                currentColorizer)
+            geometryHandler.showInstancedSpots(currentTimepoint, currentColorizer)
         }
     }
 
@@ -897,6 +877,7 @@ class Manvr3dMain: TimepointObserver {
                 fileLogger.incrementUndo()
                 logger.info("Undid last change.")
             }
+            geometryHandler.invalidateRadii()
             timeSinceUndo = now
         }
     }

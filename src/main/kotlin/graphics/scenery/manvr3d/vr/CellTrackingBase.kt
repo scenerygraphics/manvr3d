@@ -639,15 +639,15 @@ open class CellTrackingBase(
 
         leftWristMenu.addRow("Tracking Menu", attachLensToCellBtn, resetLensBtn)
 
-        val selectTrackBtn = Button("Select Track", command = {
-
+        val selectBranchBtn = Button("Select Branch", command = {
+            geometryHandler.selectBranch()
         }, depressDelay = 250, textInFront = true)
 
         val markVerifiedBtn = Button("Mark Verified", command = {
 
         }, depressDelay = 250, textInFront = true)
 
-        leftWristMenu.addRow("Tracking Menu", selectTrackBtn, markVerifiedBtn)
+        leftWristMenu.addRow("Tracking Menu", selectBranchBtn, markVerifiedBtn)
 
         val hideUnselectedBtn = Button("Hide Unselected", command = {
 
@@ -758,7 +758,7 @@ open class CellTrackingBase(
             Quaternionf().rotateX(Math.toRadians(-45.0).toFloat())
         )
 
-        val scaleCursorOrSpotsUp = AnalogInputWrapper(ScaleCursorOrSpotsBehaviour(manvr3d, .02f), sciview.currentScene)
+        val scaleCursorOrSpotsUp = AnalogInputWrapper(ScaleCursorOrSpotsBehaviour(manvr3d, 1.02f), sciview.currentScene)
         val scaleCursorOrSpotsDown = AnalogInputWrapper(ScaleCursorOrSpotsBehaviour(manvr3d,0.98f), sciview.currentScene)
 
         val toggleMenu = ClickBehaviour { _, _ ->
@@ -858,7 +858,7 @@ open class CellTrackingBase(
         )
 
         // drag behavior can stay enabled regardless of current tool mode
-        MoveInstanceVR.createAndSet(manvr3d, hmd,
+        MoveSpotVRBehaviour.createAndSet(manvr3d, hmd,
             listOf(OpenXRHMD.OpenXRButton.Side), listOf(TrackerRole.RightHand),
             grabButtonManager,
             { cursor.getPosition() }

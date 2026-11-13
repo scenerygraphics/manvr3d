@@ -7,12 +7,14 @@ import graphics.scenery.controls.TrackerRole
 import graphics.scenery.controls.behaviours.MultiButtonManager
 import graphics.scenery.utils.extensions.minus
 import graphics.scenery.utils.extensions.plus
+import graphics.scenery.utils.extensions.toFloatArray
 import graphics.scenery.utils.lazyLogger
 import org.joml.Vector3f
+import org.mastodon.collection.RefCollections
 import org.scijava.ui.behaviour.DragBehaviour
 import kotlin.time.TimeSource
 
-class MoveInstanceVR(
+class MoveSpotVRBehaviour(
     val manvr3d: Manvr3dMain,
     val buttonmanager: MultiButtonManager,
     val button: OpenXRHMD.OpenXRButton,
@@ -26,6 +28,11 @@ class MoveInstanceVR(
 
     var currentControllerPos = Vector3f()
 
+    private val graph = manvr3d.mastodon.model.graph
+
+    /** Spots of the current timepoint that get moved in this drag. Snapshot of this is taken in init. */
+    private val movingSpots = RefCollections.createRefList(graph.vertices())
+
     private var startTime = TimeSource.Monotonic.markNow()
 
     override fun init(x: Int, y: Int) {
@@ -34,34 +41,26 @@ class MoveInstanceVR(
         if (buttonmanager.isTwoHandedActive()) return
         startTime = TimeSource.Monotonic.markNow()
 
-        val pos = getTipPosition()
-        // Guard against empty selection
-        if (manvr3d.mastodon.selectionModel.selectedVertices == null
-            || manvr3d.selectedSpotInstances.isEmpty()) {
-            manvr3d.selectedSpotInstances.clear()
-            return
-        }
+        movingSpots.clear()
+        adjacentEdges.clear()
 
-        // Guard against spots not being in the current timepoint
-        val invalidSpot = manvr3d.selectedSpotInstances.any { inst ->
-            val spot = manvr3d.geometryHandler.findSpotFromInstance(inst)
-            spot?.timepoint != manvr3d.volumeNode.currentTimepoint
+        val pos = getTipPosition()
+
+        val tp = manvr3d.currentTimepoint
+
+        // Guard against empty selection
+        manvr3d.mastodon.selectionModel.selectedVertices.forEach {
+            if (it.timepoint == tp) movingSpots.add(it)
         }
-        if (invalidSpot) {
-            manvr3d.selectedSpotInstances.clear()
-            logger.warn("Tried to move a spot outside the current timepoint. Aborting.")
-            return
-        }
+        if (movingSpots.isEmpty()) return
 
         manvr3d.bdvNotifier?.lockUpdates = true
-        currentControllerPos = manvr3d.sciviewToMastodonCoords(pos)
 
-        manvr3d.selectedSpotInstances.forEach { inst ->
-            logger.debug("selected spot instance is $inst")
-            val spot = manvr3d.geometryHandler.findSpotFromInstance(inst)
-            spot?.let { s ->
-                adjacentEdges.addAll(s.edges().map { it.internalPoolIndex })
-                logger.debug("Moving edges $manvr3d.adjacentEdges for spot ${spot.internalPoolIndex}.")
+        currentControllerPos = manvr3d.sciviewToMastodonCoords(pos)
+        // Keep track of all adjacent edges of the moving spots
+        movingSpots.forEach { s ->
+            s.edges().forEach {
+                adjacentEdges.add(it.internalPoolIndex)
             }
         }
     }
@@ -75,12 +74,12 @@ class MoveInstanceVR(
         ) {
             return
         }
-        val pos = getTipPosition()
-        val newPos = manvr3d.sciviewToMastodonCoords(pos)
+        val newPos = manvr3d.sciviewToMastodonCoords(getTipPosition())
         val movement = newPos - currentControllerPos
-        manvr3d.selectedSpotInstances.forEach {
-            it.spatial { position += movement }
-            manvr3d.geometryHandler.moveSpotInBDV(it, movement)
+        val delta = movement.toFloatArray()
+        movingSpots.forEach { spot ->
+            spot.move(delta)
+            manvr3d.geometryHandler.findInstanceFromSpot(spot)?.spatial { position += movement }
         }
         manvr3d.geometryHandler.mainSpotInstance?.updateInstanceBuffers()
         manvr3d.geometryHandler.updateLinkTransforms(adjacentEdges)
@@ -98,6 +97,7 @@ class MoveInstanceVR(
                 manvr3d.currentColorizer
             )
             adjacentEdges.clear()
+            movingSpots.clear()
             manvr3d.fileLogger.incrementSpotMoved()
             manvr3d.recordVREditEvent("Spots moved", TimeSource.Monotonic.markNow() - startTime)
         }
@@ -122,7 +122,7 @@ class MoveInstanceVR(
                         if (controllerSide.contains(device.role)) {
                             buttons.forEach { button ->
                                 val name = "VRDrag:${hmd.trackingSystemName}:${device.role}:$button"
-                                val grabBehaviour = MoveInstanceVR(
+                                val grabBehaviour = MoveSpotVRBehaviour(
                                     manvr3d,
                                     buttonmanager,
                                     button,
