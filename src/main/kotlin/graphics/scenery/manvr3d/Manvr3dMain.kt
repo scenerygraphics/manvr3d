@@ -8,9 +8,7 @@ import graphics.scenery.*
 import graphics.scenery.backends.RenderConfigReader
 import graphics.scenery.controls.OpenXRHMD
 import graphics.scenery.controls.behaviours.SelectCommand
-import graphics.scenery.controls.behaviours.WithCameraDelegateBase
-import graphics.scenery.utils.extensions.minus
-import graphics.scenery.utils.extensions.plus
+import graphics.scenery.manvr3d.behaviours.MoveSpotByMouseBehaviour
 import graphics.scenery.utils.extensions.times
 import graphics.scenery.utils.lazyLogger
 import graphics.scenery.volumes.BufferedVolume
@@ -18,9 +16,7 @@ import graphics.scenery.volumes.RAIVolume
 import graphics.scenery.volumes.TransferFunction
 import graphics.scenery.volumes.Volume
 import net.imglib2.RandomAccessibleInterval
-import net.imglib2.loops.LoopBuilder
 import net.imglib2.realtransform.AffineTransform3D
-import net.imglib2.type.numeric.IntegerType
 import net.imglib2.type.numeric.integer.UnsignedShortType
 import net.imglib2.view.Views
 import org.elephant.actions.NearestNeighborLinkingAction
@@ -44,25 +40,22 @@ import org.mastodon.ui.coloring.GraphColorGenerator
 import org.mastodon.ui.coloring.TagSetGraphColorGenerator
 import org.scijava.event.EventService
 import org.scijava.ui.behaviour.ClickBehaviour
-import org.scijava.ui.behaviour.DragBehaviour
 import org.scijava.ui.behaviour.util.Actions
 import sc.iview.SciView
 import org.mastodon.mamut.ProjectModel
 import graphics.scenery.utils.TimepointObserver
 import graphics.scenery.manvr3d.util.GeometryHandler
+import graphics.scenery.manvr3d.util.SemiAutomaticTrackerWrapper
 import graphics.scenery.manvr3d.vr.CellTrackingBase
 import graphics.scenery.manvr3d.vr.EyeTracking
 import graphics.scenery.volumes.Colormap
-import org.mastodon.graph.GraphChangeListener
-import org.mastodon.graph.GraphListener
+import org.mastodon.tracking.mamut.detection.DetectionQualityFeature
 import java.awt.event.WindowAdapter
 import java.awt.event.WindowEvent
-import java.sql.Time
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.Executors
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
-import java.util.concurrent.atomic.AtomicBoolean
 import javax.swing.Action
 import javax.swing.JFrame
 import javax.swing.JPanel
@@ -70,7 +63,6 @@ import kotlin.concurrent.thread
 import kotlin.math.*
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
-import kotlin.time.DurationUnit
 import kotlin.time.TimeSource
 
 /** Main class of Manvr3d. A [mastodon] instance is passed during construction, from which the volume data are taken.
@@ -123,7 +115,7 @@ class Manvr3dMain: TimepointObserver {
     val sciviewWin: SciView
     val geometryHandler: GeometryHandler
     //sink scene graph structuring nodes
-    val axesParent: DataAxes
+    val dataAxes: DataAxes
 
     /** Worker queue for async updates of graph changes for Mastodon. */
     private val updateQueue = LinkedBlockingQueue<() -> Unit>(100)
@@ -177,6 +169,7 @@ class Manvr3dMain: TimepointObserver {
     var isTrackVisible = true
     var isSpotVisible = true
 
+    val qualityFeature: DetectionQualityFeature?
     var showUncertainty = false
     var invertLut = false
 
@@ -187,6 +180,8 @@ class Manvr3dMain: TimepointObserver {
     private var trainSpotsAction: Action? = null
     private val trainFlowAction: Action? = null
     private var neighborLinkingAction: Action? = null
+
+    lateinit var semiAutoTracker: SemiAutomaticTrackerWrapper
 
     val fileLogger: FileStatsLogger
 
@@ -230,23 +225,19 @@ class Manvr3dMain: TimepointObserver {
         }
         sciviewWin.addNode(AmbientLight(0.05f, Vector3f(1f, 1f, 1f)))
 
-        //add "root" with data axes
-        axesParent = DataAxes()
-        sciviewWin.addNode(axesParent, activePublish = false)
-
         //get necessary metadata - from image data
         this.sourceID = sourceID
         this.initMipmapLevel = initMipmapLevel
         sac = mastodon.sharedBdvData.sources[this.sourceID]
         spimSource = sac.spimSource
         // number of pixels for each dimension at the highest res level
-        val volumeDims = spimSource.getSource(0, 0).dimensionsAsLongArray()
+        val volumePixelsMax = spimSource.getSource(0, 0).dimensionsAsLongArray()
         // number of pixels for each dimension of the volume at current res level
-        val volumeNumPixels = spimSource.getSource(0, this.initMipmapLevel).dimensionsAsLongArray()
+        val volumePixelsCurrentLevel = spimSource.getSource(0, this.initMipmapLevel).dimensionsAsLongArray()
         val volumeDownscale = Vector3f(
-            volumeDims[0].toFloat() / volumeNumPixels[0].toFloat(),
-            volumeDims[1].toFloat() / volumeNumPixels[1].toFloat(),
-            volumeDims[2].toFloat() / volumeNumPixels[2].toFloat()
+            volumePixelsMax[0].toFloat() / volumePixelsCurrentLevel[0].toFloat(),
+            volumePixelsMax[1].toFloat() / volumePixelsCurrentLevel[1].toFloat(),
+            volumePixelsMax[2].toFloat() / volumePixelsCurrentLevel[2].toFloat()
         )
         logger.info("downscale factors: ${volumeDownscale[0]} x, ${volumeDownscale[1]} x, ${volumeDownscale[2]} x")
         logger.info("number of mipmap levels: ${spimSource.numMipmapLevels}, available timepoints: ${mastodon.sharedBdvData.numTimepoints}")
@@ -259,6 +250,7 @@ class Manvr3dMain: TimepointObserver {
         )
 
         while (!volumeNode.volumeManager.readyToRender()) {
+            // TODO this sometimes throws a ConcurrentModificationException
             Thread.sleep(20)
         }
 
@@ -272,12 +264,24 @@ class Manvr3dMain: TimepointObserver {
 
         // flip Z axis to align it with the synced BDV view
         volumeNode.spatial().scale *= Vector3f(1f, 1f, -1f)
+        // Prevent the grid from extending into the data axes
+        volumeNode.children.filterIsInstance<BoundingGrid>().firstOrNull()?.includeChildren = false
+
+        val volumePixelDims = Vector3f(volumeNode.getDimensions())
+
+        val voxelDims = sac.spimSource.voxelDimensions.dimensionsAsDoubleArray()
+
+        //add "root" with data axes, scaled to be visible when inheriting the volume scale
+        dataAxes = DataAxes(origin = volumePixelDims.times(Vector3f(
+            0f * voxelDims[0].toFloat(),
+            1f * voxelDims[1].toFloat(),
+            1f * voxelDims[2].toFloat())), size = 20f)
+        sciviewWin.addNode(dataAxes, activePublish = true, parent = volumeNode)
 
         centerCameraOnVolume()
 
         logger.info("volume node scale is ${volumeNode.spatialOrNull()?.scale}")
 
-        logger.info("volume size is ${volumeNode.boundingBox!!.max - volumeNode.boundingBox!!.min}")
         //add the sciview-side displaying handler for the spots
         geometryHandler = GeometryHandler(sciviewWin, this, updateQueue, mastodon, volumeNode, volumeNode)
 
@@ -288,8 +292,8 @@ class Manvr3dMain: TimepointObserver {
         // when a vertex position change occurs on the BDV side
         moveSpotInSciview = { spot: Spot? ->
             spot?.let {
-                selectedSpotInstances.clear()
-                geometryHandler.findInstanceFromSpot(spot)?.let { selectedSpotInstances.add(it) }
+//                selectedSpotInstances.clear()
+//                geometryHandler.findInstanceFromSpot(spot)?.let { selectedSpotInstances.add(it) }
                 geometryHandler.moveAndScaleSpotInSciview(spot) }
         }
 
@@ -298,6 +302,16 @@ class Manvr3dMain: TimepointObserver {
         defaultVolumeRotation = volumeNode.spatial().rotation
 
         pluginActions = mastodon.plugins.pluginActions
+
+        semiAutoTracker = SemiAutomaticTrackerWrapper(this, mastodon, maxTimepoint + 1)
+
+        val qualitySpec = mastodon.model.featureModel.featureSpecs.find { it.key == "Detection quality" }
+
+        qualityFeature = if (qualitySpec != null) {
+            mastodon.model.featureModel.getFeature(qualitySpec) as? DetectionQualityFeature
+        } else {
+            null
+        }
 
         openSyncedBDV()
 
@@ -372,13 +386,11 @@ class Manvr3dMain: TimepointObserver {
     /** Prepare all spots in the scene for ELEPHANT training. */
     fun stageSpots() {
         logger.info("Adding all spots to the true positive tag set...")
-        val tagResult = geometryHandler.applyTagToAllSpots("Detection", "tp")
+        val tagResult = geometryHandler.applyTagToSpots("Detection", "tp")
         if (!tagResult) {
             logger.warn("Could not find tag or tag set! Please ensure both exist.")
         } else {
-            geometryHandler.showInstancedSpots(
-                currentTimepoint,
-                currentColorizer)
+            geometryHandler.refreshSelectionColors()
         }
     }
 
@@ -509,10 +521,17 @@ class Manvr3dMain: TimepointObserver {
         globalCoords.mul(volumeNode.pixelToWorldRatio)
         val scaleFactor = Vector3f(volumeNode.spatial().scale).div(sceneScale).mul(1f, 1f, -1f)
         globalCoords.mul(scaleFactor)
-        Quaternionf(volumeNode.spatial().rotation).conjugate().transform(globalCoords)
+        Quaternionf(volumeNode.spatial().rotation).transform(globalCoords)
         globalCoords.add(volumeNode.spatial().position)
 
         return globalCoords
+    }
+
+    /** Convert a [FloatArray], Mastodon's native type when localizing spots, from Mastodon's voxel space into
+     * sciview space, taking the volume's transforms into account. */
+    fun mastodonToSciviewCoords(pos: FloatArray): Vector3f {
+        if (pos.size != 3) throw IllegalArgumentException("Position array must have 3 elements")
+        return mastodonToSciviewCoords(Vector3f(pos[0], pos[1], pos[2]))
     }
 
     /** Adds a volume to the sciview scene, scales it by [scale], adjusts the transfer function to a ramp from [0, 0] to [1, 1]
@@ -580,51 +599,6 @@ class Manvr3dMain: TimepointObserver {
         }
     }
 
-    // TODO for now this is not used because it introduces lag to timeline scrubbing. Should maybe be done on the GPU instead?
-    /** Change voxel values based on the intensity values like contrast, shift, gamma, etc. */
-    fun <T : IntegerType<T>?> volumeIntensityProcessing(
-        srcImg: RandomAccessibleInterval<T>?
-    ) {
-        logger.info("started volumeIntensityProcessing...")
-        val gammaEnabledIntensityProcessor: (T) -> Unit =
-            { src: T -> src?.setReal(
-                    intensity.clampTop * ( //TODO, replace pow() with LUT for several gammas
-                            min(
-                                intensity.contrast * src.realFloat + intensity.shift,
-                                intensity.clampTop
-                            ) / intensity.clampTop
-                        ).pow(intensity.gamma)
-                    )
-            }
-        val noGammaIntensityProcessor: (T) -> Unit =
-            { src: T -> src?.setReal(
-                        min(
-                            // TODO This needs to incorporate INTENSITY_RANGE_MIN and MAX
-                            intensity.contrast * src.realFloat + intensity.shift,
-                            intensity.clampTop
-                        )
-                    )
-            }
-
-        // choose processor depending on the gamma value selected
-        val intensityProcessor = if (intensity.gamma != 1.0f)
-            gammaEnabledIntensityProcessor else noGammaIntensityProcessor
-
-        if (srcImg == null) logger.warn("volumeIntensityProcessing: srcImg is null !!!")
-
-        // apply processor lambda to each pixel using ImgLib2
-        LoopBuilder.setImages(srcImg)
-            .multiThreaded()
-            .forEachPixel(intensityProcessor)
-
-    }
-
-    /** Overload that implicitly uses the existing [spimSource] for [volumeIntensityProcessing] */
-    fun volumeIntensityProcessing() {
-        val srcImg = spimSource.getSource(currentTimepoint, initMipmapLevel) as RandomAccessibleInterval<UnsignedShortType>
-        volumeIntensityProcessing(srcImg)
-    }
-
     /** Create a BDV window and launch a [BdvNotifier] instance to synchronize timepoint and viewing direction,
      * as well as update handling for changes in color, vertices or the graph. */
     fun openSyncedBDV() {
@@ -638,6 +612,7 @@ class Manvr3dMain: TimepointObserver {
             { updateSciviewContent() },
             moveSpotInSciview as (Spot?) -> Unit,
             {
+                geometryHandler.invalidateRadii()
                 geometryHandler.showInstancedLinks()
                 geometryHandler.showInstancedSpots(currentTimepoint, currentColorizer)
             },
@@ -646,8 +621,10 @@ class Manvr3dMain: TimepointObserver {
                 setColorizer(bdvWindow, true)
             },
             {
-                redrawSciviewSpots()
-                geometryHandler.highlightFocusedSpot()
+                // We have no use for focussing right now, its taken care of by the selection processor
+            },
+            {
+                geometryHandler.refreshSelectionColors()
             },
             mastodon,
             this,
@@ -788,10 +765,10 @@ class Manvr3dMain: TimepointObserver {
             BehaviourTriple(desc_NEXT_TP, key_NEXT_TP,
                 { _, _ -> nextTimepoint(); updateSciviewContent() }),
             BehaviourTriple("Scale Instance Up", "ctrl E",
-                { _, _ -> geometryHandler.changeSpotRadius(selectedSpotInstances, 1.1f) }),
+                { _, _ -> geometryHandler.scaleSelectedSpots(currentTimepoint, 1.1f) }),
             BehaviourTriple("Scale Instance Down", "ctrl Q",
-                { _, _ -> geometryHandler.changeSpotRadius(selectedSpotInstances, 0.9f) }),
-        )
+                { _, _ -> geometryHandler.scaleSelectedSpots(currentTimepoint, 1 / 1.1f) }),
+            )
 
         behaviourCollection.forEach {
             handler.addKeyBinding(it.name, it.key)
@@ -805,18 +782,14 @@ class Manvr3dMain: TimepointObserver {
             "Click Instance", renderer, scene, { scene.findObserver() },
             ignoredObjects = listOf(Volume::class.java, RAIVolume::class.java, BufferedVolume::class.java, Mesh::class.java),
             action = { result, _, _ ->
-                if (result.matches.isNotEmpty()) {
-                    // Remove previous selections first
-                    geometryHandler.clearSpotSelection()
-                    // Try to cast the result to an instance, or clear the existing selection if it fails
-                    selectedSpotInstances.add(result.matches.first().node as InstancedNode.Instance)
-                    logger.debug("selected instance {}", selectedSpotInstances)
-                    selectedSpotInstances.forEach { s ->
-                        geometryHandler.selectSpot2D(s)
-                    }
-                } else {
-                    geometryHandler.clearSpotSelection()
+                // Remove previous selections first
+                geometryHandler.clearSpotSelection()
+                result.matches.firstOrNull()?.let { match ->
+                    (match.node as? InstancedNode.Instance)?.let {
+                    geometryHandler.selectSpot2D(it)
                 }
+                }
+
             }
         )
 
@@ -825,72 +798,13 @@ class Manvr3dMain: TimepointObserver {
             handler.addBehaviour("Click Instance", clickInstance)
             handler.addKeyBinding("Click Instance", "button1")
 
-            handler.addBehaviour("Move Instance", MoveInstanceByMouse(
-                { scene.findObserver() } ))
+            handler.addBehaviour("Move Instance", MoveSpotByMouseBehaviour(
+                { scene.findObserver() }, mastodon, this))
             handler.addKeyBinding("Move Instance", "SPACE")
         }
 
     }
 
-    inner class MoveInstanceByMouse(
-        camera: () -> Camera?
-    ): DragBehaviour, WithCameraDelegateBase(camera) {
-
-        private var currentHit: Vector3f = Vector3f()
-        private var distance: Float = 0f
-        private var edges = mutableListOf<Int>()
-
-        override fun init(x: Int, y: Int) {
-            bdvNotifier?.lockUpdates = true
-            cam?.let { cam ->
-                val (rayStart, rayDir) = cam.screenPointToRay(x, y)
-                rayDir.normalize()
-                if (selectedSpotInstances.isNotEmpty()) {
-                    distance = cam.spatial().position.distance(selectedSpotInstances.first().spatial().position)
-                    currentHit = rayStart + rayDir * distance
-                    val spot = geometryHandler.findSpotFromInstance(selectedSpotInstances.first())
-                    spot?.let {
-                        edges.addAll(it.edges().map { it.internalPoolIndex })
-                    }
-                }
-            }
-        }
-
-        override fun drag(x: Int, y: Int) {
-            if (distance <= 0)
-                return
-
-            cam?.let { cam ->
-                if (selectedSpotInstances.isNotEmpty()) {
-                    selectedSpotInstances.first().let {
-                        val (rayStart, rayDir) = cam.screenPointToRay(x, y)
-                        rayDir.normalize()
-                        val newHit = rayStart + rayDir * distance
-                        val movement = newHit - currentHit
-                        movement.y *= -1f
-                        it.ifSpatial {
-                            // Rotation around camera's center
-                            val newPos = position + movement / worldScale() / volumeNode.spatial().scale / 1.7f
-                            it.spatialOrNull()?.position = newPos
-                            currentHit = newHit
-                            it.instancedParent.updateInstanceBuffers()
-                        }
-                        geometryHandler.moveSpotInBDV(it, movement)
-                        geometryHandler.updateLinkTransforms(edges)
-                        geometryHandler.links.values
-                    }
-                }
-
-            }
-        }
-
-        override fun end(x: Int, y: Int) {
-            edges.clear()
-            bdvNotifier?.lockUpdates = false
-            geometryHandler.showInstancedSpots(currentTimepoint,
-                currentColorizer)
-        }
-    }
 
     var timeSinceUndo = TimeSource.Monotonic.markNow()
 
@@ -907,6 +821,7 @@ class Manvr3dMain: TimepointObserver {
                 fileLogger.incrementUndo()
                 logger.info("Undid last change.")
             }
+            geometryHandler.invalidateRadii()
             timeSinceUndo = now
         }
     }
@@ -917,13 +832,17 @@ class Manvr3dMain: TimepointObserver {
         spots.addAll(selectedSpotInstances.map { geometryHandler.findSpotFromInstance(it) }.distinct())
         geometryHandler.mergeSpots(spots)
         fileLogger.incrementMerge()
+        recordVREditEvent("Merge Selection")
         geometryHandler.clearSpotSelection()
+        geometryHandler.clearLinkSelection()
         geometryHandler.showInstancedSpots(currentTimepoint, currentColorizer)
     }
 
     /** Find all spots that overlap and then rebuild the spot */
     fun mergeOverlapsAndUpdate(tp: Int = volumeNode.currentTimepoint) {
         geometryHandler.mergeOverlappingSpots(tp)
+        fileLogger.incrementMerge()
+        recordVREditEvent("Merge Overlaps")
         rebuildGeometry()
     }
 
@@ -932,6 +851,8 @@ class Manvr3dMain: TimepointObserver {
         val spots = RefCollections.createRefSet<Spot>(mastodon.model.graph.vertices())
         spots.addAll(mastodon.model.graph.vertices())
         geometryHandler.deleteSpots(spots)
+        geometryHandler.clearSpotSelection()
+        geometryHandler.clearLinkSelection()
         rebuildGeometry()
     }
 
@@ -957,6 +878,13 @@ class Manvr3dMain: TimepointObserver {
         // TODO this is a hacky workaround for the geometry not updating properly when resetting the volume
         rebuildGeometry()
         rebuildGeometry()
+    }
+
+    /** Forwards an edit event to [fileLogger] for recording. */
+    fun recordVREditEvent(eventName: String, duration: Duration = 0.seconds) {
+        if (!isVRactive) return
+        fileLogger.recordEvent(eventName, vrTracking.cursor.getPosition(), vrTracking.hmd.getPosition(),
+            volumeNode.spatial(), duration)
     }
 
     /** Starts the sciview VR environment and optionally the eye tracking environment,

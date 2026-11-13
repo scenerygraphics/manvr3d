@@ -11,6 +11,7 @@ import org.mastodon.mamut.model.Link
 import org.mastodon.mamut.model.Spot
 import org.mastodon.mamut.views.bdv.MamutViewBdv
 import org.mastodon.model.FocusListener
+import org.mastodon.model.SelectionListener
 import org.mastodon.spatial.VertexPositionListener
 import org.mastodon.ui.coloring.ColoringModel.ColoringChangedListener
 import java.beans.PropertyChangeEvent
@@ -37,6 +38,7 @@ class BdvNotifier(
     updateGraphProcessor: Runnable,
     updateColoringProcessor: Runnable,
     updateFocusProcessor: Runnable,
+    updateSelectionProcessor: Runnable,
     val mastodon: ProjectModel,
     val manvr3d: Manvr3dMain,
     val bdvWindow: MamutViewBdv,
@@ -61,7 +63,8 @@ class BdvNotifier(
         updateVertexProcessor,
         updateGraphProcessor,
         updateColoringProcessor,
-        updateFocusProcessor
+        updateFocusProcessor,
+        updateSelectionProcessor
     )
 
     init {
@@ -73,6 +76,7 @@ class BdvNotifier(
         mastodon.focusModel.listeners().add(bdvUpdateListener)
         mastodon.model.graph.addVertexPositionListener(bdvUpdateListener)
         mastodon.model.graph.addGraphChangeListener(bdvUpdateListener)
+        mastodon.selectionModel.listeners().add(bdvUpdateListener)
         eventsHandlerThread.start()
         bdvWindow.onClose {
             logger.debug("Cleaning up while BDV window is closing.")
@@ -89,6 +93,7 @@ class BdvNotifier(
         mastodon.focusModel.listeners().remove(bdvUpdateListener)
         mastodon.model.graph.removeGraphChangeListener(bdvUpdateListener)
         mastodon.model.graph.removeVertexPositionListener(bdvUpdateListener)
+        mastodon.selectionModel.listeners().remove(bdvUpdateListener)
         eventsHandlerThread.stopTheWatching()
         logger.info("Stopped BDV notifier thread.")
     }
@@ -98,7 +103,7 @@ class BdvNotifier(
     internal inner class BdvEventsWatcher(val thisBDV: MamutViewBdv, val mastodon: ProjectModel) :
         TransformListener<AffineTransform3D?>,
         TimePointListener, GraphChangeListener, VertexPositionListener<Spot>, PropertyChangeListener, FocusListener,
-        ColoringChangedListener, GraphListener<Spot, Link> {
+        ColoringChangedListener, GraphListener<Spot, Link>, SelectionListener {
         override fun graphChanged() {
             logger.debug("Called graphChanged")
             timeStampOfLastEvent = System.currentTimeMillis()
@@ -164,6 +169,10 @@ class BdvNotifier(
             // TODO("Not yet implemented")
         }
 
+        override fun selectionChanged() {
+            logger.debug("called selectionChanged")
+            isLastSelectionEventValid = true
+        }
 
         var isLastContentEventValid = false
         var isLastVertexEventValid = false
@@ -172,6 +181,7 @@ class BdvNotifier(
         var isLastTimepointEventValid = false
         var isLastColoringEventValid = false
         var isLastFocusEventValid = false
+        var isLastSelectionEventValid = false
         var timeStampOfLastEvent: Long = 0
     }
 
@@ -196,7 +206,8 @@ class BdvNotifier(
         val vertexEventProcessor: (Spot?) -> Unit,
         val graphEventProcessor: Runnable,
         val coloringProcessor: Runnable,
-        val focusProcessor: Runnable
+        val focusProcessor: Runnable,
+        val selectionProcessor: Runnable,
     ) : Thread(SERVICE_NAME) {
 
         var keepWatching = true
@@ -210,8 +221,9 @@ class BdvNotifier(
             try {
                 while (keepWatching) {
                     if ((eventsSource.isLastContentEventValid || eventsSource.isLastVertexEventValid || eventsSource.isLastGraphEventValid
-                        || eventsSource.isLastViewEventValid || eventsSource.isLastColoringEventValid || eventsSource.isLastFocusEventValid &&
-                        System.currentTimeMillis() - eventsSource.timeStampOfLastEvent > updateInterval)
+                        || eventsSource.isLastViewEventValid || eventsSource.isLastColoringEventValid || eventsSource.isLastFocusEventValid
+                        || eventsSource.isLastSelectionEventValid)
+                        && (System.currentTimeMillis() - eventsSource.timeStampOfLastEvent > updateInterval)
                         && !lockUpdates
                     ) {
                         if (eventsSource.isLastContentEventValid) {
@@ -254,6 +266,11 @@ class BdvNotifier(
                         if (eventsSource.isLastColoringEventValid) {
                             eventsSource.isLastColoringEventValid = false
                             coloringProcessor.run()
+                        }
+                        if (eventsSource.isLastSelectionEventValid) {
+                            logger.debug("$SERVICE_NAME: selection event and silence detected -> processing it now")
+                            selectionProcessor.run()
+                            eventsSource.isLastSelectionEventValid = false
                         }
                     } else sleep(updateInterval)
                 }
