@@ -1,10 +1,10 @@
-package graphics.scenery.manvr3d.vr
+package graphics.scenery.manvr3d.behaviours
 
-import graphics.scenery.manvr3d.Manvr3dMain
 import graphics.scenery.controls.OpenXRHMD
 import graphics.scenery.controls.TrackedDeviceType
 import graphics.scenery.controls.TrackerRole
 import graphics.scenery.controls.behaviours.MultiButtonManager
+import graphics.scenery.manvr3d.Manvr3dMain
 import graphics.scenery.utils.extensions.minus
 import graphics.scenery.utils.extensions.plus
 import graphics.scenery.utils.extensions.toFloatArray
@@ -79,7 +79,7 @@ class MoveSpotVRBehaviour(
         val delta = movement.toFloatArray()
         movingSpots.forEach { spot ->
             spot.move(delta)
-            manvr3d.geometryHandler.findInstanceFromSpot(spot)?.spatial { position += movement }
+            manvr3d.geometryHandler.findInstanceFromSpot(spot)?.spatial { position + movement }
         }
         manvr3d.geometryHandler.mainSpotInstance?.updateInstanceBuffers()
         manvr3d.geometryHandler.updateLinkTransforms(adjacentEdges)

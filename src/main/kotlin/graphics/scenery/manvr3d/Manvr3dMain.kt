@@ -9,6 +9,7 @@ import graphics.scenery.backends.RenderConfigReader
 import graphics.scenery.controls.OpenXRHMD
 import graphics.scenery.controls.behaviours.SelectCommand
 import graphics.scenery.controls.behaviours.WithCameraDelegateBase
+import graphics.scenery.manvr3d.behaviours.MoveSpotByMouseBehaviour
 import graphics.scenery.utils.extensions.minus
 import graphics.scenery.utils.extensions.plus
 import graphics.scenery.utils.extensions.times
@@ -810,57 +811,13 @@ class Manvr3dMain: TimepointObserver {
             handler.addBehaviour("Click Instance", clickInstance)
             handler.addKeyBinding("Click Instance", "button1")
 
-            handler.addBehaviour("Move Instance", MoveInstanceByMouse(
-                { scene.findObserver() } ))
+            handler.addBehaviour("Move Instance", MoveSpotByMouseBehaviour(
+                { scene.findObserver() }, mastodon, this))
             handler.addKeyBinding("Move Instance", "SPACE")
         }
 
     }
 
-    inner class MoveInstanceByMouse(
-        camera: () -> Camera?
-    ): DragBehaviour, WithCameraDelegateBase(camera) {
-
-        private val movingSpots = RefCollections.createRefList(mastodon.model.graph.vertices())
-        private val edges = mutableListOf<Int>()
-        private var distance = 0f
-        private var lastHit = Vector3f()
-
-        /** Point along the mouse ray at the grab depth, in Mastodon coords. */
-        private fun hitAt(cam: Camera, x: Int, y: Int): Vector3f {
-            val (rayStart, rayDir) = cam.screenPointToRay(x, y)
-            return sciviewToMastodonCoords(rayStart + rayDir.normalize() * distance)
-        }
-
-        override fun init(x: Int, y: Int) {
-            distance = 0f
-            val cam = cam ?: return
-            geometryHandler.collectSelectedSpots(currentTimepoint, movingSpots, edges)
-            val anchor = movingSpots.firstOrNull()?.let { geometryHandler.findInstanceFromSpot(it) } ?: return
-            bdvNotifier?.lockUpdates = true
-            distance = cam.spatial().position.distance(anchor.spatial().worldPosition())
-            lastHit = hitAt(cam, x, y)
-        }
-
-        override fun drag(x: Int, y: Int) {
-            if (distance <= 0)
-                return
-
-            val cam = cam ?: return
-            val hit = hitAt(cam, x, y)
-            geometryHandler.moveSpots(movingSpots, hit - lastHit, edges)
-            lastHit = hit
-        }
-
-        override fun end(x: Int, y: Int) {
-            if (distance <= 0f) return
-            distance = 0f
-            movingSpots.clear()
-            edges.clear()
-            bdvNotifier?.lockUpdates = false
-            geometryHandler.showInstancedSpots(currentTimepoint, currentColorizer)
-        }
-    }
 
     var timeSinceUndo = TimeSource.Monotonic.markNow()
 

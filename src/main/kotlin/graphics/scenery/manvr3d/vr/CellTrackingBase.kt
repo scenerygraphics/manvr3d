@@ -23,6 +23,13 @@ import graphics.scenery.controls.behaviours.ThumbstickMovement
 import graphics.scenery.controls.behaviours.VRTwoHandNodeTransform
 import graphics.scenery.controls.behaviours.VRGrabTheWorld
 import graphics.scenery.controls.behaviours.VRPress
+import graphics.scenery.manvr3d.behaviours.AddDeleteResetBehavior
+import graphics.scenery.manvr3d.behaviours.ControllerTrackBehaviour
+import graphics.scenery.manvr3d.behaviours.CycleMenuAndLockAxisBehaviour
+import graphics.scenery.manvr3d.behaviours.DragSelectBehavior
+import graphics.scenery.manvr3d.behaviours.MoveSpotVRBehaviour
+import graphics.scenery.manvr3d.behaviours.ScaleCursorOrSpotsBehaviour
+import graphics.scenery.manvr3d.behaviours.TimepointScrollBehaviour
 import graphics.scenery.manvr3d.util.GeometryHandler
 import graphics.scenery.utils.TimepointObservable
 import graphics.scenery.manvr3d.util.SpineMetadata
@@ -759,7 +766,7 @@ open class CellTrackingBase(
         )
 
         val scaleCursorOrSpotsUp = AnalogInputWrapper(ScaleCursorOrSpotsBehaviour(manvr3d, 1.02f), sciview.currentScene)
-        val scaleCursorOrSpotsDown = AnalogInputWrapper(ScaleCursorOrSpotsBehaviour(manvr3d,0.98f), sciview.currentScene)
+        val scaleCursorOrSpotsDown = AnalogInputWrapper(ScaleCursorOrSpotsBehaviour(manvr3d, 0.98f), sciview.currentScene)
 
         val toggleMenu = ClickBehaviour { _, _ ->
             leftWristMenu.toggleVisibility()

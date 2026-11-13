@@ -1,12 +1,13 @@
-package graphics.scenery.manvr3d.vr
+package graphics.scenery.manvr3d.behaviours
 
-import graphics.scenery.manvr3d.vr.CellTrackingBase.PlaybackDirection
+import graphics.scenery.manvr3d.vr.CellTrackingBase
 import org.scijava.ui.behaviour.DragBehaviour
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.TimeSource
 
 /** Behaviour that supports both simple joystick flicking to scroll through time as well as press-and-hold cycling. */
-class TimepointScrollBehaviour(val context: CellTrackingBase, val stickDirection: PlaybackDirection) : DragBehaviour {
+class TimepointScrollBehaviour(val context: CellTrackingBase, val stickDirection: CellTrackingBase.PlaybackDirection) :
+    DragBehaviour {
     var initTime = TimeSource.Monotonic.markNow()
 
     override fun init(x: Int, y: Int) {
@@ -26,7 +27,7 @@ class TimepointScrollBehaviour(val context: CellTrackingBase, val stickDirection
         if (context.controllerTrackingActive) {
             return
         }
-        if (stickDirection == PlaybackDirection.Forward) {
+        if (stickDirection == CellTrackingBase.PlaybackDirection.Forward) {
             context.skipToNext = true
         } else {
             context.skipToPrevious = true
