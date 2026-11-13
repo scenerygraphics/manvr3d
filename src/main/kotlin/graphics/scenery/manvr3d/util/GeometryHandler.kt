@@ -571,7 +571,7 @@ class GeometryHandler(
         return if (results != null) {
             results.instance
         } else {
-            logger.info("Couldn't find an instance for $link")
+            logger.debug("Couldn't find an instance for $link")
             null
         }
     }
@@ -931,7 +931,7 @@ class GeometryHandler(
     /** Takes the given spot that was already moved in the BDV window and moves it in Sciview.
      * It also updates the connected edges and it is also called when a vertex is scaled on the BDV side. */
     fun moveAndScaleSpotInSciview(spot: Spot) {
-        invalidateRadii()
+         radiusCache.remove(spot.internalPoolIndex)
         val selectedInstance = findInstanceFromSpot(spot)
         val spotPosition = FloatArray(3)
         spot.localize(spotPosition)
@@ -939,15 +939,14 @@ class GeometryHandler(
             position = Vector3f(spotPosition)
             scale = Vector3f(sphereScaleFactor * getSpotRadius(spot))
         }
-        val edges = spot.incomingEdges() + spot.outgoingEdges()
-        val edgeRef = mastodonData.model.graph.edgeRef()
-        edges.forEach { edge ->
-            edgeRef.refTo(edge)
-            findInstanceFromLink(edgeRef)?.let {
-                setLinkTransform(edgeRef.source, edgeRef.target, it)
-            }
+        val graph = mastodonData.model.graph
+        val src = graph.vertexRef()
+        val tgt = graph.vertexRef()
+        spot.edges().forEach { e ->
+            findInstanceFromLink(e)?.let { setLinkTransform(e.getSource(src), e.getTarget(tgt), it) }
         }
-        mastodonData.model.graph.releaseRef(edgeRef)
+        graph.releaseRef(src)
+        graph.releaseRef(tgt)
         mainSpotInstance?.updateInstanceBuffers()
         mainLinkInstance?.updateInstanceBuffers()
     }

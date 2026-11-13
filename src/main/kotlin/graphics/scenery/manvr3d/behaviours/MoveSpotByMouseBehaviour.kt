@@ -33,7 +33,6 @@ class MoveSpotByMouseBehaviour(
         val cam = cam ?: return
         manvr3d.geometryHandler.collectSelectedSpots(manvr3d.currentTimepoint, movingSpots, edges)
         val anchor = movingSpots.firstOrNull()?.let { manvr3d.geometryHandler.findInstanceFromSpot(it) } ?: return
-        manvr3d.bdvNotifier?.lockUpdates = true
         distance = cam.spatial().position.distance(anchor.spatial().worldPosition())
         lastHit = hitAt(cam, x, y)
     }
@@ -53,7 +52,6 @@ class MoveSpotByMouseBehaviour(
         distance = 0f
         movingSpots.clear()
         edges.clear()
-        manvr3d.bdvNotifier?.lockUpdates = false
         manvr3d.geometryHandler.showInstancedSpots(manvr3d.currentTimepoint, manvr3d.currentColorizer)
     }
 }

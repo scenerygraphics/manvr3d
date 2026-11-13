@@ -220,6 +220,14 @@ class BdvNotifier(
             logger.debug("$SERVICE_NAME started")
             try {
                 while (keepWatching) {
+
+                    // Vertex moves bypass the silence debounce so BDV drags update continuously
+                    if (eventsSource.isLastVertexEventValid && !lockUpdates) {
+                        eventsSource.isLastVertexEventValid = false
+                        vertexEventProcessor.invoke(movedSpot)
+                        sleep(updateInterval)
+                    }
+
                     if ((eventsSource.isLastContentEventValid || eventsSource.isLastVertexEventValid || eventsSource.isLastGraphEventValid
                         || eventsSource.isLastViewEventValid || eventsSource.isLastColoringEventValid || eventsSource.isLastFocusEventValid
                         || eventsSource.isLastSelectionEventValid)

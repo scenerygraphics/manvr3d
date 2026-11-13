@@ -150,7 +150,6 @@ class Manvr3dMain: TimepointObserver {
     val noTSColorizer = DefaultGraphColorGenerator<Spot, Link>()
     var currentColorizer: GraphColorGenerator<Spot, Link> = noTSColorizer
 
-    var moveSpotInSciview: (Spot?) -> Unit?
     var associatedUI: Manvr3dWindowLayout? = null
     lateinit var uiFrame: JFrame
     private var isRunning = true
@@ -287,15 +286,6 @@ class Manvr3dMain: TimepointObserver {
 
         geometryHandler.showInstancedSpots(0, noTSColorizer)
         geometryHandler.showInstancedLinks(GeometryHandler.ColorMode.LUT)
-
-        // lambda function that is passed to the event handler and called
-        // when a vertex position change occurs on the BDV side
-        moveSpotInSciview = { spot: Spot? ->
-            spot?.let {
-//                selectedSpotInstances.clear()
-//                geometryHandler.findInstanceFromSpot(spot)?.let { selectedSpotInstances.add(it) }
-                geometryHandler.moveAndScaleSpotInSciview(spot) }
-        }
 
         defaultVolumePosition = volumeNode.spatial().position
         defaultVolumeScale = volumeNode.spatial().scale
@@ -610,7 +600,9 @@ class Manvr3dMain: TimepointObserver {
             { tp -> goToTimepoint(tp) },
             { updateSciviewCameraFromBDV() },
             { updateSciviewContent() },
-            moveSpotInSciview as (Spot?) -> Unit,
+            {spot -> spot?.let {
+                geometryHandler.moveAndScaleSpotInSciview(spot)
+            }},
             {
                 geometryHandler.invalidateRadii()
                 geometryHandler.showInstancedLinks()
