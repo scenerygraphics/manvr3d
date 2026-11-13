@@ -221,8 +221,9 @@ class BdvNotifier(
             try {
                 while (keepWatching) {
                     if ((eventsSource.isLastContentEventValid || eventsSource.isLastVertexEventValid || eventsSource.isLastGraphEventValid
-                        || eventsSource.isLastViewEventValid || eventsSource.isLastColoringEventValid || eventsSource.isLastFocusEventValid &&
-                        System.currentTimeMillis() - eventsSource.timeStampOfLastEvent > updateInterval)
+                        || eventsSource.isLastViewEventValid || eventsSource.isLastColoringEventValid || eventsSource.isLastFocusEventValid
+                        || eventsSource.isLastSelectionEventValid)
+                        && (System.currentTimeMillis() - eventsSource.timeStampOfLastEvent > updateInterval)
                         && !lockUpdates
                     ) {
                         if (eventsSource.isLastContentEventValid) {
