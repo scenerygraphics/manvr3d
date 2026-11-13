@@ -43,26 +43,12 @@ class MoveSpotVRBehaviour(
 
         movingSpots.clear()
         adjacentEdges.clear()
-
-        val pos = getTipPosition()
-
-        val tp = manvr3d.currentTimepoint
-
-        // Guard against empty selection
-        manvr3d.mastodon.selectionModel.selectedVertices.forEach {
-            if (it.timepoint == tp) movingSpots.add(it)
-        }
-        if (movingSpots.isEmpty()) return
-
         manvr3d.bdvNotifier?.lockUpdates = true
+        currentControllerPos = manvr3d.sciviewToMastodonCoords(getTipPosition())
 
-        currentControllerPos = manvr3d.sciviewToMastodonCoords(pos)
-        // Keep track of all adjacent edges of the moving spots
-        movingSpots.forEach { s ->
-            s.edges().forEach {
-                adjacentEdges.add(it.internalPoolIndex)
-            }
-        }
+        manvr3d.geometryHandler.collectSelectedSpots(manvr3d.currentTimepoint, movingSpots, adjacentEdges)
+        if (movingSpots.isEmpty()) return
+        logger.debug("Started dragging ${movingSpots.size} spot in VR")
     }
 
     override fun drag(x: Int, y: Int) {
@@ -70,19 +56,12 @@ class MoveSpotVRBehaviour(
         // to prevent simultaneous execution of behaviors
         if (buttonmanager.isTwoHandedActive()
             || manvr3d.bdvNotifier?.lockUpdates != true
-            || manvr3d.selectedSpotInstances.isEmpty()
+            || movingSpots.isEmpty()
         ) {
             return
         }
         val newPos = manvr3d.sciviewToMastodonCoords(getTipPosition())
-        val movement = newPos - currentControllerPos
-        val delta = movement.toFloatArray()
-        movingSpots.forEach { spot ->
-            spot.move(delta)
-            manvr3d.geometryHandler.findInstanceFromSpot(spot)?.spatial { position + movement }
-        }
-        manvr3d.geometryHandler.mainSpotInstance?.updateInstanceBuffers()
-        manvr3d.geometryHandler.updateLinkTransforms(adjacentEdges)
+        manvr3d.geometryHandler.moveSpots(movingSpots, newPos - currentControllerPos, adjacentEdges)
         currentControllerPos = newPos
     }
 
