@@ -84,6 +84,7 @@ class GeometryHandler(
     val cylinder = CylinderLensed(0.2f, 1f, 6, true, true)
     var mainSpotInstance: InstancedNode? = null
     var mainLinkInstance: InstancedNode? = null
+    /** Contains all spots in the current timepoint. */
     lateinit var visibleSpots: SpatialIndex<Spot>
     var linkForwardRange: Int
     var linkBackwardRange: Int
@@ -99,7 +100,15 @@ class GeometryHandler(
 
     private var selectedColor = Vector4f(1f, 0.25f, 0.25f, 1f)
     /** Class that connects link data with their corresponding instances.  */
-    data class LinkNode (val instance: InstancedNode.Instance, val link: Link, val tp: Int, val center: Vector3f)
+    data class LinkNode(
+        val instance: InstancedNode.Instance,
+        val link: Link,
+        val tp: Int,
+        val center: Vector3f,
+        val sourceIdx: Int,
+        val targetIdx: Int
+    )
+
     /** A segment of a link, used during tracking to preview the tracking history. */
     data class LinkPreview( val instance: InstancedNode.Instance, val from: Vector3f, val to: Vector3f , val tp: Int)
 
@@ -108,8 +117,12 @@ class GeometryHandler(
 
     val linkPreviewList = mutableListOf<LinkPreview>()
     val linkSize = 2.0
-    // list of all link segments
+
+    /** List of all link segments */
     var links: ConcurrentHashMap<Int, LinkNode> = ConcurrentHashMap()
+
+    /** Pool indices of spots that stay visible. Null means nothing is hidden. Independent of the selection. */
+    @Volatile var visibleFilter: MutableSet<Int>? = null
 
     init {
         events = sv.scijavaContext?.getService(EventService::class.java)
@@ -147,43 +160,6 @@ class GeometryHandler(
      * - [LUT] uses a colormap, defaults to Fire.lut
      * - [SPOT] uses the spot color from the connected spot */
     enum class ColorMode { LUT, SPOT, UNCERTAINTY }
-
-    /** Allocates a [number] of instances to a [pool] that are part of [mainInstance]. */
-    private fun addMoreInstances(
-        mainInstance: InstancedNode,
-        number: Int = 10000,
-        pool: MutableList<InstancedNode.Instance>
-    ) {
-        val tStart = TimeSource.Monotonic.markNow()
-
-        runBlocking {
-            val batchSize = 3000
-            val jobs = mutableListOf<Job>()
-
-            for (batchStart in 0 until number step batchSize) {
-                val batchEnd = minOf(batchStart + batchSize, number)
-                val job = launch {
-                    val localInstances = ArrayList<InstancedNode.Instance>(batchEnd - batchStart)
-                    var inst: InstancedNode.Instance
-                    for (i in batchStart until batchEnd) {
-                        inst = mainInstance.addInstance()
-                        inst.parent = mainInstance.parent
-                        localInstances.add(inst)
-                    }
-                    // Add all instances from this batch to the pool at once
-                    synchronized(pool) {
-                        pool.addAll(localInstances)
-                    }
-                }
-                jobs.add(job)
-            }
-
-            // Wait for all jobs to complete
-            jobs.joinAll()
-        }
-
-        logger.info("adding $number ${mainInstance.name} instances took ${TimeSource.Monotonic.markNow()-tStart}.")
-    }
 
     /** Helper method for safe enqueueing. Will drop tasks if the [updateQueue] exceeds its capacity (currently 100),
      * unless [isCritical] was set to true. */
@@ -280,8 +256,10 @@ class GeometryHandler(
         val pos = FloatArray(3)
         var index = 0
 
+        val filter = visibleFilter
+
         for (spot in visibleSpots) {
-            // TODO later: if (hideFilter?.contains(spot) == false) continue
+            if (!isShown(spot)) continue
             // reuse a spot instance from the pool if the pool is large enough
             val inst = if (index < spotPool.size) {
                 spotPool[index]
@@ -369,6 +347,34 @@ class GeometryHandler(
         }
     }
 
+    /** Check whether the list of visible spots contains a given spot. If the filter is empty, return true. */
+    fun isShown(spot: Spot) = visibleFilter?.contains(spot.internalPoolIndex) ?: true
+
+    /** Grabs the current selection from Mastodon and hides all spots and edges that are not selected. */
+    fun hideUnselected() {
+        enqueueUpdate("hideUnselected") {
+            val sel = mastodonData.selectionModel
+            if (sel.selectedVertices.isEmpty() && sel.selectedEdges.isEmpty()) return@enqueueUpdate
+            val keep = ConcurrentHashMap.newKeySet<Int>()
+            sel.selectedVertices.forEach { keep.add(it.internalPoolIndex) }
+            sel.selectedEdges.forEach { e ->
+                keep.add(e.source.internalPoolIndex)
+                keep.add(e.target.internalPoolIndex)
+            }
+            visibleFilter = keep
+            updateSegmentVisibility()
+            showInstancedSpots()
+        }
+    }
+
+    /** Resets the visibility state by nulling [visibleFilter]. */
+    fun resetVisibility() {
+        enqueueUpdate("resetVisibility") {
+            visibleFilter = null
+            updateSegmentVisibility()
+            showInstancedSpots()
+        }
+    }
     private fun computeEigen(covariance: Array2DRowRealMatrix): Pair<DoubleArray, RealMatrix> {
         val eigenDecomposition = EigenDecomposition(covariance)
         val eigenvalues = eigenDecomposition.realEigenvalues
@@ -624,7 +630,10 @@ class GeometryHandler(
     }
 
     /** Returns a list of all spots within the given [radius] around the [origin] in the current [timepoint]. */
-    private fun findSpotsInRange(timepoint: Int, origin: Vector3f, radius: Float, adjustedScale: Float = 1f): RefList<Spot> {
+    private fun findSpotsInRange(
+        timepoint: Int, origin: Vector3f, radius: Float, adjustedScale: Float = 1f,
+        shownOnly: Boolean = false
+    ): RefList<Spot> {
         val spots = RefCollections.createRefList(mastodonData.model.graph.vertices())
         val spatialIndex = mastodonData.model.spatioTemporalIndex.getSpatialIndex(timepoint)
         if (spatialIndex.size() > 0) {
@@ -634,8 +643,10 @@ class GeometryHandler(
             var found: Spot
             while (spotSearch.hasNext()) {
                 found = spotSearch.next()
-                if (spotSearch.distance < (radius + getSpotRadius(found) * adjustedScale ) ) {
-                    spots.add(found)
+                if (spotSearch.distance < (radius + getSpotRadius(found) * adjustedScale)) {
+                    if (!shownOnly || isShown(found)) {
+                        spots.add(found)
+                    }
                 } else {
                     break
                 }
@@ -780,7 +791,7 @@ class GeometryHandler(
             val start = TimeSource.Monotonic.markNow()
             val localPos = manvr3d.sciviewToMastodonCoords(pos)
             val localRadius = manvr3d.sciviewToMastodonScale().max() * radius * visualScale
-            val spots = findSpotsInRange(timepoint, localPos, localRadius, visualScale)
+            val spots = findSpotsInRange(timepoint, localPos, localRadius, visualScale, true)
             // only proceed if we found at least one spot
             if (spots.isNotEmpty()) {
                 spots.forEach { spot ->
@@ -831,6 +842,8 @@ class GeometryHandler(
 
         for (i in 0 until search.numNeighbors()) {
             linkNode = search.getSampler(i).get()
+            // Skip edges that are invisible
+            if (!linkNode.instance.visible) continue
             if (mastodonData.selectionModel.isSelected(linkNode.link) && !addOnly) {
                 deselectLink(linkNode)
             } else {
@@ -1181,7 +1194,8 @@ class GeometryHandler(
 
                 // add a new key-value pair to the hash map
                 links[edge.internalPoolIndex] =
-                    LinkNode(inst, graph.edgeRef().refTo(edge), to.timepoint, center)
+                    LinkNode(inst, graph.edgeRef().refTo(edge), to.timepoint, center,
+                        from.internalPoolIndex, to.internalPoolIndex)
 
                 index++
             }
@@ -1366,9 +1380,11 @@ class GeometryHandler(
     }
 
     fun updateSegmentVisibility(currentTP: Int = manvr3d.currentTimepoint) {
-        links.forEach {link ->
+        // Calculate the visible range of timepoints
+        val range = currentTP - linkBackwardRange..currentTP + linkForwardRange
+        links.values.forEach {link ->
             // turns the link on if it is within range, otherwise turns it off
-            link.value.instance.visible = link.value.tp in currentTP - linkBackwardRange..currentTP + linkForwardRange
+            link.instance.visible = link.tp in range && isShown(link.link.source)
         }
         mainLinkInstance?.updateInstanceBuffers()
     }

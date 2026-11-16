@@ -150,7 +150,7 @@ class BdvNotifier(
         }
 
         override fun graphRebuilt() {
-            // TODO("Not yet implemented")
+            manvr3d.geometryHandler.visibleFilter = null
         }
 
         override fun edgeRemoved(e: Link?) {
@@ -162,11 +162,15 @@ class BdvNotifier(
         }
 
         override fun vertexRemoved(v: Spot?) {
-            // TODO("Not yet implemented")
+            v?.let {
+                manvr3d.geometryHandler.visibleFilter?.remove(v.internalPoolIndex)
+            }
         }
 
         override fun vertexAdded(v: Spot?) {
-            // TODO("Not yet implemented")
+            v?.let {
+                manvr3d.geometryHandler.visibleFilter?.add(v.internalPoolIndex)
+            }
         }
 
         override fun selectionChanged() {

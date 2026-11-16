@@ -11,6 +11,8 @@
 - Press and hold the right trigger to track continuously ([#33](https://github.com/scenerygraphics/manvr3d/pull/33))
 - Add toggleable volume background for context when lensing is enabled; 
   enabled per default  ([#33](https://github.com/scenerygraphics/manvr3d/pull/33))
+- Add button to mark selection as verified ([#33](https://github.com/scenerygraphics/manvr3d/pull/33))
+- Add buttons to hide unselected areas and reset the visibility filtering ([#33](https://github.com/scenerygraphics/manvr3d/pull/33))
 
 ### Removed
 

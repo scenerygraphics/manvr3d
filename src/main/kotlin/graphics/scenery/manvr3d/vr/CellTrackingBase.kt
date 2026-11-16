@@ -658,11 +658,11 @@ open class CellTrackingBase(
         leftWristMenu.addRow("Tracking Menu", selectBranchBtn, markVerifiedBtn)
 
         val hideUnselectedBtn = Button("Hide Unselected", command = {
-
+            geometryHandler.hideUnselected()
         }, depressDelay = 250, textInFront = true)
 
         val resetVisibilityBtn = Button("Reset Visibility", command = {
-
+            geometryHandler.resetVisibility()
         }, depressDelay = 250, textInFront = true)
 
         leftWristMenu.addRow("Tracking Menu", hideUnselectedBtn, resetVisibilityBtn)
