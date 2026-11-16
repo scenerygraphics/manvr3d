@@ -50,7 +50,11 @@ class DragSelectBehavior(val context: CellTrackingBase): DragBehaviour {
             TimeSource.Monotonic.markNow() - startTime)
         cursor.resetColor()
 
-        if (context.manvr3d.selectedLinkNodes.isNotEmpty() || context.manvr3d.selectedSpotInstances.isNotEmpty()) {
+        val hasSelection = context.manvr3d.mastodon.selectionModel.let {
+            it.selectedVertices.isNotEmpty() || it.selectedEdges.isNotEmpty()
+        }
+
+        if (hasSelection) {
             mapper.updateLabel(
                 context.buttonMapper.ADD_DELETE_RESET,
                 "Del", context.buttonMapper.selectColor)
