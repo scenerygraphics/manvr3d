@@ -289,7 +289,7 @@ class GeometryHandler(
         val selection = mastodonData.selectionModel
         val focusRef = mastodonData.model.graph.vertexRef()
         val focused = mastodonData.focusModel.getFocusedVertex(focusRef)
-        // We need to store elephants detection threshold here so we can normalize the uncertainty data.
+        // We need to store elephant's detection threshold here so we can normalize the uncertainty data.
         // They will be in range elephantThreshold to 1
         val threshold = ElephantMainSettingsManager.getInstance().forwardDefaultStyle.probThreshold
         val selectedInstances = ArrayList<InstancedNode.Instance>()
@@ -504,8 +504,8 @@ class GeometryHandler(
     }
 
 
-    val VERIFIED_SET = "Tracking"
-    val VERIFIED_TAG = "Approved"
+    val VERIFIED_SET = "Status"
+    val VERIFIED_TAG = "Completed"
     private val verifiedColor = Vector4f(0.3f, 1f, 0.4f, 1f)
 
     private fun findTag(tagSetName: String, tagName: String): Pair<TagSetStructure.TagSet, TagSetStructure.Tag>? {

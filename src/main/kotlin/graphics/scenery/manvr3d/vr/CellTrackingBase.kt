@@ -651,7 +651,7 @@ open class CellTrackingBase(
             geometryHandler.selectBranch()
         }, depressDelay = 250, textInFront = true)
 
-        val markVerifiedBtn = Button("Mark Verified", command = {
+        val markVerifiedBtn = Button("Mark Completed", command = {
             geometryHandler.markSelectionVerified()
         }, depressDelay = 250, textInFront = true)
 
