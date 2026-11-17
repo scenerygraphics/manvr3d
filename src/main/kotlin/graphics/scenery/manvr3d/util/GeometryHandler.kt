@@ -7,9 +7,6 @@ import graphics.scenery.primitives.Arrow
 import graphics.scenery.primitives.Cylinder
 import graphics.scenery.utils.extensions.*
 import graphics.scenery.utils.lazyLogger
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
 import org.apache.commons.math3.linear.Array2DRowRealMatrix
 import org.apache.commons.math3.linear.EigenDecomposition
 import org.apache.commons.math3.linear.RealMatrix
@@ -32,20 +29,17 @@ import sc.iview.SciView
 import graphics.scenery.manvr3d.analysis.HedgehogAnalysis.SpineGraphVertex
 import graphics.scenery.manvr3d.vr.CellTrackingBase.TrackedPoint
 import graphics.scenery.volumes.Colormap
-import kotlinx.coroutines.joinAll
 import net.imglib2.KDTree
 import net.imglib2.RealPoint
 import net.imglib2.neighborsearch.RadiusNeighborSearchOnKDTree
 import org.elephant.setting.main.ElephantMainSettingsManager
 import org.mastodon.model.tag.TagSetStructure
-import org.mastodon.tracking.mamut.detection.DetectionQualityFeature
 import spim.fiji.spimdata.interestpoints.InterestPoint
 import java.awt.Color
 import java.lang.Math
 import java.util.*
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.LinkedBlockingQueue
-import kotlin.collections.plus
 import kotlin.collections.set
 import kotlin.math.pow
 import kotlin.math.sqrt
@@ -74,7 +68,8 @@ class GeometryHandler(
     var linkScaleFactor = 1f
     var DEFAULT_COLOR = 0x00FFFFFF
     var numTimePoints: Int
-    lateinit var lut: Colormap
+    lateinit var linkLut: Colormap
+    lateinit var uncertaintyLut: Colormap
     var currentColorMode: ColorMode
     val spotPool: MutableList<InstancedNode.Instance> = ArrayList(10000)
     val linkPool: MutableList<InstancedNode.Instance> = ArrayList(10000)
@@ -131,6 +126,8 @@ class GeometryHandler(
         setLUT("plasma")
         currentColorMode = ColorMode.LUT
 
+        uncertaintyLut = Colormap.get("Ice.lut")
+
         linkForwardRange = mastodonData.maxTimepoint
         linkBackwardRange = mastodonData.maxTimepoint
     }
@@ -150,7 +147,7 @@ class GeometryHandler(
 
     fun setLUT(lutName: String) {
         try {
-            lut = Colormap.get(lutName)
+            linkLut = Colormap.get(lutName)
         } catch (e: Exception) {
             logger.error("Could not find LUT $lutName.")
         }
@@ -324,7 +321,7 @@ class GeometryHandler(
         // Only show uncertainty if the feature was found, otherwise use the colorizer
         if (manvr3d.showUncertainty && qualityFeature != null) {
             val factor = ((qualityFeature.value(spot) - threshold) / (1 - threshold)).toFloat()
-            val color = lut.sample(if (manvr3d.invertLut) 1f - factor else factor)
+            val color = uncertaintyLut.sample(1f - factor)
             instancedProperties["Color"] = { color }
         } else {
             var intColor = colorizer.color(spot)
@@ -1305,13 +1302,13 @@ class GeometryHandler(
                 if (manvr3d.invertLut) {
                     links.forEach { linkNode ->
                         val factor = 1 - linkNode.tp / numTimePoints.toDouble()
-                        val color = lut.sample(factor.toFloat())
+                        val color = linkLut.sample(factor.toFloat())
                         linkNode.instance.instancedProperties["Color"] = { color }
                     }
                 } else {
                     links.forEach { linkNode ->
                         val factor = linkNode.tp / numTimePoints.toDouble()
-                        val color = lut.sample(factor.toFloat())
+                        val color = linkLut.sample(factor.toFloat())
                         linkNode.instance.instancedProperties["Color"] = { color }
                     }
                 }
@@ -1336,21 +1333,12 @@ class GeometryHandler(
                 // They will be in range elephantThreshold to 1
                 val elephantThreshold = ElephantMainSettingsManager.getInstance().forwardDefaultStyle.probThreshold
 
-                if (manvr3d.invertLut) {
-                    links.forEach { linkNode ->
-                        // Normalize the uncertainty into range 0-1
-                        val uncertainty = qualityFeature!!.value(linkNode.link.source) ?: 1.0
-                        val factor = (uncertainty - elephantThreshold) / ( 1 - elephantThreshold)
-                        val color = lut.sample(1 - factor.toFloat())
-                        linkNode.instance.instancedProperties["Color"] = { color }
-                    }
-                } else {
-                    links.forEach { linkNode ->
-                        val uncertainty = qualityFeature!!.value(linkNode.link.source) ?: 1.0
-                        val factor = (uncertainty - elephantThreshold) / ( 1 - elephantThreshold)
-                        val color = lut.sample(factor.toFloat())
-                        linkNode.instance.instancedProperties["Color"] = { color }
-                    }
+                links.forEach { linkNode ->
+                    val uncertainty = qualityFeature!!.value(linkNode.link.source) ?: 1.0
+                    val factor = (uncertainty - elephantThreshold) / ( 1 - elephantThreshold)
+                    val color = uncertaintyLut.sample(1 - factor.toFloat())
+                    linkNode.instance.instancedProperties["Color"] = { color }
+
                 }
             }
         }

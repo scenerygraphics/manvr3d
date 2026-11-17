@@ -45,14 +45,24 @@ class Manvr3dWindowLayout(manvr3dContext: Manvr3dMain, populateThisContainer: JP
     lateinit var uncertaintyToggle: JCheckBox
     var invertLutToggle: JCheckBox? = null
 
+    private val linkLutLowSwatch = JPanel().apply {
+        preferredSize = java.awt.Dimension(12, 12)
+        border = javax.swing.BorderFactory.createLineBorder(Color.GRAY, 1)
+    }
+    private val linkLutMidSwatch = JPanel().apply {
+        preferredSize = java.awt.Dimension(12, 12)
+        border = javax.swing.BorderFactory.createLineBorder(Color.GRAY, 1)
+    }
+    private val linkLutHighSwatch = JPanel().apply {
+        preferredSize = java.awt.Dimension(12, 12)
+        border = javax.swing.BorderFactory.createLineBorder(Color.GRAY, 1)
+    }
+
     private val uncertaintyLowSwatch = JPanel().apply {
         preferredSize = java.awt.Dimension(12, 12)
         border = javax.swing.BorderFactory.createLineBorder(Color.GRAY, 1)
     }
-    private val uncertaintyMidSwatch = JPanel().apply {
-        preferredSize = java.awt.Dimension(12, 12)
-        border = javax.swing.BorderFactory.createLineBorder(Color.GRAY, 1)
-    }
+
     private val uncertaintyHighSwatch = JPanel().apply {
         preferredSize = java.awt.Dimension(12, 12)
         border = javax.swing.BorderFactory.createLineBorder(Color.GRAY, 1)
@@ -157,9 +167,9 @@ class Manvr3dWindowLayout(manvr3dContext: Manvr3dMain, populateThisContainer: JP
         linkColorSelector.setSelectedItem("plasma")
 
         val swatchGroup = JPanel(MigLayout("insets 0")).apply {
-            add(uncertaintyLowSwatch, "w 12, h 12, gapright 5")
-            add(uncertaintyMidSwatch, "w 12, h 12, gapright 5")
-            add(uncertaintyHighSwatch, "w 12, h 12, gapright 5")
+            add(linkLutLowSwatch, "w 12, h 12, gapright 5")
+            add(linkLutMidSwatch, "w 12, h 12, gapright 5")
+            add(linkLutHighSwatch, "w 12, h 12, gapright 5")
             add(invertLutToggle!!, "gapleft 10")
         }
 
@@ -178,12 +188,20 @@ class Manvr3dWindowLayout(manvr3dContext: Manvr3dMain, populateThisContainer: JP
             add(volumeColorSelector, "wrap")
         }, "span, growx")
 
-        uncertaintyToggle = JCheckBox("Show ELEPHANT Uncertainty")
+        uncertaintyToggle = JCheckBox("Show ELEPHANT Uncertainty ")
         uncertaintyToggle.isSelected = false
         uncertaintyToggle.addActionListener(toggleUncertainty)
 
-        windowPanel.add(JPanel(MigLayout("insets 0", "[][grow, fill]")).apply {
+        val qualityColormap = manvr3d.geometryHandler.uncertaintyLut
+        uncertaintyLowSwatch.background = qualityColormap.sample(1f).toAwt()
+        uncertaintyHighSwatch.background = qualityColormap.sample(0f).toAwt()
+
+        windowPanel.add(JPanel(MigLayout("insets 0", )).apply {
             add(uncertaintyToggle, "gapright 10, dock west")
+            add(JLabel("Uncertain:"), "gapright 3")
+            add(uncertaintyLowSwatch, "w 12, h 12, gapright 5")
+            add(JLabel("Certain:"), "gapright 3")
+            add(uncertaintyHighSwatch, "w 12, h 12, gapright 5")
         }, "span, growx")
 
         // Visualization Toggles
@@ -275,7 +293,7 @@ class Manvr3dWindowLayout(manvr3dContext: Manvr3dMain, populateThisContainer: JP
                 }
             }
         }
-        updateLutSwatches()
+        updateLinkLutSwatches()
         manvr3dContext.rebuildGeometry()
     }
 
@@ -316,14 +334,14 @@ class Manvr3dWindowLayout(manvr3dContext: Manvr3dMain, populateThisContainer: JP
         } else {
             manvr3dContext.geometryHandler.updateLinkColors()
         }
-        updateLutSwatches()
+        updateLinkLutSwatches()
     }
 
     val toggleAutoContrast = ActionListener {
         manvr3dContext.toggleAutoIntensity()
     }
 
-    private fun updateLutSwatches() {
+    private fun updateLinkLutSwatches() {
         val isInverted = invertLutToggle?.isSelected ?: false
         val selectedLUT = linkColorSelector.selectedItem?.toString()
         if (selectedLUT == "By Spot") return
@@ -334,11 +352,11 @@ class Manvr3dWindowLayout(manvr3dContext: Manvr3dMain, populateThisContainer: JP
             val midColor = cm.sample(0.5f)
             val highColor = if (isInverted) cm.sample(0.05f) else cm.sample(0.95f)
 
-            uncertaintyLowSwatch.background = lowColor.toAwt()
-            uncertaintyMidSwatch.background = midColor.toAwt()
-            uncertaintyHighSwatch.background = highColor.toAwt()
-            uncertaintyLowSwatch.repaint()
-            uncertaintyHighSwatch.repaint()
+            linkLutLowSwatch.background = lowColor.toAwt()
+            linkLutMidSwatch.background = midColor.toAwt()
+            linkLutHighSwatch.background = highColor.toAwt()
+            linkLutLowSwatch.repaint()
+            linkLutHighSwatch.repaint()
         }
     }
 
