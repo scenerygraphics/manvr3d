@@ -147,32 +147,26 @@ class Manvr3dWindowLayout(manvr3dContext: Manvr3dMain, populateThisContainer: JP
         val availableLUTs = Colormap.list().toMutableList()
         linkColorChoices.addAll(availableLUTs)
 
+        invertLutToggle = JCheckBox("Invert")
+        invertLutToggle?.isSelected = false
+        invertLutToggle?.addActionListener(toggleLutInversion)
+
         // Link colors dropdown
         linkColorSelector = JComboBox(linkColorChoices.toTypedArray())
         linkColorSelector.addActionListener(chooseLinkColormap)
         linkColorSelector.setSelectedItem("plasma")
-        windowPanel.add(JPanel(MigLayout("fillx, insets 0", "[right][grow, fill]")).apply {
-            add(JLabel("Link & Uncertainty colors:"), "gapright 10")
-            add(linkColorSelector, "wrap")
-        }, "span, growx")
 
-        uncertaintyToggle = JCheckBox("Show ELEPHANT Uncertainty")
-        uncertaintyToggle.isSelected = false
-        uncertaintyToggle.addActionListener(toggleUncertainty)
-
-        invertLutToggle = JCheckBox("Invert LUT")
-        invertLutToggle?.isSelected = false
-        invertLutToggle?.addActionListener(toggleLutInversion)
-
-        windowPanel.add(JPanel(MigLayout("fillx, insets 0")).apply {
-            add(uncertaintyToggle, "gapright 10")
-            add(JLabel("Low:"), )
+        val swatchGroup = JPanel(MigLayout("insets 0")).apply {
             add(uncertaintyLowSwatch, "w 12, h 12, gapright 5")
-            add(JLabel("Mid:"), )
             add(uncertaintyMidSwatch, "w 12, h 12, gapright 5")
-            add(JLabel("High:"))
             add(uncertaintyHighSwatch, "w 12, h 12, gapright 5")
-            add(invertLutToggle!!, "dock east, gapleft 10")
+            add(invertLutToggle!!, "gapleft 10")
+        }
+
+        windowPanel.add(JPanel(MigLayout("insets 0", "[][grow, fill][]")).apply {
+            add(JLabel("Link colors:"), "gapright 10")
+            add(linkColorSelector, "gapright 10")
+            add(swatchGroup, )
         }, "span, growx")
 
         // Volume colors dropdown
@@ -182,6 +176,14 @@ class Manvr3dWindowLayout(manvr3dContext: Manvr3dMain, populateThisContainer: JP
         windowPanel.add(JPanel(MigLayout("fillx, insets 0", "[right][grow, fill]")).apply {
             add(JLabel("Volume colors:"), "gapright 10")
             add(volumeColorSelector, "wrap")
+        }, "span, growx")
+
+        uncertaintyToggle = JCheckBox("Show ELEPHANT Uncertainty")
+        uncertaintyToggle.isSelected = false
+        uncertaintyToggle.addActionListener(toggleUncertainty)
+
+        windowPanel.add(JPanel(MigLayout("insets 0", "[][grow, fill]")).apply {
+            add(uncertaintyToggle, "gapright 10, dock west")
         }, "span, growx")
 
         // Visualization Toggles
@@ -328,9 +330,9 @@ class Manvr3dWindowLayout(manvr3dContext: Manvr3dMain, populateThisContainer: JP
 
         selectedLUT?.let {
             val cm = Colormap.get(it)
-            val lowColor = if (isInverted) cm.sample(1.0f) else cm.sample(0.0f)
+            val lowColor = if (isInverted) cm.sample(0.95f) else cm.sample(0.05f)
             val midColor = cm.sample(0.5f)
-            val highColor = if (isInverted) cm.sample(0.0f) else cm.sample(1.0f)
+            val highColor = if (isInverted) cm.sample(0.05f) else cm.sample(0.95f)
 
             uncertaintyLowSwatch.background = lowColor.toAwt()
             uncertaintyMidSwatch.background = midColor.toAwt()
