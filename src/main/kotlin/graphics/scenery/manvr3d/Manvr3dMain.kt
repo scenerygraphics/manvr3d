@@ -168,7 +168,7 @@ class Manvr3dMain: TimepointObserver {
     var isTrackVisible = true
     var isSpotVisible = true
 
-    val qualityFeature: DetectionQualityFeature?
+    var qualityFeature: DetectionQualityFeature? = null
     var showUncertainty = false
     var invertLut = false
 
@@ -295,14 +295,6 @@ class Manvr3dMain: TimepointObserver {
 
         semiAutoTracker = SemiAutomaticTrackerWrapper(this, mastodon, maxTimepoint + 1)
 
-        val qualitySpec = mastodon.model.featureModel.featureSpecs.find { it.key == "Detection quality" }
-
-        qualityFeature = if (qualitySpec != null) {
-            mastodon.model.featureModel.getFeature(qualitySpec) as? DetectionQualityFeature
-        } else {
-            null
-        }
-
         openSyncedBDV()
 
         setColorizer(bdvWindow)
@@ -332,7 +324,6 @@ class Manvr3dMain: TimepointObserver {
         logger.info("Training spots took ${start.elapsedNow()} ms")
         sciviewWin.camera?.showMessage("Training took ${start.elapsedNow()} ms", 2f, 0.2f, centered = true)
     }
-
 
     fun initializeElephantListener() {
         elephantListener = ElephantListener(
@@ -411,6 +402,32 @@ class Manvr3dMain: TimepointObserver {
     /** Train the ELEPHANT flow model on the scene. */
     fun trainFlow() {
         // TODO
+    }
+
+    /** Tries to find the detection quality feature from Mastodon. Sometimes this feature is only found after
+     * a prediction run was executed. */
+    fun findOrGetQualityFeature(): DetectionQualityFeature? {
+        if (qualityFeature != null) { return qualityFeature }
+        val qualitySpec = mastodon.model.featureModel.featureSpecs.find { it.key == "Detection quality" }
+        qualityFeature = if (qualitySpec != null) {
+            mastodon.model.featureModel.getFeature(qualitySpec) as? DetectionQualityFeature
+        } else {
+            null
+        }
+        return qualityFeature
+    }
+
+    /** Toggles the state of [showUncertainty] or uses a [state] if specified. Returns the updated state. */
+    fun toggleUncertaintyColoring(state: Boolean? = null): Boolean {
+        showUncertainty = state ?: !showUncertainty
+        if (showUncertainty) {
+            geometryHandler.currentColorMode = GeometryHandler.ColorMode.UNCERTAINTY
+        } else {
+            geometryHandler.currentColorMode = GeometryHandler.ColorMode.LUT
+        }
+        geometryHandler.refreshSelectionColors()
+
+        return showUncertainty
     }
 
     /** Sets the [vrResolutionScale]. Changes are only applied once [Manvr3dMain.launchVR] is executed. */

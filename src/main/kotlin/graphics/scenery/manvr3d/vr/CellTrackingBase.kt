@@ -196,7 +196,8 @@ open class CellTrackingBase(
                             leftWristMenu = MultiWristMenu(it,
                                 columnScale = 0.03f,
                                 columnBasePosition = Vector3f(0.03f, 0.02f, 0.11f),
-                                columnRotation = Quaternionf().rotationXYZ(-1.5f, 1.7f, 0f)
+                                columnRotation = Quaternionf().rotationXYZ(-1.5f, 1.7f, 0f),
+
                             )
                             setupElephantMenu()
                             setupGeneralMenu()
@@ -410,11 +411,10 @@ open class CellTrackingBase(
         )
 
         val volumeToggleBtn = ToggleButton(
-            "Volume off", "Volume on", command = {
-                val state = volume.visible
-                manvr3d.setVolumeOnlyVisibility(!state)
+            "Volume off", "Volume on", command = { state ->
+                manvr3d.setVolumeOnlyVisibility(state)
             }, byTouch = false, defaultColor = color, pressedColor = pressedColor,
-            touchingColor = touchingColor, default = true, textInFront = true)
+            touchingColor = touchingColor, default = volume.visible, textInFront = true)
 
         leftWristMenu.addRow("Toggle Menu", volumeToggleBtn, decTransparencyBtn, incTransparencyBtn)
 
@@ -459,8 +459,8 @@ open class CellTrackingBase(
             lowerBoundDownBtn, lowerBoundUpBtn, upperBoundDownBtn, upperBoundUpBtn)
 
         val lensToggleButton = ToggleButton(
-            "Lens off", "Lens on", command = {
-                isLensingActive = !isLensingActive
+            "Lens off", "Lens on", command = { state ->
+                isLensingActive = state
                 // We accumulate lensing time per session for statistics
                 if (isLensingActive) {
                     fileLogger.beginLensing()
@@ -468,7 +468,7 @@ open class CellTrackingBase(
                     fileLogger.endLensing()
                 }
             }, byTouch = false, defaultColor = color, pressedColor = pressedColor,
-            touchingColor = touchingColor, default = false, textInFront = true)
+            touchingColor = touchingColor, default = isLensingActive, textInFront = true)
 
         val lensRadiusDownBtn = Button(
             " R- ", command = {
@@ -511,11 +511,11 @@ open class CellTrackingBase(
 
         val toggleSpotVisBtn = ToggleButton(
             "Spots off", "Spots on",
-            command = {
-                manvr3d.isSpotVisible = !manvr3d.isSpotVisible
+            command = { state ->
+                manvr3d.isSpotVisible = state
                 geometryHandler.setSpotVisibility(manvr3d.isSpotVisible)
             }, byTouch = false, defaultColor = color, pressedColor = pressedColor,
-            touchingColor = touchingColor, default = true, textInFront = true
+            touchingColor = touchingColor, default = manvr3d.isSpotVisible, textInFront = true
         )
 
         val resetSpotRadiusBtn = Button(
@@ -546,8 +546,8 @@ open class CellTrackingBase(
 
         val toggleTrackVisBtn = ToggleButton(
             "Tracks off", "Tracks on",
-            command = {
-                manvr3d.isTrackVisible = !manvr3d.isTrackVisible
+            command = { state ->
+                manvr3d.isTrackVisible = state
                 geometryHandler.setTrackVisibility(manvr3d.isTrackVisible)
             }, byTouch = false, defaultColor = color, pressedColor = pressedColor,
             touchingColor = touchingColor, default = true, textInFront = true
@@ -555,10 +555,11 @@ open class CellTrackingBase(
 
         leftWristMenu.addRow("Toggle Menu", toggleTrackVisBtn, trackRadiusDownBtn, trackRadiusUpBtn)
 
-        leftWristMenu.addToggleButton("Toggle Menu", "Preview Off", "Preview On", command = {
-            enableTrackingPreview = !enableTrackingPreview
+        leftWristMenu.addToggleButton("Toggle Menu", "Preview Off", "Preview On",
+            command = { state ->
+            enableTrackingPreview = state
             geometryHandler.toggleLinkPreviews(enableTrackingPreview)
-        }, color = color, pressedColor = pressedColor, touchingColor = touchingColor, defaultState = true)
+        }, color = color, pressedColor = pressedColor, touchingColor = touchingColor, defaultState = enableTrackingPreview)
 
 
         leftWristMenu.addColumn("Cleanup Menu")
@@ -667,6 +668,11 @@ open class CellTrackingBase(
 
         leftWristMenu.addRow("Tracking Menu", hideUnselectedBtn, resetVisibilityBtn)
 
+        leftWristMenu.addToggleButton("Tracking Menu", "Show Uncertainty", "Show Uncertainty",
+            command = { state ->
+                manvr3d.toggleUncertaintyColoring(state)
+                manvr3d.updateUI()
+            }, defaultState = manvr3d.showUncertainty)
     }
 
     var isLensingActive = false

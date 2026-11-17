@@ -314,14 +314,16 @@ class GeometryHandler(
     }
 
     /** Extension function that takes a spot and colors the corresponding instance according to the [colorizer]
-     * or by Elephant's uncertainty feature, if available. Also */
+     * or by Elephant's uncertainty feature, if available. */
     private fun InstancedNode.Instance.setBaseSpotColor(
         spot: Spot,
         threshold: Double,
         colorizer: GraphColorGenerator<Spot, Link>
     ) {
-        if (manvr3d.showUncertainty) {
-            val factor = (((manvr3d.qualityFeature?.value(spot) ?: 1.0) - threshold) / (1 - threshold)).toFloat()
+        val qualityFeature = manvr3d.findOrGetQualityFeature()
+        // Only show uncertainty if the feature was found, otherwise use the colorizer
+        if (manvr3d.showUncertainty && qualityFeature != null) {
+            val factor = ((qualityFeature.value(spot) - threshold) / (1 - threshold)).toFloat()
             val color = lut.sample(if (manvr3d.invertLut) 1f - factor else factor)
             instancedProperties["Color"] = { color }
         } else {
@@ -1285,8 +1287,17 @@ class GeometryHandler(
         linkList: List<LinkNode>? = null,
         updateBuffers: Boolean = true
     ) {
+        var cm = cm
         val start = TimeSource.Monotonic.markNow()
         val links = linkList ?: links.entries.map { it.value }
+
+        // Find the quality feature; if it doesn't exist, don't use the uncertainty color and instead use the LUT
+        val qualityFeature = manvr3d.findOrGetQualityFeature()
+        if (qualityFeature == null && cm == ColorMode.UNCERTAINTY) {
+            cm = ColorMode.LUT
+            logger.info("Could not find uncertainty information in the dataset. " +
+                    "Make sure your annotation data come from ELEPHANT and that you use ELEPHANT server v0.7.0+.")
+        }
 
         when (cm) {
             ColorMode.LUT -> {
@@ -1321,37 +1332,25 @@ class GeometryHandler(
                 }
             }
             ColorMode.UNCERTAINTY -> {
-                val qualitySpec = mastodonData.model.featureModel.featureSpecs.find { it.key == "Detection quality" }
+                // We need to store elephants detection threshold here so we can normalize the uncertainty data.
+                // They will be in range elephantThreshold to 1
+                val elephantThreshold = ElephantMainSettingsManager.getInstance().forwardDefaultStyle.probThreshold
 
-                if (qualitySpec != null) {
-                    val qualityFeature =
-                        mastodonData.model.featureModel.getFeature(qualitySpec) as? DetectionQualityFeature
-
-                    // We need to store elephants detection threshold here so we can normalize the uncertainty data.
-                    // They will be in range elephantThreshold to 1
-                    val elephantSettings = ElephantMainSettingsManager.getInstance().forwardDefaultStyle
-                    val elephantThreshold = elephantSettings.probThreshold
-
-                    if (manvr3d.invertLut) {
-                        links.forEach { linkNode ->
-                            // Normalize the uncertainty into range 0-1
-                            val uncertainty = qualityFeature?.value(linkNode.link.source) ?: 1.0
-                            val factor = (uncertainty - elephantThreshold) / ( 1 - elephantThreshold)
-                            val color = lut.sample(1 - factor.toFloat())
-                            linkNode.instance.instancedProperties["Color"] = { color }
-                        }
-                    } else {
-                        links.forEach { linkNode ->
-                            val uncertainty = qualityFeature?.value(linkNode.link.source) ?: 1.0
-                            val factor = (uncertainty - elephantThreshold) / ( 1 - elephantThreshold)
-                            val color = lut.sample(factor.toFloat())
-                            linkNode.instance.instancedProperties["Color"] = { color }
-                        }
+                if (manvr3d.invertLut) {
+                    links.forEach { linkNode ->
+                        // Normalize the uncertainty into range 0-1
+                        val uncertainty = qualityFeature!!.value(linkNode.link.source) ?: 1.0
+                        val factor = (uncertainty - elephantThreshold) / ( 1 - elephantThreshold)
+                        val color = lut.sample(1 - factor.toFloat())
+                        linkNode.instance.instancedProperties["Color"] = { color }
                     }
-
                 } else {
-                    logger.info("Could not find uncertainty information in the dataset. " +
-                            "Make sure your annotation data come from ELEPHANT and that you use ELEPHANT server v0.7.0+.")
+                    links.forEach { linkNode ->
+                        val uncertainty = qualityFeature!!.value(linkNode.link.source) ?: 1.0
+                        val factor = (uncertainty - elephantThreshold) / ( 1 - elephantThreshold)
+                        val color = lut.sample(factor.toFloat())
+                        linkNode.instance.instancedProperties["Color"] = { color }
+                    }
                 }
             }
         }

@@ -303,13 +303,7 @@ class Manvr3dWindowLayout(manvr3dContext: Manvr3dMain, populateThisContainer: JP
     }
 
     val toggleUncertainty = ActionListener {
-        manvr3dContext.showUncertainty = uncertaintyToggle.isSelected
-        if (uncertaintyToggle.isSelected) {
-            manvr3dContext.geometryHandler.currentColorMode = GeometryHandler.ColorMode.UNCERTAINTY
-        } else {
-            manvr3dContext.geometryHandler.currentColorMode = GeometryHandler.ColorMode.LUT
-        }
-        manvr3dContext.rebuildGeometry()
+        uncertaintyToggle.isSelected = manvr3dContext.toggleUncertaintyColoring()
     }
 
     val toggleLutInversion = ActionListener {
@@ -360,6 +354,7 @@ class Manvr3dWindowLayout(manvr3dContext: Manvr3dMain, populateThisContainer: JP
         intensityRangeSlider.rangeSlider.upperValue = manvr3d.intensity.rangeMax.toInt()
         autoContrastBtn.isSelected = manvr3d.isVolumeAutoAdjust
         autoContrastStrength.value = manvr3d.intensity.contrast
+        uncertaintyToggle.isSelected = manvr3d.showUncertainty
     }
 
     fun deactivateAndForget() {
@@ -373,6 +368,7 @@ class Manvr3dWindowLayout(manvr3dContext: Manvr3dMain, populateThisContainer: JP
         visToggleSpots.removeActionListener(toggleSpotsVisibility)
         visToggleVols.removeActionListener(toggleVolumeVisibility)
         autoContrastBtn.removeActionListener(toggleAutoContrast)
+        uncertaintyToggle.removeActionListener(toggleUncertainty)
         this@Manvr3dWindowLayout.manvr3dContext = null
 
     }
