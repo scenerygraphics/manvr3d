@@ -83,6 +83,8 @@ class GeometryHandler(
     lateinit var visibleSpots: SpatialIndex<Spot>
     var linkForwardRange: Int
     var linkBackwardRange: Int
+    /** If true, this sets the link window to +/- 8 segments. Toggled from VR */
+    var showShortTrackWindow = false
 
     /** Allows finding a spot instance based on a spot pool index. */
     private val spotToInstanceMap = ConcurrentHashMap<Int, InstancedNode.Instance>()
@@ -1368,7 +1370,9 @@ class GeometryHandler(
 
     fun updateSegmentVisibility(currentTP: Int = manvr3d.currentTimepoint) {
         // Calculate the visible range of timepoints
-        val range = currentTP - linkBackwardRange..currentTP + linkForwardRange
+        val bwdRange = if (showShortTrackWindow) 8 else linkBackwardRange
+        val fwdRange = if (showShortTrackWindow) 8 else linkForwardRange
+        val range = currentTP - bwdRange..currentTP + fwdRange
         links.values.forEach {link ->
             // turns the link on if it is within range, otherwise turns it off
             link.instance.visible = link.tp in range && isShown(link.link.source)

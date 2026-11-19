@@ -553,7 +553,16 @@ open class CellTrackingBase(
             touchingColor = touchingColor, default = true, textInFront = true
         )
 
-        leftWristMenu.addRow("Toggle Menu", toggleTrackVisBtn, trackRadiusDownBtn, trackRadiusUpBtn)
+        val shortTracksToggleBtn = ToggleButton(
+            "Full Tracks", "Short Tracks", command = { state ->
+                manvr3d.geometryHandler.showShortTrackWindow = state
+                manvr3d.geometryHandler.updateSegmentVisibility()
+            }, defaultColor = color, pressedColor = pressedColor,
+            touchingColor = touchingColor, default = false, textInFront = true
+        )
+
+        leftWristMenu.addRow("Toggle Menu",
+            toggleTrackVisBtn, trackRadiusDownBtn, trackRadiusUpBtn, shortTracksToggleBtn)
 
         leftWristMenu.addToggleButton("Toggle Menu", "Preview Off", "Preview On",
             command = { state ->
