@@ -67,7 +67,7 @@ class VRLabelPositioningTool(
 
     val ctMapper = CellTrackingButtonMapper
 
-    lateinit var targetMappings: List<ButtonMapping>
+    var targetMappings: List<ButtonMapping> = emptyList()
 
     private var currentIndex = 0
 
@@ -104,14 +104,6 @@ class VRLabelPositioningTool(
         cam.perspectiveCamera(50f, windowWidth, windowHeight)
         scene.addChild(cam)
 
-        ctMapper.loadProfileForHMD(hmd)
-
-        // Build the ordered list of mappings we want to position
-        // We only look at mappings that target the correct hand and have a label
-        targetMappings = CellTrackingButtonMapper.mapper.getCurrentMappings()
-                ?.values?.filter { it.role == labelRole && it.label != null }?.toList() ?: emptyList()
-
-
         // Environment shell
         val shell = Box(Vector3f(20f, 20f, 20f), insideNormals = true)
         shell.ifMaterial {
@@ -127,52 +119,57 @@ class VRLabelPositioningTool(
         )
         lights.forEach { scene.addChild(it) }
 
+        addInfoBoards()
+        progressBoard.text = "Waiting for controllers..."
+
         // Wait for controllers to connect
         thread {
             while (!running) Thread.sleep(100)
-            hmd.onDeviceConnect { hmd, device, timestamp ->
-                if (device.type == TrackedDeviceType.Controller) {
-                    logger.info("Controller connected: ${device.name} role=${device.role} at $timestamp")
-                    device.model?.let { hmd.attachToNode(device, it, cam) }
 
-                    when (device.role) {
-                        TrackerRole.RightHand -> {
-                            if (helperRole == TrackerRole.RightHand) {
-                                helperController = device
-                                logger.info("Right hand assigned as HELPER controller")
-                            } else {
-                                labelController = device
-                                logger.info("Right hand assigned as LABEL controller")
-                                onLabelControllerReady()
-                            }
-                        }
-                        TrackerRole.LeftHand -> {
-                            if (helperRole == TrackerRole.LeftHand) {
-                                helperController = device
-                                logger.info("Left hand assigned as HELPER controller")
-                            } else {
-                                labelController = device
-                                logger.info("Left hand assigned as LABEL controller")
-                                onLabelControllerReady()
-                            }
-                        }
-                        else -> {}
+            while (!hmd.awaitInteractionProfile(5000)) {
+                logger.info("Still waiting for an interaction profile (is the headset on and the app focused?)")
+            }
+            logger.info("Interaction profile: ${hmd.interactionProfile} (${hmd.manufacturer})")
+
+            ctMapper.loadProfileForHMD(hmd)
+
+            // Build the ordered list of mappings we want to position
+            // We only look at mappings that target the correct hand and have a label
+            targetMappings = CellTrackingButtonMapper.mapper.getCurrentMappings()
+                ?.values?.filter { it.role == labelRole && it.label != null }?.toList() ?: emptyList()
+
+            logger.info("=== VR Label Positioning Tool ===")
+            logger.info("Mode: ${if (leftHandMode) "LEFT-hand labels" else "RIGHT-hand labels"}")
+            logger.info("Found ${targetMappings.size} labelled mappings to position.")
+            targetMappings.forEachIndexed { i, m ->
+                logger.info("  [$i] \"${m.label}\" on ${m.role} ${m.button}")
+            }
+            if (targetMappings.isEmpty()) {
+                logger.warn("No labelled mappings found for $labelRole! Nothing to do.")
+            }
+
+            updateProgressText()
+
+            hmd.onDeviceConnect { hmd, device, timestamp ->
+                if (device.type != TrackedDeviceType.Controller) return@onDeviceConnect
+
+                logger.info("Controller connected: ${device.name} role=${device.role} at $timestamp")
+                device.model?.let { hmd.attachToNode(device, it, cam) }
+
+                when (device.role) {
+                    helperRole -> {
+                        helperController = device
+                        logger.info("${device.role} assigned as HELPER controller")
                     }
+                    labelRole -> {
+                        labelController = device
+                        logger.info("${device.role} assigned as LABEL controller")
+                        onLabelControllerReady()
+                    }
+                    else -> {}
                 }
             }
         }
-
-        logger.info("=== VR Label Positioning Tool ===")
-        logger.info("Mode: ${if (leftHandMode) "LEFT-hand labels" else "RIGHT-hand labels"}")
-        logger.info("Found ${targetMappings.size} labelled mappings to position.")
-        targetMappings.forEachIndexed { i, m ->
-            logger.info("  [$i] \"${m.label}\" on ${m.role} ${m.button}")
-        }
-        if (targetMappings.isEmpty()) {
-            logger.warn("No labelled mappings found for $labelRole! Nothing to do.")
-        }
-
-        addInfoBoards()
     }
 
     // Called once the label controller model is available

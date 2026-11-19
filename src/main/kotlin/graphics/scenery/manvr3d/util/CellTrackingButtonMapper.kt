@@ -9,7 +9,6 @@ import graphics.scenery.controls.VRInputMapper
 import graphics.scenery.utils.lazyLogger
 import org.joml.Quaternionf
 import org.joml.Vector3f
-import org.scijava.ui.behaviour.Behaviour
 
 /** This input mapper provides several preconfigured profiles of manvr3d's controls for different VR controller layouts.
  * The actual behavior binding is done in [mapper].
@@ -26,7 +25,8 @@ object CellTrackingButtonMapper {
     const val GRAB_WORLD = "grabWorld"
     const val GRAB_SPOT = "grabSpot"
     const val PLAYBACK = "playback"
-    const val CYCLE_MENU = "cycleMenu"
+    const val CYCLE_MENU_FWD = "cycleMenuFwd"
+    const val CYCLE_MENU_BWD = "cycleMenuBwd"
     const val TOGGLE_MENU = "toggleMenu"
     const val STEP_FWD = "stepFwd"
     const val STEP_BWD = "stepBwd"
@@ -62,7 +62,7 @@ object CellTrackingButtonMapper {
                 offset = Vector3f(0.023f, 0.003f, 0.056f),
                 rotation = Quaternionf(-0.866f, -0.034f, -0.063f, 0.494f)
             ),
-            CYCLE_MENU to ButtonMapping(TrackerRole.LeftHand, OpenXRButton.A, "M Cycle",
+            CYCLE_MENU_FWD to ButtonMapping(TrackerRole.LeftHand, OpenXRButton.A, "M Cycle",
                 offset = Vector3f(0.016f, 0.011f, 0.066f),
                 rotation = Quaternionf(-0.866f, -0.034f, -0.063f, 0.494f)
                 ),
@@ -103,8 +103,73 @@ object CellTrackingButtonMapper {
             MOVE_BACKWARD to ButtonMapping(TrackerRole.LeftHand, OpenXRButton.Down),
             MOVE_LEFT to ButtonMapping(TrackerRole.LeftHand, OpenXRButton.Left),
             MOVE_RIGHT to ButtonMapping(TrackerRole.LeftHand, OpenXRButton.Right),
-
         ))
+
+        mapper.registerProfile(Manufacturer.ValveFrame, mapOf(
+            EYE_TRACKING to ButtonMapping(
+                TrackerRole.LeftHand, OpenXRButton.Trigger, "ET", color = trackingColor,
+                offset = Vector3f(0.011f, -0.044f, 0.0501f),
+                rotation = Quaternionf(-0.218f, 0.514f, -0.417f, 0.717f)
+            ),
+            CONTROLLER_TRACKING to ButtonMapping(
+                TrackerRole.RightHand, OpenXRButton.Trigger, "CT", color = trackingColor,
+                offset = Vector3f(-0.016f, -0.052f, 0.041f),
+                rotation = Quaternionf(-0.281f, -0.490f, 0.293f, 0.771f)
+            ),
+            GRAB_WORLD to ButtonMapping(TrackerRole.LeftHand, OpenXRButton.Side),
+            GRAB_SPOT to ButtonMapping(TrackerRole.RightHand, OpenXRButton.Side),
+            TOGGLE_MENU to ButtonMapping(TrackerRole.LeftHand, OpenXRButton.X, "Toggle",
+                offset = Vector3f(-0.031f, 0.008f,0.038f),
+                rotation = Quaternionf(-0.899f, -0.014f,-0.043f, 0.434f)
+            ),
+            CYCLE_MENU_BWD to ButtonMapping(TrackerRole.LeftHand, OpenXRButton.Y, "Menu <",
+                offset = Vector3f(-0.014f, 0.002f,0.03f),
+                rotation = Quaternionf(-0.909f, -0.027f,-0.06f, 0.41f)
+            ),
+            CYCLE_MENU_FWD to ButtonMapping(
+                TrackerRole.LeftHand, OpenXRButton.A, "Menu >",
+                offset = Vector3f(-0.019f, 0.014f,0.048f),
+                rotation = Quaternionf(-0.888f, -0.005f,-0.075f, 0.453f)
+            ),
+
+            STEP_FWD to ButtonMapping(
+                TrackerRole.RightHand, OpenXRButton.Left, "FW",
+                offset = Vector3f(-0.021f, 0.017f,0.047f),
+                rotation = Quaternionf(-0.897f, 0.025f,0.068f, 0.436f)
+            ),
+            STEP_BWD to ButtonMapping(
+                TrackerRole.RightHand, OpenXRButton.Right, "BW",
+                offset = Vector3f(-0.045f, 0.016f,0.051f),
+                rotation = Quaternionf(-0.885f, 0.042f,0.052f, 0.462f)
+            ),
+            RADIUS_INCREASE to ButtonMapping(
+                TrackerRole.RightHand, OpenXRButton.Up, "R+",
+                offset = Vector3f(-0.031f, 0.012f,0.043f),
+                rotation = Quaternionf(-0.903f, 0.046f,0.102f, 0.417f)
+            ),
+            RADIUS_DECREASE to ButtonMapping(
+                TrackerRole.RightHand, OpenXRButton.Down, "R-",
+                offset = Vector3f(-0.027f, 0.022f,0.055f),
+                rotation = Quaternionf(-0.906f, 0.049f,0.115f, 0.407f)
+            ),
+            ADD_DELETE_RESET to ButtonMapping(
+                TrackerRole.RightHand, OpenXRButton.B, "Add",
+                offset = Vector3f(0.011f, 0.008f,0.041f),
+                rotation = Quaternionf(-0.909f, 0.019f,0.062f, 0.413f)
+            ),
+            SELECT to ButtonMapping(
+                TrackerRole.RightHand, OpenXRButton.A, "Sel", color = selectColor,
+                offset = Vector3f(-0.002f, 0.013f,0.052f),
+                rotation = Quaternionf(-0.865f, 0.033f,0.076f, 0.496f)
+            ),
+            MOVE_FORWARD to ButtonMapping(TrackerRole.LeftHand, OpenXRButton.Up, "Move",
+                offset = Vector3f(0.017f, 0.018f,0.047f),
+                rotation = Quaternionf(-0.889f, 0.02f,-0.059f, 0.453f)
+            ),
+            MOVE_BACKWARD to ButtonMapping(TrackerRole.LeftHand, OpenXRButton.Down),
+            MOVE_LEFT to ButtonMapping(TrackerRole.LeftHand, OpenXRButton.Left),
+            MOVE_RIGHT to ButtonMapping(TrackerRole.LeftHand, OpenXRButton.Right),
+            ))
 
         // HTC Vive profile
         mapper.registerProfile(Manufacturer.HTC, mapOf(
@@ -114,7 +179,7 @@ object CellTrackingButtonMapper {
             GRAB_SPOT to ButtonMapping(TrackerRole.RightHand, OpenXRButton.Side),
 //            PLAYBACK to ButtonMapping(TrackerRole.RightHand, OpenXRButton.Menu),
             TOGGLE_MENU to ButtonMapping(TrackerRole.RightHand, OpenXRButton.Menu),
-            CYCLE_MENU to ButtonMapping(TrackerRole.LeftHand, OpenXRButton.Menu),
+            CYCLE_MENU_FWD to ButtonMapping(TrackerRole.LeftHand, OpenXRButton.Menu),
             STEP_FWD to ButtonMapping(TrackerRole.RightHand, OpenXRButton.Left),
             STEP_BWD to ButtonMapping(TrackerRole.RightHand, OpenXRButton.Right),
             ADD_DELETE_RESET to ButtonMapping(TrackerRole.RightHand, OpenXRButton.Up),

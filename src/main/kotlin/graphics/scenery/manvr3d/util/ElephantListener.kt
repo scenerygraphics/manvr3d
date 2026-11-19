@@ -95,6 +95,7 @@ class ElephantListener(
                 // graphChanged is triggered once per TP, but vertexAdded is triggered with every vertex.
                 // If we keep predicting TPs, we want to keep listening to timepoint changes too.
                 listenForSpots = true
+                predictedSpotCount = 0
             }
         } else {
             // If only a single TP was predicted, we can deactivate the listener right away.

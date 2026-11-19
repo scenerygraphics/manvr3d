@@ -7,9 +7,6 @@ import graphics.scenery.primitives.Arrow
 import graphics.scenery.primitives.Cylinder
 import graphics.scenery.utils.extensions.*
 import graphics.scenery.utils.lazyLogger
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
 import org.apache.commons.math3.linear.Array2DRowRealMatrix
 import org.apache.commons.math3.linear.EigenDecomposition
 import org.apache.commons.math3.linear.RealMatrix
@@ -32,19 +29,17 @@ import sc.iview.SciView
 import graphics.scenery.manvr3d.analysis.HedgehogAnalysis.SpineGraphVertex
 import graphics.scenery.manvr3d.vr.CellTrackingBase.TrackedPoint
 import graphics.scenery.volumes.Colormap
-import kotlinx.coroutines.joinAll
 import net.imglib2.KDTree
 import net.imglib2.RealPoint
 import net.imglib2.neighborsearch.RadiusNeighborSearchOnKDTree
 import org.elephant.setting.main.ElephantMainSettingsManager
-import org.mastodon.tracking.mamut.detection.DetectionQualityFeature
+import org.mastodon.model.tag.TagSetStructure
 import spim.fiji.spimdata.interestpoints.InterestPoint
 import java.awt.Color
 import java.lang.Math
 import java.util.*
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.LinkedBlockingQueue
-import kotlin.collections.plus
 import kotlin.collections.set
 import kotlin.math.pow
 import kotlin.math.sqrt
@@ -73,7 +68,8 @@ class GeometryHandler(
     var linkScaleFactor = 1f
     var DEFAULT_COLOR = 0x00FFFFFF
     var numTimePoints: Int
-    lateinit var lut: Colormap
+    lateinit var linkLut: Colormap
+    lateinit var uncertaintyLut: Colormap
     var currentColorMode: ColorMode
     val spotPool: MutableList<InstancedNode.Instance> = ArrayList(10000)
     val linkPool: MutableList<InstancedNode.Instance> = ArrayList(10000)
@@ -83,9 +79,12 @@ class GeometryHandler(
     val cylinder = CylinderLensed(0.2f, 1f, 6, true, true)
     var mainSpotInstance: InstancedNode? = null
     var mainLinkInstance: InstancedNode? = null
+    /** Contains all spots in the current timepoint. */
     lateinit var visibleSpots: SpatialIndex<Spot>
     var linkForwardRange: Int
     var linkBackwardRange: Int
+    /** If true, this sets the link window to +/- 8 segments. Toggled from VR */
+    var showShortTrackWindow = false
 
     /** Allows finding a spot instance based on a spot pool index. */
     private val spotToInstanceMap = ConcurrentHashMap<Int, InstancedNode.Instance>()
@@ -98,7 +97,15 @@ class GeometryHandler(
 
     private var selectedColor = Vector4f(1f, 0.25f, 0.25f, 1f)
     /** Class that connects link data with their corresponding instances.  */
-    data class LinkNode (val instance: InstancedNode.Instance, val link: Link, val tp: Int, val center: Vector3f)
+    data class LinkNode(
+        val instance: InstancedNode.Instance,
+        val link: Link,
+        val tp: Int,
+        val center: Vector3f,
+        val sourceIdx: Int,
+        val targetIdx: Int
+    )
+
     /** A segment of a link, used during tracking to preview the tracking history. */
     data class LinkPreview( val instance: InstancedNode.Instance, val from: Vector3f, val to: Vector3f , val tp: Int)
 
@@ -107,8 +114,12 @@ class GeometryHandler(
 
     val linkPreviewList = mutableListOf<LinkPreview>()
     val linkSize = 2.0
-    // list of all link segments
+
+    /** List of all link segments */
     var links: ConcurrentHashMap<Int, LinkNode> = ConcurrentHashMap()
+
+    /** Pool indices of spots that stay visible. Null means nothing is hidden. Independent of the selection. */
+    @Volatile var visibleFilter: MutableSet<Int>? = null
 
     init {
         events = sv.scijavaContext?.getService(EventService::class.java)
@@ -116,6 +127,8 @@ class GeometryHandler(
 
         setLUT("plasma")
         currentColorMode = ColorMode.LUT
+
+        uncertaintyLut = Colormap.get("Ice.lut")
 
         linkForwardRange = mastodonData.maxTimepoint
         linkBackwardRange = mastodonData.maxTimepoint
@@ -136,7 +149,7 @@ class GeometryHandler(
 
     fun setLUT(lutName: String) {
         try {
-            lut = Colormap.get(lutName)
+            linkLut = Colormap.get(lutName)
         } catch (e: Exception) {
             logger.error("Could not find LUT $lutName.")
         }
@@ -146,43 +159,6 @@ class GeometryHandler(
      * - [LUT] uses a colormap, defaults to Fire.lut
      * - [SPOT] uses the spot color from the connected spot */
     enum class ColorMode { LUT, SPOT, UNCERTAINTY }
-
-    /** Allocates a [number] of instances to a [pool] that are part of [mainInstance]. */
-    private fun addMoreInstances(
-        mainInstance: InstancedNode,
-        number: Int = 10000,
-        pool: MutableList<InstancedNode.Instance>
-    ) {
-        val tStart = TimeSource.Monotonic.markNow()
-
-        runBlocking {
-            val batchSize = 3000
-            val jobs = mutableListOf<Job>()
-
-            for (batchStart in 0 until number step batchSize) {
-                val batchEnd = minOf(batchStart + batchSize, number)
-                val job = launch {
-                    val localInstances = ArrayList<InstancedNode.Instance>(batchEnd - batchStart)
-                    var inst: InstancedNode.Instance
-                    for (i in batchStart until batchEnd) {
-                        inst = mainInstance.addInstance()
-                        inst.parent = mainInstance.parent
-                        localInstances.add(inst)
-                    }
-                    // Add all instances from this batch to the pool at once
-                    synchronized(pool) {
-                        pool.addAll(localInstances)
-                    }
-                }
-                jobs.add(job)
-            }
-
-            // Wait for all jobs to complete
-            jobs.joinAll()
-        }
-
-        logger.info("adding $number ${mainInstance.name} instances took ${TimeSource.Monotonic.markNow()-tStart}.")
-    }
 
     /** Helper method for safe enqueueing. Will drop tasks if the [updateQueue] exceeds its capacity (currently 100),
      * unless [isCritical] was set to true. */
@@ -197,148 +173,32 @@ class GeometryHandler(
         }
     }
 
-    /** Shows or initializes the main spot instance, publishes it to the scene and populates it with instances from the current time-point. */
+    /** Shows or initializes the main spot instance, publishes it to the scene and populates it
+     * with instances from the current time-point, then adds color to them. */
     fun showInstancedSpots(
-        timepoint: Int,
-        colorizer: GraphColorGenerator<Spot, Link>
+        timepoint: Int = manvr3d.currentTimepoint,
+        colorizer: GraphColorGenerator<Spot, Link> = manvr3d.currentColorizer
     ) {
         enqueueUpdate("showInstancedSpots(tp=$timepoint)") {
             // Skip the rest if spots aren't visible
-            if (!manvr3d.isSpotVisible) {
-                return@enqueueUpdate
-            }
-
+            if (!manvr3d.isSpotVisible) { return@enqueueUpdate }
             currentColorizer = colorizer
             logger.debug("Called showInstancedSpots")
             val tStart = TimeSource.Monotonic.markNow()
-            // only create and add the main instance once during initialization
-            if (mainSpotInstance == null) {
-                sphere.setMaterial(
-                    ShaderMaterial.fromFiles(
-                        "DeferredInstancedColor.vert",
-                        "DeferredInstancedColorLensing.frag"
-                    )
-                ) {
-                    diffuse = Vector3f(1.0f, 1.0f, 1.0f)
-                    ambient = Vector3f(1.0f, 1.0f, 1.0f)
-                    specular = Vector3f(.0f, 1.0f, 1.0f)
-                    metallic = 0.0f
-                    roughness = 1.0f
-                }
-
-                val mainSpot = InstancedNode(sphere)
-                mainSpot.name = "SpotInstance"
-                // Instanced properties should be aligned to 4*32bit boundaries, hence the use of Vector4f instead of Vector3f here
-                mainSpot.instancedProperties["Color"] = { Vector4f(1f) }
-                var inst: InstancedNode.Instance
-                val maxSpotCount =
-                    mastodonData.model.spatioTemporalIndex.getSpatialIndex(mastodonData.maxTimepoint).size()
-                // initialize the whole pool with instances once
-                for (i in 0..<(maxSpotCount * 1.2).toInt()) {
-                    inst = mainSpot.addInstance()
-                    inst.parent = sphereParentNode
-                    spotPool.add(inst)
-                }
-
-                sv.addNode(mainSpot, parent = sphereParentNode, activePublish = false)
-                mainSpot.updateInstanceBuffers()
-                mainSpotInstance = mainSpot
-            }
-
-            // Ensure that mainSpotInstance is not null and properly initialized
-            val mainSpot =
-                mainSpotInstance ?: throw IllegalStateException("InstancedSpot is null, instance was not initialized.")
-
-            // Clear the maps on the start of each timepoint
-            instanceToSpotMap.clear()
-            spotToInstanceMap.clear()
-
-            val selectedSpotRef = mastodonData.selectionModel.selectedVertices
-
-            logger.debug("Selected spots: ${selectedSpotRef.map{ it.internalPoolIndex}}")
-            visibleSpots = mastodonData.model.spatioTemporalIndex.getSpatialIndex(timepoint)
             sv.blockOnNewNodes = false
-
-            val qualitySpec = mastodonData.model.featureModel.featureSpecs.find { it.key == "Detection quality" }
-
-            val qualityFeature = if (qualitySpec != null) {
-                 mastodonData.model.featureModel.getFeature(qualitySpec) as? DetectionQualityFeature
-            } else {
-                null
-            }
-
-            // We need to store elephants detection threshold here so we can normalize the uncertainty data.
-            // They will be in range elephantThreshold to 1
-            val elephantSettings = ElephantMainSettingsManager.getInstance().forwardDefaultStyle
-            val elephantThreshold = elephantSettings.probThreshold
-
-            // Pre-allocate memory to prevent recreation of variables inside the loop
-            val spotPosition = FloatArray(3)
-            var spotRadius: Float
-            var inst: InstancedNode.Instance
-
-            logger.debug("we have ${visibleSpots.size()} spots in this Mastodon time point.")
             manvr3d.bdvNotifier?.lockUpdates = true
-            val vertexRef = mastodonData.model.graph.vertexRef()
             mastodonData.model.graph.lock.readLock().lock()
 
-            var index = 0
-            for (spot in visibleSpots) {
-                vertexRef.refTo(spot)
-                // reuse a spot instance from the pool if the pool is large enough
-                if (index < spotPool.size) {
-                    inst = spotPool[index]
-                    inst.visible = true
-                }
-                // otherwise create a new instance and add it to the pool
-                else {
-                    inst = mainSpot.addInstance()
-                    inst.parent = sphereParentNode
-                    spotPool.add(inst)
-                }
-                // get spot covariance and calculate the scaling and rotation from it
-                vertexRef.localize(spotPosition)
-                spotRadius = getSpotRadius(vertexRef)
+            // Ensure that mainSpotInstance is not null and properly initialized
+            val mainSpot = mainSpotInstance ?: initSpotInstance()
 
-                inst.spatial {
-                    position = Vector3f(spotPosition)
-                    scale = Vector3f(sphereScaleFactor * spotRadius)
-                    // TODO add ellipsoid scale & rotation to instances
-                }
-
-                if (manvr3d.showUncertainty) {
-                    // Normalize the uncertainty into range 0-1
-                    val factor = ((qualityFeature?.value(spot) ?: 1.0) - elephantThreshold) / (1 - elephantThreshold)
-
-                    if (manvr3d.invertLut) {
-                        val color = lut.sample(1f - factor.toFloat())
-                        inst.instancedProperties["Color"] = { color }
-                    } else {
-                        val color = lut.sample(factor.toFloat())
-                        inst.instancedProperties["Color"] = { color }
-                    }
-                } else {
-                    inst.setColorFromSpot(vertexRef, currentColorizer)
-                }
-                // highlight the spots currently selected or focused in BDV or trackscheme
-                if (selectedSpotRef.any { it.internalPoolIndex == vertexRef.internalPoolIndex }) {
-                    inst.instancedProperties["Color"] = { selectedColor }
-                }
-
-                spotToInstanceMap[vertexRef.internalPoolIndex] = inst
-                instanceToSpotMap[inst] = vertexRef.internalPoolIndex
-
-                index++
+            try {
+                layoutSpots(timepoint, mainSpot)
+                colorSpots()
+            } finally {
+                manvr3d.bdvNotifier?.lockUpdates = false
+                mastodonData.model.graph.lock.readLock().unlock()
             }
-
-            manvr3d.bdvNotifier?.lockUpdates = false
-            mastodonData.model.graph.lock.readLock().unlock()
-            // turn all leftover spots from the pool invisible
-            var i = index
-            while (i < spotPool.size) {
-                spotPool[i++].visible = false
-            }
-
             mainSpot.updateInstanceBuffers()
 
             val tElapsed = TimeSource.Monotonic.markNow() - tStart
@@ -346,19 +206,176 @@ class GeometryHandler(
         }
     }
 
-    fun highlightFocusedSpot() {
-        logger.debug("Triggered focus spot highlighting.")
-        val vertexRef = mastodonData.model.graph.vertexRef()
-        val focused = mastodonData.focusModel.getFocusedVertex(vertexRef)
-        focused?.let {
-            spotToInstanceMap[it.internalPoolIndex]?.let { inst ->
-                inst.instancedProperties["Color"] = { selectedColor }
-                mainSpotInstance?.updateInstanceBuffers()
-            }
+    /** Creates a new spot instance if [mainSpotInstance] is null, applies the correct material
+     * and populates the [spotPool] with instances. */
+    private fun initSpotInstance(): InstancedNode {
+        if (mainSpotInstance != null) { return mainSpotInstance!! }
+        sphere.setMaterial(
+            ShaderMaterial.fromFiles(
+                "DeferredInstancedColor.vert",
+                "DeferredInstancedColorLensing.frag"
+            )
+        ) {
+            diffuse = Vector3f(1.0f, 1.0f, 1.0f)
+            ambient = Vector3f(1.0f, 1.0f, 1.0f)
+            specular = Vector3f(.0f, 1.0f, 1.0f)
+            metallic = 0.0f
+            roughness = 1.0f
         }
-        mastodonData.model.graph.releaseRef(vertexRef)
+
+        val mainSpot = InstancedNode(sphere)
+        mainSpot.name = "SpotInstance"
+        // Instanced properties should be aligned to 4*32bit boundaries, hence the use of Vector4f instead of Vector3f here
+        mainSpot.instancedProperties["Color"] = { Vector4f(1f) }
+        var inst: InstancedNode.Instance
+        val maxSpotCount =
+            mastodonData.model.spatioTemporalIndex.getSpatialIndex(mastodonData.maxTimepoint).size()
+        // initialize the whole pool with instances once
+        for (i in 0..<(maxSpotCount * 1.5).toInt()) {
+            inst = mainSpot.addInstance()
+            inst.parent = sphereParentNode
+            spotPool.add(inst)
+        }
+
+        sv.addNode(mainSpot, parent = sphereParentNode, activePublish = false)
+        mainSpot.updateInstanceBuffers()
+        mainSpotInstance = mainSpot
+
+        return mainSpot
     }
 
+    /** Iterates over the current [timepoint] and draws all visible spots at their correct position and size,
+     * reusing cached instances in [spotPool]. */
+    private fun layoutSpots(timepoint: Int, mainSpot: InstancedNode) {
+        // Clear the maps on the start of each timepoint
+        instanceToSpotMap.clear()
+        spotToInstanceMap.clear()
+        visibleSpots = mastodonData.model.spatioTemporalIndex.getSpatialIndex(timepoint)
+        // Pre-allocate memory to prevent recreation of variables inside the loop
+        val pos = FloatArray(3)
+        var index = 0
+
+        val filter = visibleFilter
+
+        for (spot in visibleSpots) {
+            if (!isShown(spot)) continue
+            // reuse a spot instance from the pool if the pool is large enough
+            val inst = if (index < spotPool.size) {
+                spotPool[index]
+            } else {
+                // otherwise create a new instance and add it to the pool
+                mainSpot.addInstance().also {
+                    it.parent = sphereParentNode
+                    spotPool.add(it)
+                }
+            }
+            inst.visible = true
+
+            spot.localize(pos)
+            inst.spatial {
+                position = Vector3f(pos)
+                scale = Vector3f(sphereScaleFactor * getSpotRadius(spot))
+            }
+            spotToInstanceMap[spot.internalPoolIndex] = inst
+            instanceToSpotMap[inst] = spot.internalPoolIndex
+            index++
+        }
+        // turn all leftover spots from the pool invisible
+        for (i in index until spotPool.size) spotPool[i].visible = false
+    }
+
+    private fun colorSpots() {
+        val selection = mastodonData.selectionModel
+        val focusRef = mastodonData.model.graph.vertexRef()
+        val focused = mastodonData.focusModel.getFocusedVertex(focusRef)
+        // We need to store elephant's detection threshold here so we can normalize the uncertainty data.
+        // They will be in range elephantThreshold to 1
+        val threshold = ElephantMainSettingsManager.getInstance().forwardDefaultStyle.probThreshold
+        val selectedInstances = ArrayList<InstancedNode.Instance>()
+
+        // Check for the verified tags once, then use isVerified as a small lambda to check against the tag map
+        val isVerified = verifiedSpotCheck()
+
+        for (spot in visibleSpots) {
+            val inst = spotToInstanceMap[spot.internalPoolIndex] ?: continue
+            val isSelected = selection.isSelected(spot)
+            if (isSelected) selectedInstances.add(inst)
+            when {
+                isSelected || spot == focused -> inst.instancedProperties["Color"] = { selectedColor }
+                isVerified(spot) -> inst.instancedProperties["Color"] = { verifiedColor }
+                else -> inst.setBaseSpotColor(spot, threshold, manvr3d.currentColorizer)
+            }
+        }
+        // derived cache for the edit behaviors, only ever written here
+        manvr3d.selectedSpotInstances.clear()
+        manvr3d.selectedSpotInstances.addAll(selectedInstances)
+        mastodonData.model.graph.releaseRef(focusRef)
+    }
+
+    /** Extension function that takes a spot and colors the corresponding instance according to the [colorizer]
+     * or by Elephant's uncertainty feature, if available. */
+    private fun InstancedNode.Instance.setBaseSpotColor(
+        spot: Spot,
+        threshold: Double,
+        colorizer: GraphColorGenerator<Spot, Link>
+    ) {
+        val qualityFeature = manvr3d.findOrGetQualityFeature()
+        // Only show uncertainty if the feature was found, otherwise use the colorizer
+        if (manvr3d.showUncertainty && qualityFeature != null) {
+            val factor = ((qualityFeature.value(spot) - threshold) / (1 - threshold)).toFloat()
+            val color = uncertaintyLut.sample(1f - factor)
+            instancedProperties["Color"] = { color }
+        } else {
+            var intColor = colorizer.color(spot)
+            if (intColor == 0x00000000) {
+                intColor = DEFAULT_COLOR
+            }
+            val col = intColor.unpackRGB()
+            this.instancedProperties["Color"] = { col }
+        }
+    }
+
+    /** Recolors spots and links from the Mastodon selection/focus state without touching the layout. */
+    fun refreshSelectionColors() {
+        enqueueUpdate("refreshSelectionColors") {
+            mainSpotInstance?.let { main ->
+                if (!::visibleSpots.isInitialized) return@let
+                mastodonData.model.graph.lock.readLock().lock()
+                try { colorSpots() } finally { mastodonData.model.graph.lock.readLock().unlock() }
+                main.updateInstanceBuffers()
+            }
+            updateLinkColors()
+        }
+    }
+
+    /** Check whether the list of visible spots contains a given spot. If the filter is empty, return true. */
+    fun isShown(spot: Spot) = visibleFilter?.contains(spot.internalPoolIndex) ?: true
+
+    /** Grabs the current selection from Mastodon and hides all spots and edges that are not selected. */
+    fun hideUnselected() {
+        enqueueUpdate("hideUnselected") {
+            val sel = mastodonData.selectionModel
+            if (sel.selectedVertices.isEmpty() && sel.selectedEdges.isEmpty()) return@enqueueUpdate
+            val keep = ConcurrentHashMap.newKeySet<Int>()
+            sel.selectedVertices.forEach { keep.add(it.internalPoolIndex) }
+            sel.selectedEdges.forEach { e ->
+                keep.add(e.source.internalPoolIndex)
+                keep.add(e.target.internalPoolIndex)
+            }
+            visibleFilter = keep
+            updateSegmentVisibility()
+            showInstancedSpots()
+        }
+    }
+
+    /** Resets the visibility state by nulling [visibleFilter]. */
+    fun resetVisibility() {
+        enqueueUpdate("resetVisibility") {
+            visibleFilter = null
+            updateSegmentVisibility()
+            showInstancedSpots()
+        }
+    }
     private fun computeEigen(covariance: Array2DRowRealMatrix): Pair<DoubleArray, RealMatrix> {
         val eigenDecomposition = EigenDecomposition(covariance)
         val eigenvalues = eigenDecomposition.realEigenvalues
@@ -472,31 +489,61 @@ class GeometryHandler(
         return quaternion
     }
 
-    /** Extension function that takes a spot and colors the corresponding instance according to the [colorizer]. */
-    private fun InstancedNode.Instance.setColorFromSpot(
-        s: Spot,
-        colorizer: GraphColorGenerator<Spot, Link>
-    ) {
-        var intColor = colorizer.color(s)
-        if (intColor == 0x00000000) {
-            intColor = DEFAULT_COLOR
-        }
-        val col = intColor.unpackRGB()
-        this.instancedProperties["Color"] = { col }
-
-    }
-
-    /** Takes a tag set name and a tag name and tries to apply it to all spots.
+    /** Takes a tag set name and a tag name and tries to apply it to the selected [spots]. Uses all spots if [spots] is null.
      * Returns false if either name can't be found. */
-    fun applyTagToAllSpots(tagSetName: String, tagName: String): Boolean {
+    fun applyTagToSpots(tagSetName: String, tagName: String, spots: List<Spot>? = null): Boolean {
+        val (ts, tag) = findTag(tagSetName, tagName) ?: return false
         val tsModel = mastodonData.model.tagSetModel
-        val ts = tsModel.tagSetStructure.tagSets.find { it.name == tagSetName } ?: return false
-        val tag = ts.tags?.find { it.label() == tagName } ?: return false
-        val spots = mastodonData.model.graph.vertices()
+        val spots = spots ?: mastodonData.model.graph.vertices()
         spots.forEach { s ->
             tsModel.vertexTags.set(s, tag)
+            s.outgoingEdges().forEach {e ->
+                tsModel.edgeTags.set(e, tag)
+            }
         }
         return true
+    }
+
+
+    val VERIFIED_SET = "Status"
+    val VERIFIED_TAG = "Completed"
+    private val verifiedColor = Vector4f(0.3f, 1f, 0.4f, 1f)
+
+    private fun findTag(tagSetName: String, tagName: String): Pair<TagSetStructure.TagSet, TagSetStructure.Tag>? {
+        val ts = mastodonData.model.tagSetModel.tagSetStructure.tagSets.find { it.name == tagSetName } ?: return null
+        val tag = ts.tags.find { it.label() == tagName } ?: return null
+        return ts to tag
+    }
+
+    /** Returns a cheap per-spot check. Resolve it once per color pass, not once per spot. */
+    private fun verifiedSpotCheck(): (Spot) -> Boolean {
+        val (ts, tag) = findTag(VERIFIED_SET, VERIFIED_TAG) ?: return { false }
+        val map = mastodonData.model.tagSetModel.vertexTags.tags(ts)
+        return { map.get(it) == tag }
+    }
+    private fun verifiedLinkCheck(): (Link) -> Boolean {
+        val (ts, tag) = findTag(VERIFIED_SET, VERIFIED_TAG) ?: return { false }
+        val map = mastodonData.model.tagSetModel.edgeTags.tags(ts)
+        return { map.get(it) == tag }
+    }
+
+    fun markSelectionVerified() {
+        enqueueUpdate("markSelectionVerified") {
+            val (_, tag) = findTag(VERIFIED_SET, VERIFIED_TAG) ?: run {
+                logger.warn("Tag set '$VERIFIED_SET' with tag '$VERIFIED_TAG' not found.")
+                return@enqueueUpdate
+            }
+            val selection = mastodonData.selectionModel
+            if (selection.isEmpty) return@enqueueUpdate
+            val tags = mastodonData.model.tagSetModel
+            selection.selectedEdges.forEach { tags.edgeTags.set(it, tag) }
+            selection.selectedVertices.forEach { s ->
+                tags.vertexTags.set(s, tag)
+                s.outgoingEdges().forEach { e -> if (selection.isSelected(e.target)) tags.edgeTags.set(e, tag) }
+            }
+            mastodonData.model.setUndoPoint()
+            refreshSelectionColors()
+        }
     }
 
     fun updateLensPosition(position: Vector3f) {
@@ -505,13 +552,12 @@ class GeometryHandler(
         cylinder.lensingPosition = position
     }
 
-    fun updateLensRadius(radius: Float) {
+    fun updateGeometryLensRadius(radius: Float) {
         sphere.lensingRadius = radius
         cylinder.lensingRadius = radius
     }
 
     /** Tries to find a spot in the current time point for the given [instance].
-     * It does that by filtering through the names of the spots.
      * @return either a [Spot] or null. */
     fun findSpotFromInstance(instance: InstancedNode.Instance): Spot? {
         val spotIdx = instanceToSpotMap[instance] ?: return null
@@ -532,7 +578,7 @@ class GeometryHandler(
         return if (results != null) {
             results.instance
         } else {
-            logger.info("Couldn't find an instance for $link")
+            logger.debug("Couldn't find an instance for $link")
             null
         }
     }
@@ -546,6 +592,7 @@ class GeometryHandler(
             mastodonData.highlightModel.highlightVertex(it)
             mastodonData.selectionModel.setSelected(it, true)
         }
+        refreshSelectionColors()
     }
 
     /** Given a [timepoint] and a [pos]ition, return the nearest spot in the Mastodon graph. */
@@ -584,7 +631,10 @@ class GeometryHandler(
     }
 
     /** Returns a list of all spots within the given [radius] around the [origin] in the current [timepoint]. */
-    private fun findSpotsInRange(timepoint: Int, origin: Vector3f, radius: Float, adjustedScale: Float = 1f): RefList<Spot> {
+    private fun findSpotsInRange(
+        timepoint: Int, origin: Vector3f, radius: Float, adjustedScale: Float = 1f,
+        shownOnly: Boolean = false
+    ): RefList<Spot> {
         val spots = RefCollections.createRefList(mastodonData.model.graph.vertices())
         val spatialIndex = mastodonData.model.spatioTemporalIndex.getSpatialIndex(timepoint)
         if (spatialIndex.size() > 0) {
@@ -594,8 +644,10 @@ class GeometryHandler(
             var found: Spot
             while (spotSearch.hasNext()) {
                 found = spotSearch.next()
-                if (spotSearch.distance < (radius + getSpotRadius(found) * adjustedScale ) ) {
-                    spots.add(found)
+                if (spotSearch.distance < (radius + getSpotRadius(found) * adjustedScale)) {
+                    if (!shownOnly || isShown(found)) {
+                        spots.add(found)
+                    }
                 } else {
                     break
                 }
@@ -636,6 +688,7 @@ class GeometryHandler(
             }
             mastodonData.model.graph.releaseRef(currentSpot)
             clearSpotSelection()
+            clearLinkSelection()
             manvr3d.bdvNotifier?.lockUpdates = false
             manvr3d.fileLogger.incrementMerge()
         }
@@ -739,7 +792,7 @@ class GeometryHandler(
             val start = TimeSource.Monotonic.markNow()
             val localPos = manvr3d.sciviewToMastodonCoords(pos)
             val localRadius = manvr3d.sciviewToMastodonScale().max() * radius * visualScale
-            val spots = findSpotsInRange(timepoint, localPos, localRadius, visualScale)
+            val spots = findSpotsInRange(timepoint, localPos, localRadius, visualScale, true)
             // only proceed if we found at least one spot
             if (spots.isNotEmpty()) {
                 spots.forEach { spot ->
@@ -751,7 +804,7 @@ class GeometryHandler(
                     }
                 }
                 logger.debug("Selecting spots in range took ${TimeSource.Monotonic.markNow() - start}")
-                showInstancedSpots(manvr3d.currentTimepoint, manvr3d.currentColorizer)
+                refreshSelectionColors()
                 // Return the first spot if we found one
                 return Pair(spots.firstOrNull(), true)
             } else {
@@ -760,7 +813,7 @@ class GeometryHandler(
                     // Only clear and notify if there's actually something selected
                     if (manvr3d.selectedSpotInstances.isNotEmpty() || mastodonData.selectionModel.selectedVertices.isNotEmpty()) {
                         clearSpotSelection()
-                        showInstancedSpots(manvr3d.currentTimepoint, manvr3d.currentColorizer)
+                        refreshSelectionColors()
                     }
                 }
 
@@ -790,59 +843,64 @@ class GeometryHandler(
 
         for (i in 0 until search.numNeighbors()) {
             linkNode = search.getSampler(i).get()
+            // Skip edges that are invisible
+            if (!linkNode.instance.visible) continue
             if (mastodonData.selectionModel.isSelected(linkNode.link) && !addOnly) {
-                deselectLink(linkNode, false)
+                deselectLink(linkNode)
             } else {
-                selectLink(linkNode, false)
+                selectLink(linkNode)
             }
         }
         // Clicking away clears the selection, but only on click events, not with drag
         if (!anyHit && !addOnly) {
-            manvr3d.selectedLinkNodes.forEach { deselectLink(it, false) }
+            manvr3d.selectedLinkNodes.forEach { deselectLink(it) }
         }
-        mainLinkInstance?.updateInstanceBuffers()
+        refreshSelectionColors()
 
         logger.debug("Selecting links took ${TimeSource.Monotonic.markNow() - time}, got ${search.numNeighbors()} hits")
     }
 
-    private fun selectSpot(spot: Spot) {
-        findInstanceFromSpot(spot)?.let {
-            manvr3d.selectedSpotInstances.addIfAbsent(it)
-            it.instancedProperties["Color"] = { selectedColor }
-            it.instancedParent.updateInstanceBuffers()
-            mastodonData.selectionModel.setSelected(spot, true)
-        }
-    }
+    private fun selectSpot(spot: Spot) = mastodonData.selectionModel.setSelected(spot, true)
 
-    private fun deselectSpot(spot: Spot) {
-        findInstanceFromSpot(spot)?.let {
-            manvr3d.selectedSpotInstances.remove(it)
-            it.setColorFromSpot(spot, currentColorizer)
-            mastodonData.selectionModel.setSelected(spot, false)
-        }
-    }
+    private fun deselectSpot(spot: Spot) = mastodonData.selectionModel.setSelected(spot, false)
 
-    private fun selectLink(linkNode: LinkNode, updateBuffers: Boolean = true) {
-        logger.debug("Selecting link ${linkNode.link.internalPoolIndex}")
-        val linkNode = links[linkNode.link.internalPoolIndex] ?: return
-        linkNode.instance.instancedProperties["Color"] = { selectedColor }
-        manvr3d.selectedLinkNodes.addIfAbsent(linkNode)
-        mastodonData.selectionModel.setSelected(linkNode.link, true)
-        if (updateBuffers) {
-            mainLinkInstance?.updateInstanceBuffers()
-        }
-    }
+    private fun selectLink(linkNode: LinkNode) = mastodonData.selectionModel.setSelected(linkNode.link, true)
 
-    private fun deselectLink(linkNode: LinkNode, updateBuffers: Boolean = true) {
-        logger.debug("Deselecting link ${linkNode.link.internalPoolIndex}")
-        manvr3d.selectedLinkNodes.remove(linkNode)
-        mastodonData.selectionModel.setSelected(linkNode.link, false)
-        // We defer the instance buffer updates to after all links are updated in selectClosestEdgesVR
-        updateLinkColors( currentColorizer, linkList = listOf(linkNode), updateBuffers = updateBuffers)
+    private fun deselectLink(linkNode: LinkNode) = mastodonData.selectionModel.setSelected(linkNode.link, false)
+
+
+    fun selectBranch() {
+        val graph = mastodonData.model.graph
+        val selection = mastodonData.selectionModel
+        // Grab all selected spots, or source spots from selected edges
+        val seeds = RefCollections.createRefSet(graph.vertices())
+        seeds.addAll(selection.selectedVertices)
+        selection.selectedEdges.forEach { seeds.add(it.source) }
+        if (seeds.isEmpty()) { return }
+
+        val branch = RefCollections.createRefSet(graph.vertices())
+
+        // Traverse all selected spots, gather the branch of them only if they weren't traversed yet
+        seeds.forEach { spot ->
+            if (!branch.contains(spot)) {
+                branch.addAll(gatherBranch(spot))
+            }
+        }
+
+        // Now also prepare the edge selection
+        val edges = RefCollections.createRefSet(graph.edges())
+        branch.forEach { edges.addAll(it.outgoingEdges()) }
+
+        // Set all newly found spots and edges to selected
+        selection.pauseListeners()
+        selection.setVerticesSelected(branch, true)
+        selection.setEdgesSelected(edges, true)
+        selection.resumeListeners()
+        refreshSelectionColors()
     }
 
     /** Deletes the passed spots from the graph. */
-    val deleteSpots: ((spots: RefSet<Spot>) -> Unit) = { spots ->
+    fun deleteSpots(spots: RefSet<Spot>) {
         enqueueUpdate("deleteSpots(count=${spots.size})") {
             manvr3d.bdvNotifier?.lockUpdates = true
             mastodonData.model.setUndoPoint()
@@ -869,6 +927,7 @@ class GeometryHandler(
                 it.mapper.updateLabel(it.ADD_DELETE_RESET, "Add", it.defaultColor)
             }
         }
+        refreshSelectionColors()
     }
 
     fun clearLinkSelection() {
@@ -880,19 +939,13 @@ class GeometryHandler(
                 it.mapper.updateLabel(it.ADD_DELETE_RESET, "Add", it.defaultColor)
             }
         }
-    }
-
-    /** Takes the given spot instance that was already moved in Sciview and moves it in the BDV window.  */
-    fun moveSpotInBDV(instance: InstancedNode.Instance?, distance: Vector3f) {
-        val selectedSpot = instance?.let { findSpotFromInstance(it) }
-        selectedSpot?.let {
-            mastodonData.model.graph.vertexRef().refTo(selectedSpot).move(distance.toFloatArray())
-        }
+        refreshSelectionColors()
     }
 
     /** Takes the given spot that was already moved in the BDV window and moves it in Sciview.
      * It also updates the connected edges and it is also called when a vertex is scaled on the BDV side. */
     fun moveAndScaleSpotInSciview(spot: Spot) {
+         radiusCache.remove(spot.internalPoolIndex)
         val selectedInstance = findInstanceFromSpot(spot)
         val spotPosition = FloatArray(3)
         spot.localize(spotPosition)
@@ -900,15 +953,14 @@ class GeometryHandler(
             position = Vector3f(spotPosition)
             scale = Vector3f(sphereScaleFactor * getSpotRadius(spot))
         }
-        val edges = spot.incomingEdges() + spot.outgoingEdges()
-        val edgeRef = mastodonData.model.graph.edgeRef()
-        edges.forEach { edge ->
-            edgeRef.refTo(edge)
-            findInstanceFromLink(edgeRef)?.let {
-                setLinkTransform(edgeRef.source, edgeRef.target, it)
-            }
+        val graph = mastodonData.model.graph
+        val src = graph.vertexRef()
+        val tgt = graph.vertexRef()
+        spot.edges().forEach { e ->
+            findInstanceFromLink(e)?.let { setLinkTransform(e.getSource(src), e.getTarget(tgt), it) }
         }
-        mastodonData.model.graph.releaseRef(edgeRef)
+        graph.releaseRef(src)
+        graph.releaseRef(tgt)
         mainSpotInstance?.updateInstanceBuffers()
         mainLinkInstance?.updateInstanceBuffers()
     }
@@ -923,28 +975,37 @@ class GeometryHandler(
         }
     }
 
-    /** Called when a spot's radius is changed in the sciview window. This changes both the actual spot radius in BDV
-     * and its apparent scale in sciview. Setting the [update] flag to false allows deferring the actual Mastodon update.
-     * This can be used for drag behaviors in VR that don't require continuous Mastodon updating.*/
-    fun changeSpotRadius(instances: List<InstancedNode.Instance>, factor: Float, update: Boolean = true) {
-        instances.forEach {
-            val spot = findSpotFromInstance(it)
-            val covArray = Array(3) { DoubleArray(3) }
-            spot?.getCovariance(covArray)
-            for (i in covArray.indices) {
-                for (j in covArray[i].indices) {
-                    covArray[i][j] *= factor.toDouble()
-                }
-            }
-            spot?.setCovariance(covArray)
-            if (update) {
-                mastodonData.model.setUndoPoint()
-                mastodonData.model.graph.notifyGraphChanged()
-            }
-            it.spatial().scale *= Vector3f(sqrt(factor))
+    /** Scales the covariance of [spots] by [factor] (radius changes by sqrt(factor)) and updates their instances.
+     * Doesn't notify Mastodon, call [commitSpotChanges] once when the interaction ends. */
+    fun scaleSpots(spots: Collection<Spot>, factor: Float) {
+        val cov = Array(3) { DoubleArray(3) }
+        spots.forEach { spot ->
+            spot.getCovariance(cov)
+            for (row in cov) for (j in row.indices) row[j] *= factor.toDouble()
+            spot.setCovariance(cov)
+            radiusCache.remove(spot.internalPoolIndex)
+            findInstanceFromSpot(spot)?.spatial { scale = Vector3f(sphereScaleFactor * getSpotRadius(spot)) }
         }
         mainSpotInstance?.updateInstanceBuffers()
     }
+
+    /** One-shot scaling of the selected spots in timepoint [tp], e.g. for keyboard shortcuts. */
+    fun scaleSelectedSpots(tp: Int, factor: Float) {
+        enqueueUpdate("scaleSelectedSpots") {
+            val spots = RefCollections.createRefList(mastodonData.model.graph.vertices())
+            collectSelectedSpots(tp, spots)
+            if (spots.isEmpty()) return@enqueueUpdate
+            scaleSpots(spots, factor)
+            commitSpotChanges()
+        }
+    }
+
+    fun commitSpotChanges() {
+        mastodonData.model.setUndoPoint()
+        mastodonData.model.graph.notifyGraphChanged()
+    }
+
+    fun invalidateRadii() = radiusCache.clear()
 
     /** Takes a list of Mastodon [Link]s, tries to find their corresponding instances and updates their transforms. */
     fun updateLinkTransforms(edgeIndices: List<Int>) {
@@ -954,7 +1015,7 @@ class GeometryHandler(
         val targetRef = graph.vertexRef()
 
         for (edgeIdx in edgeIndices) {
-            val edge = graph.edges().find { it.internalPoolIndex == edgeIdx }
+            val edge = links[edgeIdx]?.link
             if (edge != null ) {
                 sourceRef.refTo(edge.source)
                 targetRef.refTo(edge.target)
@@ -972,6 +1033,34 @@ class GeometryHandler(
         graph.releaseRef(edgeRef)
     }
 
+    /** Move [spots] by [delta] (Mastodon coords) in Mastodon and sciview, then update the [adjacentEdges]. */
+    fun moveSpots(spots: Collection<Spot>, delta: Vector3f, adjacentEdges: List<Int>) {
+        val d = delta.toFloatArray()
+        spots.forEach { spot ->
+            spot.move(d)
+            findInstanceFromSpot(spot)?.spatial { position = position + delta }
+        }
+        mainSpotInstance?.updateInstanceBuffers()
+        updateLinkTransforms(adjacentEdges)
+    }
+
+    /** Fills [spots] with the selected spots of timepoint [tp] and [adjacentEdges] with their adjacent edge indices. */
+    fun collectSelectedSpots(tp: Int, spots: RefList<Spot>, adjacentEdges: MutableList<Int>? = null) {
+        spots.clear()
+        mastodonData.selectionModel.selectedVertices.forEach {
+            if (it.timepoint == tp) spots.add(it)
+        }
+        adjacentEdges?.let { edges ->
+            edges.clear()
+            spots.forEach { s ->
+                s.edges().forEach {
+                    edges.add(it.internalPoolIndex)
+                }
+            }
+        }
+
+    }
+
     /** Sort a list of instances by their distance to a given [origin] position (e.g. of the camera)
      * @return a sorted copy of the mutable instance list.*/
     fun sortInstancesByDistance(
@@ -987,12 +1076,13 @@ class GeometryHandler(
 
 
     fun updateSphereInstanceScales() {
-        val tStart = TimeSource.Monotonic.markNow()
-        mainSpotInstance?.instances?.forEach { s ->
-            adjustSpotInstanceScale(s)
+        enqueueUpdate("updateSphereInstanceScales") {
+            if (!::visibleSpots.isInitialized) return@enqueueUpdate
+            for (spot in visibleSpots) {
+                findInstanceFromSpot(spot)?.spatial { scale = Vector3f(sphereScaleFactor * getSpotRadius(spot)) }
+            }
+            mainSpotInstance?.updateInstanceBuffers()
         }
-        val tElapsed = TimeSource.Monotonic.markNow() - tStart
-        logger.debug("Updating spot scale to $sphereScaleFactor, took $tElapsed")
     }
 
     fun decreaseSphereInstanceScale(amount: Float = 0.1f) {
@@ -1002,6 +1092,10 @@ class GeometryHandler(
 
     fun increaseSphereInstanceScale(amount: Float = 0.1f) {
         sphereScaleFactor += amount
+    }
+
+    fun resetSphereInstanceScale() {
+        sphereScaleFactor = 1f
     }
 
     fun increaseLinkScale(amount: Float = 0.2f) {
@@ -1101,7 +1195,8 @@ class GeometryHandler(
 
                 // add a new key-value pair to the hash map
                 links[edge.internalPoolIndex] =
-                    LinkNode(inst, graph.edgeRef().refTo(edge), to.timepoint, center)
+                    LinkNode(inst, graph.edgeRef().refTo(edge), to.timepoint, center,
+                        from.internalPoolIndex, to.internalPoolIndex)
 
                 index++
             }
@@ -1191,8 +1286,17 @@ class GeometryHandler(
         linkList: List<LinkNode>? = null,
         updateBuffers: Boolean = true
     ) {
+        var cm = cm
         val start = TimeSource.Monotonic.markNow()
         val links = linkList ?: links.entries.map { it.value }
+
+        // Find the quality feature; if it doesn't exist, don't use the uncertainty color and instead use the LUT
+        val qualityFeature = manvr3d.findOrGetQualityFeature()
+        if (qualityFeature == null && cm == ColorMode.UNCERTAINTY) {
+            cm = ColorMode.LUT
+            logger.info("Could not find uncertainty information in the dataset. " +
+                    "Make sure your annotation data come from ELEPHANT and that you use ELEPHANT server v0.7.0+.")
+        }
 
         when (cm) {
             ColorMode.LUT -> {
@@ -1200,13 +1304,13 @@ class GeometryHandler(
                 if (manvr3d.invertLut) {
                     links.forEach { linkNode ->
                         val factor = 1 - linkNode.tp / numTimePoints.toDouble()
-                        val color = lut.sample(factor.toFloat())
+                        val color = linkLut.sample(factor.toFloat())
                         linkNode.instance.instancedProperties["Color"] = { color }
                     }
                 } else {
                     links.forEach { linkNode ->
                         val factor = linkNode.tp / numTimePoints.toDouble()
-                        val color = lut.sample(factor.toFloat())
+                        val color = linkLut.sample(factor.toFloat())
                         linkNode.instance.instancedProperties["Color"] = { color }
                     }
                 }
@@ -1227,49 +1331,34 @@ class GeometryHandler(
                 }
             }
             ColorMode.UNCERTAINTY -> {
-                val qualitySpec = mastodonData.model.featureModel.featureSpecs.find { it.key == "Detection quality" }
+                // We need to store elephants detection threshold here so we can normalize the uncertainty data.
+                // They will be in range elephantThreshold to 1
+                val elephantThreshold = ElephantMainSettingsManager.getInstance().forwardDefaultStyle.probThreshold
 
-                if (qualitySpec != null) {
-                    val qualityFeature =
-                        mastodonData.model.featureModel.getFeature(qualitySpec) as? DetectionQualityFeature
+                links.forEach { linkNode ->
+                    val uncertainty = qualityFeature!!.value(linkNode.link.source) ?: 1.0
+                    val factor = (uncertainty - elephantThreshold) / ( 1 - elephantThreshold)
+                    val color = uncertaintyLut.sample(1 - factor.toFloat())
+                    linkNode.instance.instancedProperties["Color"] = { color }
 
-                    // We need to store elephants detection threshold here so we can normalize the uncertainty data.
-                    // They will be in range elephantThreshold to 1
-                    val elephantSettings = ElephantMainSettingsManager.getInstance().forwardDefaultStyle
-                    val elephantThreshold = elephantSettings.probThreshold
-
-                    if (manvr3d.invertLut) {
-                        links.forEach { linkNode ->
-                            // Normalize the uncertainty into range 0-1
-                            val uncertainty = qualityFeature?.value(linkNode.link.source) ?: 1.0
-                            val factor = (uncertainty - elephantThreshold) / ( 1 - elephantThreshold)
-                            val color = lut.sample(1 - factor.toFloat())
-                            linkNode.instance.instancedProperties["Color"] = { color }
-                        }
-                    } else {
-                        links.forEach { linkNode ->
-                            val uncertainty = qualityFeature?.value(linkNode.link.source) ?: 1.0
-                            val factor = (uncertainty - elephantThreshold) / ( 1 - elephantThreshold)
-                            val color = lut.sample(factor.toFloat())
-                            linkNode.instance.instancedProperties["Color"] = { color }
-                        }
-                    }
-
-                } else {
-                    logger.info("Could not find uncertainty information in the dataset. " +
-                            "Make sure your annotation data come from ELEPHANT and that you use ELEPHANT server v0.7.0+.")
                 }
             }
         }
 
-        // Repaint either all selected edges or only the ones that are also part of the passed linkList
-        val selectedLinks = if (linkList != null) {
-            manvr3d.selectedLinkNodes.intersect(linkList.toSet())
-        } else {
-            manvr3d.selectedLinkNodes
+        val isVerified = verifiedLinkCheck()
+        links.forEach {
+            if (isVerified(it.link)) {
+                it.instance.instancedProperties["Color"] = { verifiedColor }
+            }
         }
-        selectedLinks.forEach { link ->
-            link.instance.instancedProperties["Color"] = { selectedColor }
+
+        // Repaint all selected edges
+        val selection = mastodonData.selectionModel
+        val selected = links.filter { selection.isSelected(it.link) }
+        selected.forEach { it.instance.instancedProperties["Color"] = { selectedColor } }
+        if (linkList == null) {
+            manvr3d.selectedLinkNodes.clear()
+            manvr3d.selectedLinkNodes.addAll(selected)
         }
 
         val end = TimeSource.Monotonic.markNow()
@@ -1280,9 +1369,13 @@ class GeometryHandler(
     }
 
     fun updateSegmentVisibility(currentTP: Int = manvr3d.currentTimepoint) {
-        links.forEach {link ->
+        // Calculate the visible range of timepoints
+        val bwdRange = if (showShortTrackWindow) 8 else linkBackwardRange
+        val fwdRange = if (showShortTrackWindow) 8 else linkForwardRange
+        val range = currentTP - bwdRange..currentTP + fwdRange
+        links.values.forEach {link ->
             // turns the link on if it is within range, otherwise turns it off
-            link.value.instance.visible = link.value.tp in currentTP - linkBackwardRange..currentTP + linkForwardRange
+            link.instance.visible = link.tp in range && isShown(link.link.source)
         }
         mainLinkInstance?.updateInstanceBuffers()
     }
@@ -1322,6 +1415,8 @@ class GeometryHandler(
                     val v = graph.addVertex()
                     // val localPos = if (isWorldSpace) manvr3d.sciviewToMastodonCoords(pos) else pos
                     v.init(trackedPoint.tp, trackedPoint.pos.toDoubleArray(), localRadius.toDouble())
+                    // Manually set this point's quality to perfect if we have the feature available
+                    manvr3d.qualityFeature?.set(v, 1.0)
                     vertex.refTo(v)
                     logger.debug("added {}", v)
                 }
@@ -1344,7 +1439,6 @@ class GeometryHandler(
             // Once we send the new track to Mastodon, we can assume we no longer need the previews and can clear them
             mainLinkInstance?.instances?.removeAll(linkPreviewList.map { it.instance }.toSet())
             linkPreviewList.clear()
-            trackPointList.clear()
             clearSpotSelection()
         }
     }
@@ -1390,23 +1484,26 @@ class GeometryHandler(
             // Treat spots first
             if (!selectedSpots.isEmpty()) {
                 if (!deleteBranch) {
-                    deleteSpots.invoke(selectedSpots)
+                    deleteSpots(selectedSpots)
+                    manvr3d.recordVREditEvent("Spots deleted",)
                 } else {
                     logger.info("Deleting the whole branch...")
                     val spotList = mutableListOf<Spot>()
                     // Perform a recursive forward and backward search for each selected spot
                     // This deletes all branches connected to the selected spot(s)
                     selectedSpots.forEach {
-                        spotList.addAll(selectBranch(it))
+                        spotList.addAll(gatherBranch(it))
                     }
                     mastodonData.model.graph.lock.writeLock().lock()
                     spotList.distinct().forEach {
                         mastodonData.model.graph.remove(it)
                     }
                     mastodonData.model.graph.lock.writeLock().unlock()
-                    clearSpotSelection()
+
                     manvr3d.fileLogger.incrementBranchDeleted()
+                    manvr3d.recordVREditEvent("Branch deleted",)
                 }
+                clearSpotSelection()
                 mastodonData.model.graph.notifyGraphChanged()
             } else {
                 // Only add a new spot if the edges are empty too (otherwise delete the edges later on)
@@ -1423,10 +1520,12 @@ class GeometryHandler(
                             val localRadius = manvr3d.sciviewToMastodonScale().max() * radius
                             val v = mastodonData.model.graph.addVertex()
                             v.init(tp, pos.toDoubleArray(), localRadius.toDouble())
+                            // Set the detection quality to true if we have such a feature available
+                            manvr3d.qualityFeature?.set(v, 1.0)
                             logger.info("Added new spot at position $pos, radius is $localRadius")
                             logger.debug("we now have ${mastodonData.model.graph.vertices().size} spots in total")
                             manvr3d.fileLogger.incrementSpotAdded()
-
+                            manvr3d.recordVREditEvent("Spot added")
                         } else {
                             logger.warn("Not adding new spot, $pos is outside the volume!")
                             manvr3d.flashVolumeGrid()
@@ -1443,12 +1542,12 @@ class GeometryHandler(
                 manvr3d.bdvNotifier?.lockUpdates = true
                 mastodonData.model.graph.lock.writeLock().lock()
                 if (deleteBranch) {
-                    // Delete the branches corresponding the selected edges
+                    // Delete the branches corresponding to the selected edges
                     val selectedSpots = RefCollections.createRefList(mastodonData.model.graph.vertices())
                     selectedEdges.forEach { edge ->
                         if (!selectedSpots.contains(edge.source)) {
                             logger.debug("Adding spots to the list from edge ${edge.internalPoolIndex}")
-                            selectedSpots.addAll(selectBranch(edge.source))
+                            selectedSpots.addAll(gatherBranch(edge.source))
                         }
                     }
                     selectedSpots.forEach {
@@ -1461,6 +1560,7 @@ class GeometryHandler(
                         mastodonData.model.graph.remove(edge)
                     }
                     manvr3d.fileLogger.incrementEdgeDeleted()
+                    manvr3d.recordVREditEvent("Edges deleted")
                 }
                 mastodonData.model.graph.lock.writeLock().unlock()
                 manvr3d.bdvNotifier?.lockUpdates = false
@@ -1474,7 +1574,7 @@ class GeometryHandler(
 
     /** Recursively traverse every sub-branch connected to a spot. Returns a list of all spots that are connected
      * to the spot. */
-    fun selectBranch(spot: Spot): List<Spot> {
+    fun gatherBranch(spot: Spot): List<Spot> {
         val spotList = mutableListOf<Spot>()
         val spotRef = mastodonData.model.graph.vertexRef()
         spotRef.refTo(spot)

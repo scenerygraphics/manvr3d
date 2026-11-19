@@ -16,7 +16,6 @@ import graphics.scenery.volumes.RAIVolume
 import graphics.scenery.volumes.Volume
 import org.mastodon.mamut.model.Spot
 import org.scijava.ui.behaviour.ClickBehaviour
-import org.scijava.ui.behaviour.DragBehaviour
 import sc.iview.SciView
 import graphics.scenery.manvr3d.analysis.HedgehogAnalysis.SpineGraphVertex
 import graphics.scenery.controls.behaviours.MultiButtonManager
@@ -24,12 +23,18 @@ import graphics.scenery.controls.behaviours.ThumbstickMovement
 import graphics.scenery.controls.behaviours.VRTwoHandNodeTransform
 import graphics.scenery.controls.behaviours.VRGrabTheWorld
 import graphics.scenery.controls.behaviours.VRPress
+import graphics.scenery.manvr3d.behaviours.AddDeleteResetBehavior
+import graphics.scenery.manvr3d.behaviours.ControllerTrackBehaviour
+import graphics.scenery.manvr3d.behaviours.CycleMenuAndLockAxisBehaviour
+import graphics.scenery.manvr3d.behaviours.DragSelectBehavior
+import graphics.scenery.manvr3d.behaviours.MoveSpotVRBehaviour
+import graphics.scenery.manvr3d.behaviours.ScaleCursorOrSpotsBehaviour
+import graphics.scenery.manvr3d.behaviours.TimepointScrollBehaviour
 import graphics.scenery.manvr3d.util.GeometryHandler
 import graphics.scenery.utils.TimepointObservable
 import graphics.scenery.manvr3d.util.SpineMetadata
 import graphics.scenery.manvr3d.util.CellTrackingButtonMapper
 import org.joml.Quaternionf
-import org.joml.Vector2f
 import org.joml.Vector3f
 import org.joml.Vector4f
 import java.io.BufferedWriter
@@ -39,8 +44,8 @@ import java.nio.file.Path
 import java.util.ArrayList
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.concurrent.thread
-import kotlin.math.pow
 import kotlin.math.sqrt
+import kotlin.time.DurationUnit
 
 /**
  * Base class for different VR cell tracking purposes. It includes functionality to add spines and edgehogs,
@@ -71,7 +76,7 @@ open class CellTrackingBase(
 
     @Volatile var eyeTrackingActive = false
     var playing = false
-    var direction = PlaybackDirection.Backward
+    var playDirection = PlaybackDirection.Backward
     var volumesPerSecond = 6f
     var skipToNext = false
     var skipToPrevious = false
@@ -98,6 +103,8 @@ open class CellTrackingBase(
     val cursorSelectColor = Vector3f(1f, 0.25f, 0.25f)
     val cursorTrackingColor = Vector3f(0.65f, 1f, 0.22f)
 
+    val controllerColor = Vector3f(0.12f)
+
     lateinit var leftWristMenu: MultiWristMenu
 
     var enableTrackingPreview = true
@@ -109,6 +116,10 @@ open class CellTrackingBase(
     val buttonMapper = CellTrackingButtonMapper
 
     val fileLogger = manvr3d.fileLogger
+
+    var lensPosition = Vector3f(0f)
+    var wantLensAtCell = false
+    val selectedTrackForLens = mutableMapOf<Int, Spot>()
 
     open fun run() {
         sciview.toggleVRRendering(resolutionScale = resolutionScale)
@@ -159,7 +170,22 @@ open class CellTrackingBase(
             logger.info("onDeviceConnect called, cam=${sciview.camera}")
             if (device.type == TrackedDeviceType.Controller) {
                 logger.info("Got device ${device.name} at $timestamp")
-                device.model?.let { hmd.attachToNode(device, it, sciview.camera) }
+                device.model?.let {
+                    hmd.attachToNode(device, it, sciview.camera)
+                    val meshPrimitives = mutableListOf<Mesh>()
+                    fun collectMeshChildren(node: Node) {
+                        if (node is Mesh) {
+                            meshPrimitives.add(node)
+                        }
+                        node.children.forEach { n ->
+                            collectMeshChildren(n)
+                        }
+                    }
+                    collectMeshChildren(it)
+                    meshPrimitives.forEach { mesh ->
+                        mesh.ifMaterial { diffuse = controllerColor }
+                    }
+                }
                 when (device.role) {
                     TrackerRole.Invalid -> {}
                     TrackerRole.LeftHand -> {
@@ -167,14 +193,17 @@ open class CellTrackingBase(
                         device.model?.let {
                             it.name = "leftHand"
                             leftWristMenu = MultiWristMenu(it,
+                                columnScale = 0.03f,
                                 columnBasePosition = Vector3f(0.03f, 0.02f, 0.11f),
-                                columnRotation = Quaternionf().rotationXYZ(-1.5f, 1.7f, 0f)
+                                columnRotation = Quaternionf().rotationXYZ(-1.5f, 1.7f, 0f),
+
                             )
                             setupElephantMenu()
                             setupGeneralMenu()
+                            setupTrackingMenu()
                             onLeftHandReady()
                             leftWristMenu.hideAll()
-                            buttonMapper.mapper.attachUIForRole(device.role, it, textScale = 0.02f)
+                            buttonMapper.mapper.attachUIForRole(device.role, it, textScale = 0.018f)
                             logger.info("Finished setting up left controller button layout")
                         }
                     }
@@ -213,81 +242,20 @@ open class CellTrackingBase(
      * and possibly existing spots that were selected. */
     val trackPointList = mutableListOf<TrackedPoint>()
 
-    /** This lambda is called every time the user performs a click with controller-based tracking. */
-    val trackCellsWithController = ClickBehaviour { _, _ ->
-        // We don't track things while interacting with a menu
-        if (cursor.showPointer) return@ClickBehaviour
-        // First, ensure the tracking flag is active
-        if (!controllerTrackingActive) {
-            controllerTrackingActive = true
-            cursor.setColor(cursorTrackingColor)
-
-            buttonMapper.let {
-                it.mapper.updateLabel(it.ADD_DELETE_RESET, "Stop", it.trackingColor)
-            }
-
-            // we don't want animation, because we track step by step
-            playing = false
-            // Capture the start time, so we can write statistics on tracking duration
-            fileLogger.beginControllerTracking()
-        }
-        // play the volume backwards, step by step, so cell split events can simply be turned into a merge event
-
-        val p = cursor.getPosition()
-        // did the user click on an existing cell?
-        val (selectedSpot, isValidSelection) =
-            geometryHandler.selectClosestSpotsVR(p, volume.currentTimepoint,
-                cursor.radius * cursor.visualScale, false)
-
-        logger.debug("Tracked a new spot at position $p")
-        logger.debug("Selected spot is $selectedSpot")
-        // Create a placeholder link during tracking for immediate feedback
-        geometryHandler.addTrackedPoint(
-            p, volume.currentTimepoint, cursor.radius, selectedSpot, enableTrackingPreview, trackPointList
-        )
-
-        // check whether we approach the first or last timepoint, depending on playback direction
-        if ((volume.currentTimepoint > 0 && direction == PlaybackDirection.Backward) ||
-            (volume.currentTimepoint < volume.timepointCount - 1 && direction == PlaybackDirection.Forward)) {
-            val dir = if (direction == PlaybackDirection.Forward) 1 else -1
-            volume.goToTimepoint(volume.currentTimepoint + dir)
-            // If the user clicked a cell, and it is *not* the first in the track, we assume it is a merge event and end the tracking,
-            // but only if the selected spot already has an edge. We continue tracking/linking when the selected spot has no connections
-            if (isValidSelection && trackPointList.size > 1 && selectedSpot!!.edges().size() > 0) {
-                endControllerTracking()
-            }
-        } else {
-            sciview.camera?.showMessage(
-                "Reached the ${if (direction == PlaybackDirection.Forward) "last" else "first"} time point!",
-                centered = true, distance = 2f, size = 0.2f
-            )
-            // Let's head back to the last/first timepoint for starting a new track fast-like
-            if (direction == PlaybackDirection.Forward) {
-                volume.goToFirstTimepoint()
-            } else {
-                volume.goToLastTimepoint()
-            }
-            endControllerTracking()
-        }
-        // This will also redraw all geometry using Mastodon as source
-        notifyObservers(volume.currentTimepoint)
-    }
-
-
     /** Stops the current controller tracking process and sends the created track to Mastodon. */
-    private fun endControllerTracking() {
-        if (controllerTrackingActive) {
-            logger.info("Ending controller tracking now and sending ${trackPointList.size} spots to Mastodon to chew on.")
-            controllerTrackingActive = false
-            geometryHandler.addTrackToMastodon(trackPointList)
-            cursor.resetColor()
+    fun endControllerTracking() {
+        if (!controllerTrackingActive) return
 
-            buttonMapper.let {
-                it.mapper.updateLabel(it.ADD_DELETE_RESET, "Add", it.defaultColor)
-            }
+        logger.info("Ending controller tracking now and sending ${trackPointList.size} spots to Mastodon to chew on.")
+        controllerTrackingActive = false
+        geometryHandler.addTrackToMastodon(trackPointList)
+        cursor.resetColor()
 
-            fileLogger.endControllerTracking(trackPointList)
+        buttonMapper.let {
+            it.mapper.updateLabel(it.ADD_DELETE_RESET, "Add", it.defaultColor)
         }
+
+        fileLogger.endControllerTracking(trackPointList)
     }
 
     fun setupElephantMenu() {
@@ -364,13 +332,13 @@ open class CellTrackingBase(
 
         val togglePlaybackDirBtn = ToggleButton(
             textFalse = "BW", textTrue = "FW", command = {
-                direction = if (direction == PlaybackDirection.Forward) {
+                playDirection = if (playDirection == PlaybackDirection.Forward) {
                     PlaybackDirection.Backward
                 } else {
                     PlaybackDirection.Forward
                 }
                 manvr3d.sciviewWin.camera?.showMessage(
-                    "Play & Track ${if (direction == PlaybackDirection.Forward) "forward" else "backward"}",
+                    "Play & Track ${if (playDirection == PlaybackDirection.Forward) "forward" else "backward"}",
                     distance = 1.2f, size = 0.2f, centered = true
                 )
             }, byTouch = false, defaultColor = Vector3f(0.52f, 0.87f, 0.86f), default = false,
@@ -442,11 +410,10 @@ open class CellTrackingBase(
         )
 
         val volumeToggleBtn = ToggleButton(
-            "Volume off", "Volume on", command = {
-                val state = volume.visible
-                manvr3d.setVolumeOnlyVisibility(!state)
+            "Volume off", "Volume on", command = { state ->
+                manvr3d.setVolumeOnlyVisibility(state)
             }, byTouch = false, defaultColor = color, pressedColor = pressedColor,
-            touchingColor = touchingColor, default = true, textInFront = true)
+            touchingColor = touchingColor, default = volume.visible, textInFront = true)
 
         leftWristMenu.addRow("Toggle Menu", volumeToggleBtn, decTransparencyBtn, incTransparencyBtn)
 
@@ -491,8 +458,8 @@ open class CellTrackingBase(
             lowerBoundDownBtn, lowerBoundUpBtn, upperBoundDownBtn, upperBoundUpBtn)
 
         val lensToggleButton = ToggleButton(
-            "Lens off", "Lens on", command = {
-                isLensingActive = !isLensingActive
+            "Lens off", "Lens on", command = { state ->
+                isLensingActive = state
                 // We accumulate lensing time per session for statistics
                 if (isLensingActive) {
                     fileLogger.beginLensing()
@@ -500,7 +467,7 @@ open class CellTrackingBase(
                     fileLogger.endLensing()
                 }
             }, byTouch = false, defaultColor = color, pressedColor = pressedColor,
-            touchingColor = touchingColor, default = false, textInFront = true)
+            touchingColor = touchingColor, default = isLensingActive, textInFront = true)
 
         val lensRadiusDownBtn = Button(
             " R- ", command = {
@@ -516,7 +483,14 @@ open class CellTrackingBase(
             defaultColor = color, pressedColor = pressedColor, touchingColor = touchingColor, textInFront = true
         )
 
-        leftWristMenu.addRow("Toggle Menu", lensToggleButton, lensRadiusDownBtn, lensRadiusUpBtn)
+        val lensBackgroundButton = ToggleButton("Context Off", "Context On", command = {
+            val backgroundState = volume.lensingBackgroundStrength > 0.001
+            volume.lensingBackgroundStrength = if (backgroundState) 0.0f else 0.04f
+        }, byTouch = false, defaultColor = color,pressedColor = pressedColor,
+            touchingColor = touchingColor, default = true, textInFront = true)
+
+        leftWristMenu.addRow("Toggle Menu",
+            lensToggleButton, lensRadiusDownBtn, lensRadiusUpBtn, lensBackgroundButton)
 
         val spotRadiusUpBtn = Button(
             " + ", command = {
@@ -536,14 +510,22 @@ open class CellTrackingBase(
 
         val toggleSpotVisBtn = ToggleButton(
             "Spots off", "Spots on",
-            command = {
-                manvr3d.isSpotVisible = !manvr3d.isSpotVisible
+            command = { state ->
+                manvr3d.isSpotVisible = state
                 geometryHandler.setSpotVisibility(manvr3d.isSpotVisible)
             }, byTouch = false, defaultColor = color, pressedColor = pressedColor,
-            touchingColor = touchingColor, default = true, textInFront = true
+            touchingColor = touchingColor, default = manvr3d.isSpotVisible, textInFront = true
         )
 
-        leftWristMenu.addRow("Toggle Menu", toggleSpotVisBtn, spotRadiusDownBtn, spotRadiusUpBtn)
+        val resetSpotRadiusBtn = Button(
+            "Reset Size", command = {
+                manvr3d.geometryHandler.resetSphereInstanceScale()
+                manvr3d.updateUI()
+            }, byTouch = false, depressDelay = 250,
+            defaultColor = color, pressedColor = pressedColor, touchingColor = touchingColor, textInFront = true
+        )
+
+        leftWristMenu.addRow("Toggle Menu", toggleSpotVisBtn, spotRadiusDownBtn, spotRadiusUpBtn, resetSpotRadiusBtn)
 
         val trackRadiusUpBtn = Button(
             " + ", command = {
@@ -563,19 +545,29 @@ open class CellTrackingBase(
 
         val toggleTrackVisBtn = ToggleButton(
             "Tracks off", "Tracks on",
-            command = {
-                manvr3d.isTrackVisible = !manvr3d.isTrackVisible
+            command = { state ->
+                manvr3d.isTrackVisible = state
                 geometryHandler.setTrackVisibility(manvr3d.isTrackVisible)
             }, byTouch = false, defaultColor = color, pressedColor = pressedColor,
             touchingColor = touchingColor, default = true, textInFront = true
         )
 
-        leftWristMenu.addRow("Toggle Menu", toggleTrackVisBtn, trackRadiusDownBtn, trackRadiusUpBtn)
+        val shortTracksToggleBtn = ToggleButton(
+            "Full Tracks", "Short Tracks", command = { state ->
+                manvr3d.geometryHandler.showShortTrackWindow = state
+                manvr3d.geometryHandler.updateSegmentVisibility()
+            }, defaultColor = color, pressedColor = pressedColor,
+            touchingColor = touchingColor, default = false, textInFront = true
+        )
 
-        leftWristMenu.addToggleButton("Toggle Menu", "Preview Off", "Preview On", command = {
-            enableTrackingPreview = !enableTrackingPreview
+        leftWristMenu.addRow("Toggle Menu",
+            toggleTrackVisBtn, trackRadiusDownBtn, trackRadiusUpBtn, shortTracksToggleBtn)
+
+        leftWristMenu.addToggleButton("Toggle Menu", "Preview Off", "Preview On",
+            command = { state ->
+            enableTrackingPreview = state
             geometryHandler.toggleLinkPreviews(enableTrackingPreview)
-        }, color = color, pressedColor = pressedColor, touchingColor = touchingColor, defaultState = true)
+        }, color = color, pressedColor = pressedColor, touchingColor = touchingColor, defaultState = enableTrackingPreview)
 
 
         leftWristMenu.addColumn("Cleanup Menu")
@@ -595,6 +587,100 @@ open class CellTrackingBase(
         logger.debug("Set up general menus.")
     }
 
+    fun setupTrackingMenu() {
+        leftWristMenu.addColumn("Tracking Menu")
+
+        val trackAllButton = Button(" |<->| ", command = {
+            thread {
+                val selected = manvr3d.mastodon.selectionModel.selectedVertices
+                val fwdTime = manvr3d.semiAutoTracker.track(true)
+                manvr3d.mastodon.selectionModel.clearSelection()
+                selected.forEach {
+                    manvr3d.mastodon.selectionModel.setSelected(it, true)
+                }
+                val bwdTime = manvr3d.semiAutoTracker.track(false)
+                val totalTime = fwdTime.plus(bwdTime)
+                val logText = "Tracked ${selected.size} cell${if (selected.size == 1) "" else "s"} " +
+                        "forward and backward in ${totalTime.toString(DurationUnit.SECONDS, 2)}."
+                logger.info(logText)
+                fileLogger.append(logText)
+                manvr3d.recordVREditEvent("Semi-auto Track Full", totalTime)
+                manvr3d.geometryHandler.clearSpotSelection()
+                manvr3d.geometryHandler.clearLinkSelection()
+            }
+        }, depressDelay = 250, textInFront = true)
+
+        val trackFwdButton = Button(" |-> ", command = {
+            thread {
+                val selected = manvr3d.mastodon.selectionModel.selectedVertices
+                val fwdTime = manvr3d.semiAutoTracker.track(true)
+                val logText = "Tracked ${selected.size} cell${if (selected.size == 1) "" else "s"} forward " +
+                        "in ${fwdTime.toString(DurationUnit.SECONDS, 2)}."
+                logger.info(logText)
+                fileLogger.append(logText)
+                manvr3d.recordVREditEvent("Semi-auto Track Forward", fwdTime)
+                manvr3d.geometryHandler.clearSpotSelection()
+                manvr3d.geometryHandler.clearLinkSelection()
+            }
+        }, depressDelay = 250, textInFront = true)
+
+        val trackBwdButton = Button(" <-| ", command = {
+            thread {
+                val selected = manvr3d.mastodon.selectionModel.selectedVertices
+                val bwdTime = manvr3d.semiAutoTracker.track(false)
+                val logText = "Tracked ${selected.size} cell${if (selected.size == 1) "" else "s"} backward " +
+                        "in ${bwdTime.toString(DurationUnit.SECONDS, 2)}."
+                logger.info(logText)
+                fileLogger.append(logText)
+                manvr3d.recordVREditEvent("Semi-auto Track Backward", bwdTime)
+                manvr3d.geometryHandler.clearSpotSelection()
+                manvr3d.geometryHandler.clearLinkSelection()
+            }
+        }, depressDelay = 250, textInFront = true)
+
+        leftWristMenu.addRow("Tracking Menu", trackAllButton, trackBwdButton, trackFwdButton)
+
+
+        val attachLensToCellBtn = Button("Lens to cell", command = {
+            // If this returns a boolean, it indicates whether (controller) lensing was previously active
+            // so we can restore the state later
+            attachLensToCell()
+        }, depressDelay = 250, textInFront = true)
+
+        val resetLensBtn = Button("Reset lens", command = {
+            wantLensAtCell = false
+            isLensingActive = false
+        }, depressDelay = 250, textInFront = true)
+
+        leftWristMenu.addRow("Tracking Menu", attachLensToCellBtn, resetLensBtn)
+
+        val selectBranchBtn = Button("Select Branch", command = {
+            geometryHandler.selectBranch()
+        }, depressDelay = 250, textInFront = true)
+
+        val markVerifiedBtn = Button("Mark Completed", command = {
+            geometryHandler.markSelectionVerified()
+        }, depressDelay = 250, textInFront = true)
+
+        leftWristMenu.addRow("Tracking Menu", selectBranchBtn, markVerifiedBtn)
+
+        val hideUnselectedBtn = Button("Hide Unselected", command = {
+            geometryHandler.hideUnselected()
+        }, depressDelay = 250, textInFront = true)
+
+        val resetVisibilityBtn = Button("Reset Visibility", command = {
+            geometryHandler.resetVisibility()
+        }, depressDelay = 250, textInFront = true)
+
+        leftWristMenu.addRow("Tracking Menu", hideUnselectedBtn, resetVisibilityBtn)
+
+        leftWristMenu.addToggleButton("Tracking Menu", "Show Uncertainty", "Show Uncertainty",
+            command = { state ->
+                manvr3d.toggleUncertaintyColoring(state)
+                manvr3d.updateUI()
+            }, defaultState = manvr3d.showUncertainty)
+    }
+
     var isLensingActive = false
         set(value) {
             manvr3d.volumeNode.slicingMode = if (value) Volume.SlicingMode.LensingSmooth else Volume.SlicingMode.None
@@ -603,10 +689,40 @@ open class CellTrackingBase(
             field = value
         }
 
+    private fun updateLensAtCellPosition() {
+        if (!wantLensAtCell) return
+        val posArray = FloatArray(3)
+        selectedTrackForLens[volume.viewerState.currentTimepoint]?.let {
+            it.localize(posArray)
+            val pos = manvr3d.mastodonToSciviewCoords(posArray)
+            lensPosition = pos
+        }
+    }
+
+    /** Attach a volume lens to the first selected cell in the current timepoint. This selects the whole connected
+     * branch and follows it with the lens.
+     * Returns a boolean that indicates whether (controller) lensing was previously active or not.*/
+    private fun attachLensToCell() {
+        // Grab the first selected spot in the current timepoint
+        val selected =
+            manvr3d.mastodon.selectionModel.selectedVertices.firstOrNull { it.timepoint == manvr3d.currentTimepoint }
+                ?: return
+        selectedTrackForLens.clear()
+        val track = manvr3d.geometryHandler.gatherBranch(selected)
+        // Group the full branch by timepoints and only take the first one. This isn't great, but handles subbranches
+        // by selecting one
+        selectedTrackForLens.putAll(
+            track.groupBy { it.timepoint }.
+            map { it.value.first().timepoint to it.value.first() })
+        wantLensAtCell = true
+        isLensingActive = true
+        updateLensAtCellPosition()
+    }
+
     fun changeLensingRadius(factor: Float) {
         val oldRadius = manvr3d.volumeNode.lensingRadius
         val newRadius = oldRadius * factor
-        manvr3d.geometryHandler.updateLensRadius(newRadius)
+        manvr3d.geometryHandler.updateGeometryLensRadius(newRadius)
         manvr3d.volumeNode.lensingRadius = newRadius
     }
 
@@ -615,7 +731,8 @@ open class CellTrackingBase(
             logger.debug("Launched lensing thread")
             while (sciview.running && manvr3d.isVRactive) {
                 if (isLensingActive) {
-                    manvr3d.geometryHandler.updateLensPosition(cursor.getPosition())
+                    val pos = if (wantLensAtCell) lensPosition else cursor.getPosition()
+                    manvr3d.geometryHandler.updateLensPosition(pos)
                     Thread.sleep(20)
                 } else {
                     Thread.sleep(200)
@@ -635,9 +752,9 @@ open class CellTrackingBase(
         volumeTimepointWidget.name = "Volume Timepoint Widget"
         volumeTimepointWidget.fontColor = Vector4f(0.4f, 0.45f, 1f, 1f)
         volumeTimepointWidget.spatial {
-            scale = Vector3f(0.07f)
-            position = Vector3f(-0.05f, -0.05f, 0.12f)
-            rotation = Quaternionf().rotationXYZ(-1.57f, -1.57f, 0f)
+            scale = Vector3f(0.06f)
+            position = Vector3f(-.035f, -.03f, .02f)
+            rotation = Quaternionf().rotationXYZ(-1.2f, .1f, 0f)
         }
 
         rightVRController?.model?.let {
@@ -659,192 +776,38 @@ open class CellTrackingBase(
             Quaternionf().rotateX(Math.toRadians(-45.0).toFloat())
         )
 
-        val nextTimepoint = ClickBehaviour { _, _ ->
-            if (!controllerTrackingActive) {
-                if (direction == PlaybackDirection.Backward) {
-                    skipToNext = true
-                } else {
-                    skipToPrevious = true
-                }
-            }
-        }
-
-        val prevTimepoint = ClickBehaviour { _, _ ->
-            if (!controllerTrackingActive) {
-                if (direction == PlaybackDirection.Forward) {
-                    skipToNext = true
-                } else {
-                    skipToPrevious = true
-                }
-            }
-        }
-
-        class ScaleCursorOrSpotsBehavior(val factor: Float): DragBehaviour {
-            var selection = listOf<InstancedNode.Instance>()
-            override fun init(p0: Int, p1: Int) {
-                selection = manvr3d.selectedSpotInstances.toList()
-            }
-
-            override fun drag(p0: Int, p1: Int) {
-                if (selection.isNotEmpty()) {
-                    geometryHandler.changeSpotRadius(selection,factor, false)
-                } else {
-                    // Make cursor movement a little faster than  changing the spot radii
-                    cursor.scaleByFactor(factor * factor)
-                }
-            }
-
-            override fun end(p0: Int, p1: Int) {
-                geometryHandler.changeSpotRadius(selection, factor, true)
-            }
-        }
-
-        val scaleCursorOrSpotsUp = AnalogInputWrapper(ScaleCursorOrSpotsBehavior(1.02f), sciview.currentScene)
-
-        val scaleCursorOrSpotsDown = AnalogInputWrapper(ScaleCursorOrSpotsBehavior(0.98f), sciview.currentScene)
+        val scaleCursorOrSpotsUp = AnalogInputWrapper(ScaleCursorOrSpotsBehaviour(manvr3d, 1.02f), sciview.currentScene)
+        val scaleCursorOrSpotsDown = AnalogInputWrapper(ScaleCursorOrSpotsBehaviour(manvr3d, 0.98f), sciview.currentScene)
 
         val toggleMenu = ClickBehaviour { _, _ ->
             leftWristMenu.toggleVisibility()
         }
 
-        mapper.bind(hmd, buttonMapper.STEP_FWD, nextTimepoint)
-        mapper.bind(hmd, buttonMapper.STEP_BWD, prevTimepoint)
+        val cycleMenuPrevious = ClickBehaviour { _, _ ->
+            leftWristMenu.cyclePrevious()
+        }
 
-//        mapper.bind(hmd, buttonMapper.PLAYBACK, playPause)
+        mapper.bind(hmd, buttonMapper.STEP_FWD, AnalogInputWrapper(
+            TimepointScrollBehaviour(this, PlaybackDirection.Forward), sciview.currentScene))
+        mapper.bind(hmd, buttonMapper.STEP_BWD, AnalogInputWrapper(
+            TimepointScrollBehaviour(this, PlaybackDirection.Backward), sciview.currentScene))
+
         mapper.bind(hmd, buttonMapper.TOGGLE_MENU, toggleMenu)
+        mapper.bind(hmd, buttonMapper.CYCLE_MENU_BWD, cycleMenuPrevious)
         mapper.bind(hmd, buttonMapper.RADIUS_INCREASE, scaleCursorOrSpotsUp)
         mapper.bind(hmd, buttonMapper.RADIUS_DECREASE, scaleCursorOrSpotsDown)
 
-        /** Local class that handles double assignment of the left A key which is used to cycle menus as well as
-         * reset the rotation when pressed while the [VRTwoHandNodeTransform] is active. */
-        class CycleMenuAndLockAxisBehavior(val button: OpenXRHMD.OpenXRButton, val role: TrackerRole)
-            : DragBehaviour {
-            fun registerConfig() {
-                logger.debug("Setting up keybinds for CycleMenuAndLockAxisBehavior")
-                resetRotationBtnManager.registerButtonConfig(button, role)
-            }
-            override fun init(x: Int, y: Int) {
-                resetRotationBtnManager.pressButton(button, role)
-                if (!resetRotationBtnManager.isTwoHandedActive()) {
-                    leftWristMenu.cycleNext()
-                }
-            }
-            override fun drag(x: Int, y: Int) {}
-            override fun end(x: Int, y: Int) {
-                resetRotationBtnManager.releaseButton(button, role)
-            }
-        }
-
-        val leftAButtonBehavior = CycleMenuAndLockAxisBehavior(OpenXRHMD.OpenXRButton.A, TrackerRole.LeftHand)
+        val leftAButtonBehavior = CycleMenuAndLockAxisBehaviour(this, OpenXRHMD.OpenXRButton.A, TrackerRole.LeftHand)
         leftAButtonBehavior.let {
             it.registerConfig()
-            mapper.bind(hmd, buttonMapper.CYCLE_MENU, it)
+            mapper.bind(hmd, buttonMapper.CYCLE_MENU_FWD, it)
         }
+
+        val trackCellsWithController = ControllerTrackBehaviour(this)
 
         mapper.bind(hmd, buttonMapper.CONTROLLER_TRACKING, trackCellsWithController)
-
-        /** Several behaviors mapped per default to the right menu button. If controller tracking is active,
-         * end the tracking. If not, clicking will either create or delete a spot, depending on whether the user
-         * previously selected a spot. Holding the button for more than 0.5s deletes the whole connected branch. */
-        class AddDeleteResetBehavior : DragBehaviour {
-            var start = System.currentTimeMillis()
-            var wasExecuted = false
-            // Check whether we are interacting with a menu -> if true, we don't interact
-            private var wantInteract = false
-
-            override fun init(x: Int, y: Int) {
-                wantInteract = !cursor.showPointer
-                if (!wantInteract) return
-                start = System.currentTimeMillis()
-                wasExecuted = false
-            }
-            override fun drag(x: Int, y: Int) {
-                if (!wantInteract) return
-                // If the button was pressed for more than 0.5s, delete the branch
-                if (System.currentTimeMillis() - start > 500 && !wasExecuted) {
-                    val p = cursor.getPosition()
-                    geometryHandler.addOrRemoveSpotsAndEdges(
-                        volume.currentTimepoint,
-                        p,
-                        cursor.radius,
-                        true,
-                        true)
-                    wasExecuted = true
-                }
-            }
-            override fun end(x: Int, y: Int) {
-                if (!wantInteract) return
-                if (controllerTrackingActive) {
-                    endControllerTracking()
-                } else {
-                    val p = cursor.getPosition()
-                    logger.debug("Got cursor position: $p")
-                    if (!wasExecuted) {
-                        geometryHandler.addOrRemoveSpotsAndEdges(
-                            volume.currentTimepoint,
-                            p,
-                            cursor.radius,
-                            false,
-                            true)
-                    }
-                }
-            }
-        }
-
-        mapper.bind(hmd, "addDeleteReset", AddDeleteResetBehavior())
-
-        /** This behavior selects/deselects spots and edges on click,
-         * and performs paint stroke-like selection drawing on drag events. */
-        class DragSelectBehavior: DragBehaviour {
-            var lastUpdate = System.currentTimeMillis()
-            var startTime = System.currentTimeMillis()
-            var wasDragged = false
-            // Checks whether we are interacting with a menu -> if true, we don't perform the behavior
-            private var wantDrag = false
-
-            override fun init(x: Int, y: Int) {
-                // Only perform drag actions when not interacting with the menu
-                wantDrag = !cursor.showPointer
-                if (!wantDrag) return
-                lastUpdate = System.currentTimeMillis()
-                cursor.setColor(cursorSelectColor)
-                startTime = System.currentTimeMillis()
-                wasDragged = false
-            }
-            override fun drag(x: Int, y: Int) {
-                if (!wantDrag) return
-                // Only perform the selection method twenty times a second and when the button was pressed for more than 200ms
-                if (System.currentTimeMillis() - lastUpdate > 50 && System.currentTimeMillis() - startTime > 200) {
-                    val p = cursor.getPosition()
-                    geometryHandler.selectClosestSpotsVR(p, volume.currentTimepoint, cursor.radius, true, cursor.visualScale)
-                    geometryHandler.selectClosestEdgesVR(p, cursor.radius * cursor.visualScale, true)
-                    lastUpdate = System.currentTimeMillis()
-                    wasDragged = true
-                }
-            }
-            override fun end(x: Int, y: Int) {
-                if (!wantDrag) return
-                // If this wasn't a drag event but a click event, perform the selection now
-                if (!wasDragged) {
-                    val p = cursor.getPosition()
-                    geometryHandler.selectClosestSpotsVR(p, volume.currentTimepoint, cursor.radius, false, cursor.visualScale)
-                    geometryHandler.selectClosestEdgesVR(p, cursor.radius * cursor.visualScale, false)
-                }
-                cursor.resetColor()
-
-                if (manvr3d.selectedLinkNodes.isNotEmpty() || manvr3d.selectedSpotInstances.isNotEmpty()) {
-                    mapper.updateLabel(
-                        buttonMapper.ADD_DELETE_RESET,
-                        "Del", buttonMapper.selectColor)
-                } else {
-                    mapper.updateLabel(
-                        buttonMapper.ADD_DELETE_RESET,
-                        "Add", buttonMapper.defaultColor)
-                }
-            }
-        }
-
-        mapper.bind(hmd, "select", DragSelectBehavior())
+        mapper.bind(hmd, "addDeleteReset", AddDeleteResetBehavior(this))
+        mapper.bind(hmd, "select", DragSelectBehavior(this))
 
         // this behavior is needed for touching the menu buttons
         VRTouch.createAndSet(
@@ -871,6 +834,8 @@ open class CellTrackingBase(
             grabButtonManager
         )
 
+        val defaultCycleFwdLabel = mapper.getMapping(buttonMapper.CYCLE_MENU_FWD)?.label ?: ""
+
         VRTwoHandNodeTransform.createAndSet(
             hmd,
             OpenXRHMD.OpenXRButton.Side,
@@ -884,8 +849,11 @@ open class CellTrackingBase(
                 manvr3d.isVolumeVisible = volume.visible
                 manvr3d.setVolumeOnlyVisibility(true)
 
-                mapper.updateLabel(buttonMapper.CYCLE_MENU, "Reset",
+                mapper.updateLabel(buttonMapper.CYCLE_MENU_FWD, "Reset",
                     Vector3f(1f, 0.5f, 0.5f))
+            },
+            onDragCallback = {
+                updateLensAtCellPosition()
             },
             onEndCallback = {
                 thread {
@@ -895,7 +863,11 @@ open class CellTrackingBase(
                     geometryHandler.setTrackVisibility(manvr3d.isTrackVisible)
                     // change volume visibility to what it was before
                     manvr3d.setVolumeOnlyVisibility(manvr3d.isVolumeVisible)
-                    mapper.updateLabel(buttonMapper.CYCLE_MENU, "M Cycle", buttonMapper.defaultColor)
+                    updateLensAtCellPosition()
+                    mapper.updateLabel(
+                        buttonMapper.CYCLE_MENU_FWD, defaultCycleFwdLabel,
+                        buttonMapper.defaultColor
+                    )
                 }
 
             },
@@ -904,7 +876,7 @@ open class CellTrackingBase(
         )
 
         // drag behavior can stay enabled regardless of current tool mode
-        MoveInstanceVR.createAndSet(manvr3d, hmd,
+        MoveSpotVRBehaviour.createAndSet(manvr3d, hmd,
             listOf(OpenXRHMD.OpenXRButton.Side), listOf(TrackerRole.RightHand),
             grabButtonManager,
             { cursor.getPosition() }
@@ -928,19 +900,20 @@ open class CellTrackingBase(
                     val oldTimepoint = volume.viewerState.currentTimepoint
                     if (skipToNext || playing) {
                         skipToNext = false
-                        if (direction == PlaybackDirection.Forward) {
+                        if (playDirection == PlaybackDirection.Forward) {
                             notifyObservers(oldTimepoint + 1)
                         } else {
                             notifyObservers(oldTimepoint - 1)
                         }
                     } else {
                         skipToPrevious = false
-                        if (direction == PlaybackDirection.Forward) {
+                        if (playDirection == PlaybackDirection.Forward) {
                             notifyObservers(oldTimepoint - 1)
                         } else {
                             notifyObservers(oldTimepoint + 1)
                         }
                     }
+                    updateLensAtCellPosition()
 
                     if (hedgehogs.visible) {
                         if (hedgehogVisibility == HedgehogVisibility.PerTimePoint) {
@@ -1145,7 +1118,9 @@ open class CellTrackingBase(
             sciview.deleteNode(it)
         }
 
-        thumbstickMovement.deregisterBehavior()
+        if (::thumbstickMovement.isInitialized) {
+            thumbstickMovement.deregisterBehavior()
+        }
 
         logger.info("Cleaned up basic VR objects. Objects left: ${sciview.allSceneNodes.map { it.name }}")
 
