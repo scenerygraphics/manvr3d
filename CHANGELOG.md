@@ -11,8 +11,9 @@
 - Press and hold the right trigger to track continuously ([#33](https://github.com/scenerygraphics/manvr3d/pull/33))
 - Add toggleable volume background for context when lensing is enabled; 
   enabled per default  ([#33](https://github.com/scenerygraphics/manvr3d/pull/33))
-- Add button to mark selection as verified ([#33](https://github.com/scenerygraphics/manvr3d/pull/33))
-- Add buttons to hide unselected areas and reset the visibility filtering ([#33](https://github.com/scenerygraphics/manvr3d/pull/33))
+- Add VR button to mark selections as verified/completed. They appear as green ([#33](https://github.com/scenerygraphics/manvr3d/pull/33))
+- Add VR buttons to hide unselected areas and reset the visibility filtering ([#33](https://github.com/scenerygraphics/manvr3d/pull/33))
+- Add VR button to toggle between full track length and short track length. This shortens the track window to +/- 8 segments ([#33](https://github.com/scenerygraphics/manvr3d/pull/33))
 
 ### Removed
 
@@ -23,6 +24,7 @@
 - Data axes always stick to the volume origin now ([#33](https://github.com/scenerygraphics/manvr3d/pull/33))
 - Major rewrite of scenery VR backend: replaces OpenVR with OpenXR API ([#825](https://github.com/scenerygraphics/scenery/pull/825))
 - Controller color is dark grey now to improve readability of menu labels ([#33](https://github.com/scenerygraphics/manvr3d/pull/33))
+- Default spot color from Elephant predictions (tag set: Tracking -> unlabeled) changed from bright green to sandy ([#33](https://github.com/scenerygraphics/manvr3d/pull/33))
 
 ### Fixed
 
