@@ -37,7 +37,6 @@ import graphics.scenery.manvr3d.util.CellTrackingButtonMapper
 import org.joml.Quaternionf
 import org.joml.Vector3f
 import org.joml.Vector4f
-import org.mastodon.collection.RefCollections
 import java.io.BufferedWriter
 import java.io.FileWriter
 import java.lang.Math
@@ -641,18 +640,16 @@ open class CellTrackingBase(
 
         leftWristMenu.addRow("Tracking Menu", trackAllButton, trackBwdButton, trackFwdButton)
 
-        // Store whether lensing was previously active already
-        var wasLensingActive = false
 
         val attachLensToCellBtn = Button("Lens to cell", command = {
             // If this returns a boolean, it indicates whether (controller) lensing was previously active
             // so we can restore the state later
-            attachLensToCell()?.let { wasLensingActive = it }
+            attachLensToCell()
         }, depressDelay = 250, textInFront = true)
 
         val resetLensBtn = Button("Reset lens", command = {
             wantLensAtCell = false
-            isLensingActive = wasLensingActive
+            isLensingActive = false
         }, depressDelay = 250, textInFront = true)
 
         leftWristMenu.addRow("Tracking Menu", attachLensToCellBtn, resetLensBtn)
@@ -705,12 +702,11 @@ open class CellTrackingBase(
     /** Attach a volume lens to the first selected cell in the current timepoint. This selects the whole connected
      * branch and follows it with the lens.
      * Returns a boolean that indicates whether (controller) lensing was previously active or not.*/
-    private fun attachLensToCell() : Boolean? {
+    private fun attachLensToCell() {
         // Grab the first selected spot in the current timepoint
         val selected =
             manvr3d.mastodon.selectionModel.selectedVertices.firstOrNull { it.timepoint == manvr3d.currentTimepoint }
-                ?: return null
-        val wasLensingActive = isLensingActive
+                ?: return
         selectedTrackForLens.clear()
         val track = manvr3d.geometryHandler.gatherBranch(selected)
         // Group the full branch by timepoints and only take the first one. This isn't great, but handles subbranches
@@ -721,13 +717,12 @@ open class CellTrackingBase(
         wantLensAtCell = true
         isLensingActive = true
         updateLensAtCellPosition()
-        return wasLensingActive
     }
 
     fun changeLensingRadius(factor: Float) {
         val oldRadius = manvr3d.volumeNode.lensingRadius
         val newRadius = oldRadius * factor
-        manvr3d.geometryHandler.updateLensRadius(newRadius)
+        manvr3d.geometryHandler.updateGeometryLensRadius(newRadius)
         manvr3d.volumeNode.lensingRadius = newRadius
     }
 

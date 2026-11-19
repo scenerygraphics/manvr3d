@@ -552,7 +552,7 @@ class GeometryHandler(
         cylinder.lensingPosition = position
     }
 
-    fun updateLensRadius(radius: Float) {
+    fun updateGeometryLensRadius(radius: Float) {
         sphere.lensingRadius = radius
         cylinder.lensingRadius = radius
     }

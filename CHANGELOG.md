@@ -14,6 +14,7 @@
 - Add VR button to mark selections as verified/completed. They appear as green ([#33](https://github.com/scenerygraphics/manvr3d/pull/33))
 - Add VR buttons to hide unselected areas and reset the visibility filtering ([#33](https://github.com/scenerygraphics/manvr3d/pull/33))
 - Add VR button to toggle between full track length and short track length. This shortens the track window to +/- 8 segments ([#33](https://github.com/scenerygraphics/manvr3d/pull/33))
+- Add omnidirectional thumbstick movement that moves with respect to the controller direction ([#825](https://github.com/scenerygraphics/scenery/pull/825))
 
 ### Removed
 
@@ -25,6 +26,7 @@
 - Major rewrite of scenery VR backend: replaces OpenVR with OpenXR API ([#825](https://github.com/scenerygraphics/scenery/pull/825))
 - Controller color is dark grey now to improve readability of menu labels ([#33](https://github.com/scenerygraphics/manvr3d/pull/33))
 - Default spot color from Elephant predictions (tag set: Tracking -> unlabeled) changed from bright green to sandy ([#33](https://github.com/scenerygraphics/manvr3d/pull/33))
+- Lower default lens radius (half as big) ([#33](https://github.com/scenerygraphics/manvr3d/pull/33))
 
 ### Fixed
 

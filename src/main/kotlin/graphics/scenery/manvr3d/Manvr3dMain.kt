@@ -5,6 +5,8 @@ package graphics.scenery.manvr3d
 import bdv.viewer.Source
 import bdv.viewer.SourceAndConverter
 import graphics.scenery.*
+import graphics.scenery.attribute.spatial.DefaultSpatial
+import graphics.scenery.attribute.spatial.Spatial
 import graphics.scenery.backends.RenderConfigReader
 import graphics.scenery.controls.OpenXRHMD
 import graphics.scenery.controls.behaviours.SelectCommand
@@ -51,7 +53,6 @@ import graphics.scenery.manvr3d.vr.EyeTracking
 import graphics.scenery.utils.extensions.packRGBA
 import graphics.scenery.volumes.Colormap
 import org.joml.Vector4f
-import org.mastodon.model.tag.TagSetStructure
 import org.mastodon.tracking.mamut.detection.DetectionQualityFeature
 import java.awt.event.WindowAdapter
 import java.awt.event.WindowEvent
@@ -268,6 +269,9 @@ class Manvr3dMain: TimepointObserver {
         volumeNode.spatial().scale *= Vector3f(1f, 1f, -1f)
         // Prevent the grid from extending into the data axes
         volumeNode.children.filterIsInstance<BoundingGrid>().firstOrNull()?.includeChildren = false
+
+        // Lower the default lensing radius
+        volumeNode.lensingRadius = 0.5f
 
         val volumePixelDims = Vector3f(volumeNode.getDimensions())
 
