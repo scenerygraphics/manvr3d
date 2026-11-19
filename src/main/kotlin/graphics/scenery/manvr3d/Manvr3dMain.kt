@@ -284,7 +284,9 @@ class Manvr3dMain: TimepointObserver {
             1f * voxelDims[2].toFloat())), size = 20f)
         sciviewWin.addNode(dataAxes, activePublish = true, parent = volumeNode)
 
+
         centerCameraOnVolume()
+
 
         logger.info("volume node scale is ${volumeNode.spatialOrNull()?.scale}")
 
@@ -322,6 +324,8 @@ class Manvr3dMain: TimepointObserver {
         initializeElephantListener()
 
         fileLogger.beginManvr3dSession(mastodon)
+
+        sciviewWin.setActiveNode(volumeNode)
     }
 
     val eventService: EventService?

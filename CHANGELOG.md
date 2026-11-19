@@ -33,6 +33,7 @@
 - Debounce timepoint cycling for precise steps; keeps press-and-hold behavior for scrubbing ([#33](https://github.com/scenerygraphics/manvr3d/pull/33))
 - Fix having to press the menu button twice to show the menu ([#825](https://github.com/scenerygraphics/scenery/pull/825))
 - Always clear selections after spot/link edit events to prevent stale hidden selections ([#33](https://github.com/scenerygraphics/manvr3d/pull/33))
+- Fix volume and mesh intersections flickering ([#829](https://github.com/scenerygraphics/scenery/pull/829))
 
 ## [0.4]
 
