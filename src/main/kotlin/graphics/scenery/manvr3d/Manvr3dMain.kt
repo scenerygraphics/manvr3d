@@ -48,7 +48,10 @@ import graphics.scenery.manvr3d.util.GeometryHandler
 import graphics.scenery.manvr3d.util.SemiAutomaticTrackerWrapper
 import graphics.scenery.manvr3d.vr.CellTrackingBase
 import graphics.scenery.manvr3d.vr.EyeTracking
+import graphics.scenery.utils.extensions.packRGBA
 import graphics.scenery.volumes.Colormap
+import org.joml.Vector4f
+import org.mastodon.model.tag.TagSetStructure
 import org.mastodon.tracking.mamut.detection.DetectionQualityFeature
 import java.awt.event.WindowAdapter
 import java.awt.event.WindowEvent
@@ -295,9 +298,16 @@ class Manvr3dMain: TimepointObserver {
 
         semiAutoTracker = SemiAutomaticTrackerWrapper(this, mastodon, maxTimepoint + 1)
 
+        // unlabeled is currently bright green, so we overwrite it with sand color to differentiate it from verified tracks
+        val tss = mastodon.model.tagSetModel.tagSetStructure
+        tss.tagSets
+            .find { it.name == "Tracking" }?.tags
+            ?.find { it.label() == "unlabeled" }
+            ?.setColor(Vector4f(0.93f, 0.84f, 0.57f, 1f).packRGBA())
+
         openSyncedBDV()
 
-        setColorizer(bdvWindow)
+        setColorizer(bdvWindow, tagSet = "Tracking")
 
         submitToTaskExecutor()
 
@@ -641,8 +651,9 @@ class Manvr3dMain: TimepointObserver {
         )
     }
 
-    private fun setColorizer(forThisBdv: MamutViewBdv, updateGeometry: Boolean = false) {
-        val ts = forThisBdv.coloringModel.tagSet
+    private fun setColorizer(forThisBdv: MamutViewBdv, updateGeometry: Boolean = false, tagSet: String? = null) {
+        val ts = mastodon.model.tagSetModel.tagSetStructure.tagSets
+            .find { it.name == tagSet } ?: forThisBdv.coloringModel.tagSet
         currentColorizer = if (ts != null) {
             TagSetGraphColorGenerator(mastodon.model.tagSetModel, ts)
         } else {
